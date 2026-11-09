@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestAgentPoolPack loads packs/agent (#634), the port of the gascity
@@ -51,7 +51,7 @@ func TestAgentPoolPack(t *testing.T) {
 	require.NotEmpty(t, r.Steps)
 	done := func() bool {
 		for _, ev := range runs.get() {
-			if ev.ID == r.Run.ID && ev.Status == store.StatusClosed {
+			if ev.ID == r.Run.ID && ev.Status == domain.StatusClosed {
 				return true
 			}
 		}
@@ -61,6 +61,6 @@ func TestAgentPoolPack(t *testing.T) {
 	got := showRun(t, admin, r.Run.ID)
 	require.Equal(t, "done", got.Run.Resolution)
 	for _, s := range got.Steps {
-		require.Equal(t, store.StatusClosed, s.Status, s.Title)
+		require.Equal(t, domain.StatusClosed, s.Status, s.Title)
 	}
 }

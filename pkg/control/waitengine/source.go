@@ -20,9 +20,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Source reads PR, check, issue, tag and commit state from GitHub.
@@ -60,7 +60,7 @@ type RunSource interface {
 type ReplySource interface {
 	// Reply reports whether a human replied on cd.Thread after since,
 	// from cd.From when set, with a note naming the author.
-	Reply(ctx context.Context, cd store.WaitCond, since time.Time) (met bool, note string, err error)
+	Reply(ctx context.Context, cd domain.WaitCond, since time.Time) (met bool, note string, err error)
 }
 
 // RunState is what the run condition needs of a run ticket.
@@ -71,7 +71,7 @@ type RunState struct {
 
 // Ended reports whether the run finished or was cancelled or closed.
 func (r RunState) Ended() bool {
-	return r.Closed || r.State == store.RunDone || r.State == store.RunCancelled
+	return r.Closed || r.State == domain.RunDone || r.State == domain.RunCancelled
 }
 
 // Sources is everything one pass observes through.

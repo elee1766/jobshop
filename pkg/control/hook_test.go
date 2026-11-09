@@ -13,8 +13,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // The action hook answers from the event: push to main is denied, merge
@@ -57,7 +57,7 @@ func TestGuardHooks(t *testing.T) {
 	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
 
 	admin := dial(t, root.AdminSocket())
-	var bad, good store.Ticket
+	var bad, good domain.Ticket
 	p0, p1 := 0, 1
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "forbidden", Pool: "dev", Priority: &p0}, &bad))
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "fine", Pool: "dev", Priority: &p1}, &good))
@@ -82,32 +82,32 @@ func TestGuardHooks(t *testing.T) {
 		require.NoError(t, s.Call(ctx, rpc.MethodGuard, rpc.GuardParams{Action: action, Target: target}, &r))
 		return r
 	}
-	assert.Equal(t, rpc.GuardAllow, guard("comment", "").Decision)
+	assert.Equal(t, domain.GuardAllow, guard("comment", "").Decision)
 	r := guard("push", "main")
-	assert.Equal(t, rpc.GuardDeny, r.Decision)
+	assert.Equal(t, domain.GuardDeny, r.Decision)
 	assert.Equal(t, "no pushes to main", r.Reason)
 	r = guard("crash", "")
-	assert.Equal(t, rpc.GuardDeny, r.Decision, "fail closed")
+	assert.Equal(t, domain.GuardDeny, r.Decision, "fail closed")
 	assert.Contains(t, r.Reason, "exited 2")
 
 	// ask_human files one needs-human ticket and reads it back.
 	r = guard("merge", "pr/1")
-	require.Equal(t, rpc.GuardAskHuman, r.Decision)
+	require.Equal(t, domain.GuardAskHuman, r.Decision)
 	require.NotEmpty(t, r.Ticket)
 	again := guard("merge", "pr/1")
 	assert.Equal(t, r.Ticket, again.Ticket, "one ticket per action and target")
-	assert.Equal(t, rpc.GuardAskHuman, again.Decision)
-	var ask store.Ticket
+	assert.Equal(t, domain.GuardAskHuman, again.Decision)
+	var ask domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: r.Ticket}, &struct {
-		Ticket *store.Ticket `json:"ticket"`
+		Ticket *domain.Ticket `json:"ticket"`
 	}{&ask}))
 	assert.Equal(t, []string{"needs-human"}, ask.Labels)
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: r.Ticket}, nil))
-	assert.Equal(t, rpc.GuardAllow, guard("merge", "pr/1").Decision, "closed done approves")
+	assert.Equal(t, domain.GuardAllow, guard("merge", "pr/1").Decision, "closed done approves")
 
 	r = guard("merge", "pr/2")
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: r.Ticket, Resolution: "wontfix"}, nil))
-	assert.Equal(t, rpc.GuardDeny, guard("merge", "pr/2").Decision, "closed otherwise refuses")
+	assert.Equal(t, domain.GuardDeny, guard("merge", "pr/2").Decision, "closed otherwise refuses")
 
 	events, err := os.ReadFile(filepath.Join(dir, "events.jsonl"))
 	require.NoError(t, err)
@@ -129,5 +129,5 @@ func TestGuardNoHooks(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	var r rpc.GuardResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodGuard, rpc.GuardParams{Action: "push"}, &r))
-	assert.Equal(t, rpc.GuardAllow, r.Decision)
+	assert.Equal(t, domain.GuardAllow, r.Decision)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -28,8 +29,8 @@ const runMetaPack = "run"
 const escalationComments = 3
 
 // stepEvent runs after a call that may have counted a step failure.
-func (c *Controller) stepEvent(ctx context.Context, cfg *config.Config, step store.Ticket) {
-	if step.Kind != store.KindStep || step.ParentID == "" {
+func (c *Controller) stepEvent(ctx context.Context, cfg *config.Config, step domain.Ticket) {
+	if step.Kind != domain.KindStep || step.ParentID == "" {
 		return
 	}
 	c.checkRun(ctx, cfg, step.ParentID)
@@ -63,28 +64,28 @@ func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID 
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	run, err := c.store.Get(ctx, runID)
-	if err != nil || run.Kind != store.KindRun || run.Status == store.StatusClosed {
+	if err != nil || run.Kind != domain.KindRun || run.Status == domain.StatusClosed {
 		return false
 	}
-	f, err := store.DecodeFields[store.RunFields](run)
+	f, err := domain.DecodeFields[domain.RunFields](run)
 	if err != nil {
 		return false
 	}
-	if f.State == store.RunNeedsHuman {
+	if f.State == domain.RunNeedsHuman {
 		// Already escalated; the ticket may still be missing after a crash.
 		c.ensureEscalation(ctx, cfg, run, f)
 		return true
 	}
-	if f.State != store.RunRunning {
+	if f.State != domain.RunRunning {
 		return false
 	}
 	steps, err := store.Children(ctx, c.store, runID)
 	if err != nil {
 		return false
 	}
-	var failed *store.Ticket
+	var failed *domain.Ticket
 	for i := range steps {
-		if store.StepExhausted(steps[i]) {
+		if domain.StepExhausted(steps[i]) {
 			failed = &steps[i]
 			break
 		}
@@ -93,11 +94,11 @@ func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID 
 		return false
 	}
 	f.Escalations++
-	if run, err = c.setRunState(ctx, "controller", run, f, store.RunNeedsHuman, ""); err != nil {
+	if run, err = c.setRunState(ctx, "controller", run, f, domain.RunNeedsHuman, ""); err != nil {
 		c.log.ErrorContext(ctx, "run needs_human", "run", runID, "err", err)
 		return false
 	}
-	f.State = store.RunNeedsHuman
+	f.State = domain.RunNeedsHuman
 	c.log.WarnContext(ctx, "run needs a human", "run", runID, "workflow", f.Workflow, "step", failed.ID)
 	c.ensureEscalation(ctx, cfg, run, f)
 	return true
@@ -106,7 +107,7 @@ func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID 
 // ensureEscalation creates the escalation ticket for the run's current
 // needs_human episode unless it exists, so retries after a crash and
 // repeated sweeps file exactly one.
-func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, run store.Ticket, f store.RunFields) {
+func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, run domain.Ticket, f domain.RunFields) {
 	key := fmt.Sprintf("%s/%d", run.ID, f.Escalations)
 	seen, err := c.store.List(ctx, store.Filter{MetaPack: runMetaPack, MetaKey: "escalation", MetaValue: key, Limit: 1})
 	if err != nil || len(seen) > 0 {
@@ -132,7 +133,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 	}
 	prio := 1
 	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: run.Project, Kind: store.KindTask, Title: "Escalate run " + run.ID,
+		Project: run.Project, Kind: domain.KindTask, Title: "Escalate run " + run.ID,
 		Body: body, Priority: &prio, Pool: pool, Labels: []string{"needs-human"}, Meta: mb,
 	})
 	if err != nil {
@@ -140,13 +141,13 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 		return
 	}
 	c.log.InfoContext(ctx, "escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
-	c.record(ctx, store.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
+	c.record(ctx, domain.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
 	c.ensureEscalationChat(ctx, cfg, t)
 }
 
 // escalationBody lists the run and, per step, its attempts, resolution and
 // last comments, so the escalation agent need not dig.
-func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run store.Ticket, f store.RunFields) (string, error) {
+func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run domain.Ticket, f domain.RunFields) (string, error) {
 	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return "", err
@@ -165,7 +166,7 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 		}
 	}
 	for _, s := range steps {
-		sf, err := store.DecodeFields[store.StepFields](s)
+		sf, err := domain.DecodeFields[domain.StepFields](s)
 		if err != nil {
 			return "", err
 		}
@@ -204,7 +205,7 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 
 // recordRunGauges sets jobshop.runs.needs_human per project.
 func (c *Controller) recordRunGauges(ctx context.Context, cfg *config.Config) {
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
+	runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return
 	}
@@ -213,7 +214,7 @@ func (c *Controller) recordRunGauges(ctx context.Context, cfg *config.Config) {
 		counts[name] = 0
 	}
 	for _, r := range runs {
-		if r.Status != store.StatusClosed {
+		if r.Status != domain.StatusClosed {
 			counts[r.Project]++
 		}
 	}

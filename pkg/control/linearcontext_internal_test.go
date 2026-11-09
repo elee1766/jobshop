@@ -15,6 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -59,7 +60,7 @@ func TestLinearCommentContext(t *testing.T) {
 
 	cs, err := store.Comments(ctx, c.store, tk.ID)
 	require.NoError(t, err)
-	var got []store.Comment
+	var got []domain.Comment
 	for _, cm := range cs {
 		if strings.HasPrefix(cm.Author, threads.LinearAuthorPrefix) {
 			got = append(got, cm)

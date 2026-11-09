@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -26,7 +27,7 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 // so the timeline (JOB-1103) reads history once.
 func (c *Controller) graphWalk(ctx context.Context, sc scope, p rpc.GraphParams) (rpc.GraphResult, map[string]store.Thread, error) {
 	if p.Limit < 0 || p.Limit > 2000 {
-		return rpc.GraphResult{}, nil, fmt.Errorf("%w: graph limit must be between 1 and 2000", store.ErrInvalid)
+		return rpc.GraphResult{}, nil, fmt.Errorf("%w: graph limit must be between 1 and 2000", domain.ErrInvalid)
 	}
 	if p.Limit == 0 {
 		p.Limit = 500
@@ -152,7 +153,7 @@ func (c *Controller) graphWalk(ctx context.Context, sc scope, p rpc.GraphParams)
 
 var trackerLink = regexp.MustCompile(`https://(?:github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+|linear\.app/[\w./%+-]+)`)
 
-func graphLinks(cfg *config.Config, t store.Ticket, comments []store.Comment) []string {
+func graphLinks(cfg *config.Config, t domain.Ticket, comments []domain.Comment) []string {
 	out := []string{}
 	add := func(raw string) {
 		u, err := url.Parse(raw)
@@ -174,7 +175,7 @@ func graphLinks(cfg *config.Config, t store.Ticket, comments []store.Comment) []
 		} `json:"linear"`
 	}
 	if len(t.Meta) == 0 || json.Unmarshal(t.Meta, &meta) == nil {
-		if f, err := store.DecodeFields[store.RunFields](t); err == nil && t.Kind == store.KindRun {
+		if f, err := domain.DecodeFields[domain.RunFields](t); err == nil && t.Kind == domain.KindRun {
 			if meta.GitHub.Repo == "" {
 				meta.GitHub.Repo = f.Vars["repo"]
 			}
@@ -231,7 +232,7 @@ func graphLinks(cfg *config.Config, t store.Ticket, comments []store.Comment) []
 	return out
 }
 
-func commentBodies(comments []store.Comment) []string {
+func commentBodies(comments []domain.Comment) []string {
 	out := make([]string, 0, len(comments))
 	for _, comment := range comments {
 		out = append(out, comment.Body)
@@ -248,7 +249,7 @@ var stepPRComment = regexp.MustCompile(`(?m)^PR (https://github\.com/[\w.-]+/[\w
 // watch (structured, set right after the PR is opened) and those it
 // announced with a "PR <url>" comment. It never reads an issue number or
 // a casual mention.
-func stepPRLinks(t store.Ticket, comments []store.Comment) []string {
+func stepPRLinks(t domain.Ticket, comments []domain.Comment) []string {
 	var out []string
 	add := func(link string) {
 		if !slices.Contains(out, link) {
@@ -272,7 +273,7 @@ func stepPRLinks(t store.Ticket, comments []store.Comment) []string {
 
 // runLinks are a run's links: what its vars and meta name, plus the PRs
 // its steps recorded after it started (JOB-131), in step order.
-func (c *Controller) runLinks(ctx context.Context, run store.Ticket, steps []store.Ticket) ([]string, error) {
+func (c *Controller) runLinks(ctx context.Context, run domain.Ticket, steps []domain.Ticket) ([]string, error) {
 	links := graphLinks(c.config(), run, nil)
 	for _, s := range steps {
 		th, err := c.store.Thread(ctx, s.ID, store.Parts{Comments: true})

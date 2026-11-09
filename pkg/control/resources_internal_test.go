@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -21,11 +22,11 @@ func TestResourceWaitSignalAndAttention(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := subController(t)
 	ctx := t.Context()
-	require.NoError(t, c.store.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"emu": 1}}))
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
-	step := func(title string) store.Ticket {
+	require.NoError(t, c.store.SetResources(ctx, domain.ResourceConfig{Caps: map[string]int{"emu": 1}}))
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
+	step := func(title string) domain.Ticket {
 		return mkTicket(t, c, store.NewTicket{
-			Kind: store.KindStep, Title: title, Pool: "dev", ParentID: run.ID,
+			Kind: domain.KindStep, Title: title, Pool: "dev", ParentID: run.ID,
 			Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"` + title + `","retries":3,"resources":["emu"]}`),
 		})
 	}

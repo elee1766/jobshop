@@ -24,10 +24,6 @@ func known() []Known {
 			Why: "Reached through sessionrt (see the command-paths-no-session entry). It goes with that edge.",
 		},
 		{
-			Rule: "command-paths-no-acp", From: "./pkg/hooks", To: "github.com/coder/acp-go-sdk", Issue: "JOB-166",
-			Why: "hooks imports pkg/rpc for guard decisions (GuardAllow, GuardDeny, GuardAskHuman), AutomationResult and ID params, and rpc wraps the SDK's JSON-RPC connection. JOB-166 moves those shared types to domain so hooks no longer imports rpc.",
-		},
-		{
 			Rule: "cue-only-in-packcue", From: "./pkg/hooks", To: "cuelang.org/go/...", Issue: "JOB-172",
 			Why: "hooks/schema.go compiles a CUE schema for hook input and imports CUE directly. JOB-172 gives pack/cue the one evaluation API and hooks calls it.",
 		},

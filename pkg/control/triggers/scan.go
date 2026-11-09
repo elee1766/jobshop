@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -56,7 +57,7 @@ type Signals interface {
 	// WaitsOnQuestion: the ticket's last report is waiting on a question
 	// that is still open. The question itself is a needs-human ticket, so
 	// the step or session is not idle.
-	WaitsOnQuestion(ctx context.Context, t store.Ticket) bool
+	WaitsOnQuestion(ctx context.Context, t domain.Ticket) bool
 	// ResourceWaits are the resource_wait findings.
 	ResourceWaits(ctx context.Context, now time.Time, after time.Duration) ([]Finding, error)
 	// Ingest are the ingest_worker and ingest_backlog findings.
@@ -128,7 +129,7 @@ func (e *Engine) enqueueFinding(ctx context.Context, cfg *config.Config, name st
 	if digest == "" {
 		return
 	}
-	runs, err := e.host.Store().List(ctx, store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: Pack, Key: "name", Value: name}, {Pack: Pack, Key: FindingMetaKey, Value: s.ID()}}, Limit: store.NoLimit})
+	runs, err := e.host.Store().List(ctx, store.Filter{Kind: domain.KindRun, Meta: []store.MetaMatch{{Pack: Pack, Key: "name", Value: name}, {Pack: Pack, Key: FindingMetaKey, Value: s.ID()}}, Limit: store.NoLimit})
 	if err != nil {
 		e.log().ErrorContext(ctx, "scan handler", "trigger", name, "err", err)
 		return
@@ -156,13 +157,13 @@ func (e *Engine) enqueueFinding(ctx context.Context, cfg *config.Config, name st
 // an empty result. ev is passed to the checks, nil on a poll.
 func (e *Engine) evalScan(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev Event) (fire []Finding, why string, err error) {
 	s := e.host.Store()
-	mine, err := s.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: Pack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
+	mine, err := s.List(ctx, store.Filter{Kind: domain.KindRun, MetaPack: Pack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
 		return nil, "", err
 	}
 	open := 0
 	for _, t := range mine {
-		if t.Status != store.StatusClosed {
+		if t.Status != domain.StatusClosed {
 			open++
 		}
 	}
@@ -182,10 +183,10 @@ func (e *Engine) evalScan(ctx context.Context, cfg *config.Config, name string, 
 	var reasons []string
 	for _, f := range found {
 		key := f.KeyWith(prefix)
-		flt := store.Filter{Kind: store.KindRun, MetaPack: Pack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest}
+		flt := store.Filter{Kind: domain.KindRun, MetaPack: Pack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest}
 		if tr.Handler != "" {
 			// A handler picks its own run keys; its runs carry the finding id.
-			flt = store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: Pack, Key: "name", Value: name}, {Pack: Pack, Key: FindingMetaKey, Value: f.ID()}}, Order: store.OrderNewest}
+			flt = store.Filter{Kind: domain.KindRun, Meta: []store.MetaMatch{{Pack: Pack, Key: "name", Value: name}, {Pack: Pack, Key: FindingMetaKey, Value: f.ID()}}, Order: store.OrderNewest}
 		}
 		runs, err := s.List(ctx, flt)
 		if err != nil {
@@ -214,11 +215,11 @@ func (e *Engine) evalScan(ctx context.Context, cfg *config.Config, name string, 
 
 // findingHeld says why a finding with these earlier runs (newest first) may
 // not fire now, or "".
-func findingHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
+func findingHeld(runs []domain.Ticket, tr config.Trigger, now time.Time) string {
 	if len(runs) == 0 {
 		return ""
 	}
-	if runs[0].Status != store.StatusClosed {
+	if runs[0].Status != domain.StatusClosed {
 		return "run " + runs[0].ID + " is open"
 	}
 	if len(runs) >= tr.ScanMaxRuns() {
@@ -243,12 +244,12 @@ func findingHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
 // (JOB-95), so two packs watching one subject start one check.
 func (e *Engine) subjectHeld(ctx context.Context, f Finding) (string, error) {
 	s := e.host.Store()
-	runs, err := s.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: Pack, MetaKey: FindingMetaKey, MetaValue: f.ID()})
+	runs, err := s.List(ctx, store.Filter{Kind: domain.KindRun, MetaPack: Pack, MetaKey: FindingMetaKey, MetaValue: f.ID()})
 	if err != nil {
 		return "", err
 	}
 	for _, r := range runs {
-		if r.Status != store.StatusClosed {
+		if r.Status != domain.StatusClosed {
 			return "run " + r.ID + " is open", nil
 		}
 		esc, err := s.List(ctx, store.Filter{Label: NeedsHumanLabel, MetaPack: runPack, MetaKey: "id", MetaValue: r.ID})
@@ -256,7 +257,7 @@ func (e *Engine) subjectHeld(ctx context.Context, f Finding) (string, error) {
 			return "", err
 		}
 		for _, x := range esc {
-			if x.Status != store.StatusClosed {
+			if x.Status != domain.StatusClosed {
 				return "escalation " + x.ID + " of run " + r.ID + " is open", nil
 			}
 		}
@@ -266,7 +267,7 @@ func (e *Engine) subjectHeld(ctx context.Context, f Finding) (string, error) {
 
 // IsScanRun reports whether a scan trigger started the run for a finding,
 // so it carries meta.trigger.finding.
-func IsScanRun(r store.Ticket) bool {
+func IsScanRun(r domain.Ticket) bool {
 	return MetaString(r.Meta, Pack, FindingMetaKey) != ""
 }
 
@@ -344,17 +345,17 @@ func (o ownTickets) has(id string) bool { return o.ids[id] }
 func (e *Engine) workflowTickets(ctx context.Context, workflow string) (ownTickets, error) {
 	s := e.host.Store()
 	o := ownTickets{runs: map[string]bool{}, ids: map[string]bool{}}
-	runs, err := s.List(ctx, store.Filter{Kind: store.KindRun})
+	runs, err := s.List(ctx, store.Filter{Kind: domain.KindRun})
 	if err != nil {
 		return o, err
 	}
 	for _, r := range runs {
-		f, err := store.DecodeFields[store.RunFields](r)
+		f, err := domain.DecodeFields[domain.RunFields](r)
 		if err != nil || f.Workflow != workflow {
 			continue
 		}
 		o.runs[r.ID], o.ids[r.ID] = true, true
-		if r.Status == store.StatusClosed {
+		if r.Status == domain.StatusClosed {
 			continue
 		}
 		steps, err := store.Children(ctx, s, r.ID)
@@ -390,7 +391,7 @@ func MetaString(raw json.RawMessage, pack, key string) string {
 // LastActivity is the newest of a ticket's creation, history and
 // comments. Heartbeats bump updated_at but write no history, so a held
 // ticket nobody works on still ages.
-func LastActivity(ctx context.Context, s store.Store, t store.Ticket) (time.Time, error) {
+func LastActivity(ctx context.Context, s store.Store, t domain.Ticket) (time.Time, error) {
 	last := t.CreatedAt
 	hist, err := store.History(ctx, s, t.ID)
 	if err != nil {
@@ -423,7 +424,7 @@ func Ago(now, t time.Time) string { return now.Sub(t).Round(time.Second).String(
 // LastUnblocked moves last to the newest close of a ticket blocking t: a
 // ready ticket waits from when its last blocker closed, and nothing is
 // written on t itself when that happens (#235).
-func LastUnblocked(ctx context.Context, s store.Store, t store.Ticket, last time.Time) (time.Time, error) {
+func LastUnblocked(ctx context.Context, s store.Store, t domain.Ticket, last time.Time) (time.Time, error) {
 	edges, err := store.Edges(ctx, s, t.ID)
 	if err != nil {
 		return last, err
@@ -444,9 +445,9 @@ func LastUnblocked(ctx context.Context, s store.Store, t store.Ticket, last time
 }
 
 // LabeledOpen lists the open and in-progress tickets with label.
-func LabeledOpen(ctx context.Context, s store.Store, label string) ([]store.Ticket, error) {
-	var out []store.Ticket
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+func LabeledOpen(ctx context.Context, s store.Store, label string) ([]domain.Ticket, error) {
+	var out []domain.Ticket
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
 		ts, err := s.List(ctx, store.Filter{Label: label, Status: st})
 		if err != nil {
 			return nil, err
@@ -494,13 +495,13 @@ func (e *Engine) signalReadyUnclaimed(ctx context.Context, cfg *config.Config, n
 // deferred or blocked on purpose).
 func (e *Engine) signalSteps(ctx context.Context, now time.Time, after time.Duration) ([]Finding, error) {
 	s := e.host.Store()
-	runs, err := s.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Order: store.OrderNewest})
+	runs, err := s.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunRunning, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}
 	var out []Finding
 	for _, r := range runs {
-		if r.Status == store.StatusClosed {
+		if r.Status == domain.StatusClosed {
 			continue
 		}
 		steps, err := store.Children(ctx, s, r.ID)
@@ -508,10 +509,10 @@ func (e *Engine) signalSteps(ctx context.Context, now time.Time, after time.Dura
 			return nil, err
 		}
 		for _, st := range steps {
-			if st.Status == store.StatusClosed {
+			if st.Status == domain.StatusClosed {
 				continue
 			}
-			if st.Status == store.StatusInProgress && !e.host.WaitsOnQuestion(ctx, st) {
+			if st.Status == domain.StatusInProgress && !e.host.WaitsOnQuestion(ctx, st) {
 				last, err := LastActivity(ctx, s, st)
 				if err != nil {
 					return nil, err
@@ -530,13 +531,13 @@ func (e *Engine) signalSteps(ctx context.Context, now time.Time, after time.Dura
 // quiet for after (counted from the claim when the journal is older).
 func (e *Engine) signalSessions(ctx context.Context, now time.Time, after time.Duration) ([]Finding, error) {
 	s := e.host.Store()
-	sessions, err := s.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	sessions, err := s.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return nil, err
 	}
 	var out []Finding
 	for _, sess := range sessions {
-		held, err := s.List(ctx, store.Filter{Holder: sess.ID, Status: store.StatusInProgress, Limit: 1})
+		held, err := s.List(ctx, store.Filter{Holder: sess.ID, Status: domain.StatusInProgress, Limit: 1})
 		if err != nil {
 			return nil, err
 		}
@@ -569,18 +570,18 @@ func (e *Engine) signalSessions(ctx context.Context, now time.Time, after time.D
 // of another pack instance is left to that instance's trigger (JOB-17).
 func (e *Engine) signalNeedsHuman(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration, workflow string) ([]Finding, error) {
 	s := e.host.Store()
-	runs, err := s.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
+	runs, err := s.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}
 	var out []Finding
 	for _, r := range runs {
-		if r.Status == store.StatusClosed || IsScanRun(r) {
+		if r.Status == domain.StatusClosed || IsScanRun(r) {
 			// A signal check that needs a human already escalated: a check
 			// on it would only add another escalation (#704).
 			continue
 		}
-		if f, err := store.DecodeFields[store.RunFields](r); err == nil && !sameInstance(cfg, f.Workflow, workflow) {
+		if f, err := domain.DecodeFields[domain.RunFields](r); err == nil && !sameInstance(cfg, f.Workflow, workflow) {
 			continue
 		}
 		last, err := LastActivity(ctx, s, r)
@@ -764,8 +765,8 @@ type scriptRead struct {
 // in repo. A run of another repo with the same number does not count.
 func (e *Engine) issuesWithOpenRun(ctx context.Context, repo string) (map[string]bool, error) {
 	out := map[string]bool{}
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-		runs, err := e.host.Store().List(ctx, store.Filter{Kind: store.KindRun, Status: st})
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
+		runs, err := e.host.Store().List(ctx, store.Filter{Kind: domain.KindRun, Status: st})
 		if err != nil {
 			return nil, err
 		}

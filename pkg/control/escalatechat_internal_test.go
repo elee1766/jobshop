@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -114,7 +115,7 @@ func escDir(t *testing.T) string {
 
 // escalateRunNow starts a run of workflow and fails its only step at the
 // retry limit, returning the escalation ticket.
-func escalateRunNow(t *testing.T, c *Controller, workflow string) store.Ticket {
+func escalateRunNow(t *testing.T, c *Controller, workflow string) domain.Ticket {
 	t.Helper()
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
@@ -130,13 +131,13 @@ func escalateRunNow(t *testing.T, c *Controller, workflow string) store.Ticket {
 }
 
 // chatSessions lists the sessions keyed escalation:<id>.
-func chatSessions(t *testing.T, c *Controller, id string) []store.Ticket {
+func chatSessions(t *testing.T, c *Controller, id string) []domain.Ticket {
 	t.Helper()
-	all, err := c.store.List(t.Context(), store.Filter{Kind: store.KindSession})
+	all, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindSession})
 	require.NoError(t, err)
-	var out []store.Ticket
+	var out []domain.Ticket
 	for _, s := range all {
-		f, err := store.DecodeFields[store.SessionFields](s)
+		f, err := domain.DecodeFields[domain.SessionFields](s)
 		if err == nil && f.Key == escalationKeyPrefix+id {
 			out = append(out, s)
 		}
@@ -212,7 +213,7 @@ func TestEscalationChatRepair(t *testing.T) {
 	// crashed after recording the key.
 	_, err = c.closeTicket(t.Context(), scope{admin: true, actor: "admin"}, rpc.CloseParams{ID: e.Session})
 	require.NoError(t, err)
-	_, err = c.updateEscalationMeta(t.Context(), esc.ID, func(_ store.Ticket, m *EscalationMeta, _ bool) error {
+	_, err = c.updateEscalationMeta(t.Context(), esc.ID, func(_ domain.Ticket, m *EscalationMeta, _ bool) error {
 		m.Session = ""
 		return nil
 	})
@@ -265,9 +266,9 @@ func TestEscalationChatPool(t *testing.T) {
 }
 
 // messageContext is the model-only context of a message ticket.
-func messageContext(t *testing.T, m store.Ticket) string {
+func messageContext(t *testing.T, m domain.Ticket) string {
 	t.Helper()
-	f, err := store.DecodeFields[store.MessageFields](m)
+	f, err := domain.DecodeFields[domain.MessageFields](m)
 	require.NoError(t, err)
 	return f.Context
 }

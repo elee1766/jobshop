@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -26,7 +27,7 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 	}
 	blocker := task(t, s, "blocker", "other")
 	blocked := task(t, s, "blocked", "dev")
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: blocked.ID, To: blocker.ID, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: blocked.ID, To: blocker.ID, Kind: domain.EdgeBlocks}))
 
 	var mu sync.Mutex
 	got := map[string][]string{} // ticket -> holders that claimed it
@@ -38,7 +39,7 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 			// in-progress ticket comes back first, so close it each time.
 			for {
 				tk, c, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: holder, Lease: lease})
-				if errors.Is(err, store.ErrNoWork) {
+				if errors.Is(err, domain.ErrNoWork) {
 					return
 				}
 				if !assert.NoError(t, err, holder) {
@@ -89,13 +90,13 @@ func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
 	runID, err := s.NewID(proj)
 	require.NoError(t, err)
 	nts := []store.NewTicket{{
-		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		ID: runID, Project: proj, Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
 	}}
 	for i := range 6 {
 		id := fmt.Sprintf("js-r%d", i)
 		nts = append(nts, store.NewTicket{
-			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: runID,
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":["emu"]}`, runID, id)),
 		})
 	}
@@ -109,7 +110,7 @@ func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
 		holder := fmt.Sprintf("h%d", i)
 		wg.Go(func() {
 			tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: holder, Lease: lease})
-			if errors.Is(err, store.ErrNoWork) || errors.Is(err, store.ErrConflict) {
+			if errors.Is(err, domain.ErrNoWork) || errors.Is(err, domain.ErrConflict) {
 				return
 			}
 			if assert.NoError(t, err, holder) {
@@ -131,18 +132,18 @@ func testClaimAfterSkippedBlocker(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	mk := func(id string) store.NewTicket {
 		return store.NewTicket{
-			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: runID,
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q}`, runID, id)),
 		}
 	}
 	run := store.NewTicket{
-		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		ID: runID, Project: proj, Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
 	}
-	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-sa"), mk("js-sb")}, Edges: []store.Edge{{From: "js-sb", To: "js-sa", Kind: store.EdgeBlocks}}})
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-sa"), mk("js-sb")}, Edges: []domain.Edge{{From: "js-sb", To: "js-sa", Kind: domain.EdgeBlocks}}})
 
 	require.NoError(t, err)
-	_, err = store.Close(ctx, s, "controller", "js-sa", nil, store.StepSkipped)
+	_, err = store.Close(ctx, s, "controller", "js-sa", nil, domain.StepSkipped)
 	require.NoError(t, err)
 
 	tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "h", Lease: lease})

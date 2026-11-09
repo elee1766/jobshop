@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
 )
 
@@ -36,16 +36,16 @@ func TestInboxMigrate(t *testing.T) {
 		t.Helper()
 		it, err := ingest.InboxGet(ctx, s, 40)
 		require.NoError(t, err)
-		assert.Equal(t, store.InboxAdmitted, it.State)
+		assert.Equal(t, domain.InboxAdmitted, it.State)
 		assert.JSONEq(t, `{"x":1}`, string(it.Payload))
 		assert.JSONEq(t, `{"ok":true}`, string(it.Admitted))
 		assert.Equal(t, "w", it.Holder)
 		assert.EqualValues(t, 2, it.Attempts)
 		assert.Equal(t, time.UnixMilli(5000).UTC(), it.ReceivedAt)
-		_, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "other", NaturalKey: "nk"})
+		_, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "other", NaturalKey: "nk"})
 		require.NoError(t, err)
 		assert.True(t, dup)
-		n, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: fmt.Sprint("new", wantNew), Payload: json.RawMessage(`{}`)})
+		n, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: fmt.Sprint("new", wantNew), Payload: json.RawMessage(`{}`)})
 		require.NoError(t, err)
 		assert.False(t, dup)
 		assert.Equal(t, wantNew, n.ID)

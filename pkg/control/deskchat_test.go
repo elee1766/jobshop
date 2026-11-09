@@ -11,8 +11,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Named chats keep their identity and transcript through archive and restart.
@@ -62,15 +62,15 @@ pools:
 	assert.Contains(t, prompt.Context, "Attached ticket context")
 	assert.Contains(t, prompt.RawPrompt, `<message from="admin" id="`)
 	assert.Contains(t, prompt.RawPrompt, "&lt;/message&gt;", "user text cannot close the envelope")
-	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "new", Pool: "operator", Name: "OPS", Text: "duplicate"}, nil), store.ErrConflict)
+	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "new", Pool: "operator", Name: "OPS", Text: "duplicate"}, nil), domain.ErrConflict)
 	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "rename", ID: chat.ID, Name: "operations"}, nil)
 	var command rpc.Event
 	c.Call(rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: chat.ID, Action: "navigate", Args: map[string]string{"view": "trace", "ref": chat.ID}}, &command)
 	assert.Equal(t, chat.ID, command.Session)
-	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: chat.ID, Action: "cancel"}, nil), store.ErrInvalid)
+	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: chat.ID, Action: "cancel"}, nil), domain.ErrInvalid)
 	var original rpc.ShowResult
 	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &original)
-	before, err := store.DecodeFields[store.SessionFields](original.Ticket)
+	before, err := domain.DecodeFields[domain.SessionFields](original.Ticket)
 	require.NoError(t, err)
 	require.NotEmpty(t, before.ACPSession)
 	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "archive", ID: chat.ID}, nil)
@@ -83,12 +83,12 @@ pools:
 	assert.GreaterOrEqual(t, len(restored.Frames), len(journal.Frames), "archive and restore do not discard the journal")
 	var shown rpc.ShowResult
 	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
-	fields, err := store.DecodeFields[store.SessionFields](shown.Ticket)
+	fields, err := domain.DecodeFields[domain.SessionFields](shown.Ticket)
 	require.NoError(t, err)
 	assert.True(t, fields.Named)
 	assert.Nil(t, fields.Archived)
 	assert.True(t, fields.Suspended)
-	assert.Equal(t, store.StatusOpen, shown.Ticket.Status)
+	assert.Equal(t, domain.StatusOpen, shown.Ticket.Status)
 	assert.Equal(t, before.ACPSession, fields.ACPSession)
 	c.Call(rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Text: "continue restored desk chat"}, nil)
 	c.PassUntil(func() bool {
@@ -106,7 +106,7 @@ pools:
 		return false
 	}, "restored conversation did not accept a message")
 	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
-	fields, err = store.DecodeFields[store.SessionFields](shown.Ticket)
+	fields, err = domain.DecodeFields[domain.SessionFields](shown.Ticket)
 	require.NoError(t, err)
 	assert.Equal(t, before.ACPSession, fields.ACPSession, "restore loads the same ACP conversation")
 }

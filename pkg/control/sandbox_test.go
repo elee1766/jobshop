@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // testSystemRO is the host system mounts these tests' configs set, as a
@@ -50,19 +50,19 @@ func TestSandboxedSession(t *testing.T) {
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var endedWhy string
 	passEventually(t, root.Dir, func() bool {
-		var got []store.Ticket
-		err := admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindTask}, &got)
+		var got []domain.Ticket
+		err := admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: domain.StatusClosed, Kind: domain.KindTask}, &got)
 		if err == nil && len(got) == 1 && got[0].ID == task.ID {
 			return true
 		}
 		// A session that failed to spawn or ended fails the test now,
 		// with its reason, instead of waiting out the timeout (#359).
-		var ended []store.Ticket
-		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindSession}, &ended) == nil && len(ended) > 0 {
+		var ended []domain.Ticket
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: domain.StatusClosed, Kind: domain.KindSession}, &ended) == nil && len(ended) > 0 {
 			var res rpc.SessionSandboxResult
 			_ = admin.Call(t.Context(), rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: ended[0].ID}, &res)
 			endedWhy = fmt.Sprintf("session %s ended %q before the ticket closed: %s", ended[0].ID, ended[0].Resolution, res.Error)
@@ -84,8 +84,8 @@ func TestSandboxedSession(t *testing.T) {
 	assert.Contains(t, probe, "other: hidden")
 	assert.Contains(t, probe, "pid: 2")
 
-	var sessions []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	var sessions []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &sessions))
 	require.NotEmpty(t, sessions)
 	var res rpc.SessionSandboxResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: sessions[0].ID}, &res))

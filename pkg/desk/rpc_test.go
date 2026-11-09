@@ -46,7 +46,7 @@ func TestRPCCall(t *testing.T) {
 	assert.NotContains(t, list.Methods, rpc.MethodLearnAdd)
 	assert.NotContains(t, list.Methods, rpc.MethodIdentityToken)
 	assert.Equal(t, "#/$defs/rpc.ListParams", list.Schemas[rpc.MethodTicketList].Params["$ref"])
-	assert.Contains(t, list.Defs, "store.Ticket")
+	assert.Contains(t, list.Defs, "domain.Ticket")
 }
 
 func TestRPCActorIsProxyUser(t *testing.T) {

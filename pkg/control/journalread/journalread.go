@@ -25,10 +25,10 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 const (
@@ -65,10 +65,10 @@ type Access struct {
 // ValidatePage checks the caller's paging parameters.
 func ValidatePage(p rpc.SessionJournalParams) error {
 	if p.From != "" && p.From != "agent" && p.From != "controller" {
-		return fmt.Errorf("%w: from must be agent or controller", store.ErrInvalid)
+		return fmt.Errorf("%w: from must be agent or controller", domain.ErrInvalid)
 	}
 	if p.SinceSeq < 0 {
-		return fmt.Errorf("%w: since_seq must be >= 0", store.ErrInvalid)
+		return fmt.Errorf("%w: since_seq must be >= 0", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ var errStop = errors.New("limit reached")
 // VictoriaLogs' extra_stream_filters, outside the query text.
 func Run(ctx context.Context, s Search) (rpc.JournalSearchResult, error) {
 	if strings.TrimSpace(s.Query) == "" {
-		return rpc.JournalSearchResult{}, fmt.Errorf("%w: query is required (LogsQL, e.g. '*')", store.ErrInvalid)
+		return rpc.JournalSearchResult{}, fmt.Errorf("%w: query is required (LogsQL, e.g. '*')", domain.ErrInvalid)
 	}
 	limit := s.Limit
 	if limit <= 0 {
@@ -187,7 +187,7 @@ func Run(ctx context.Context, s Search) (rpc.JournalSearchResult, error) {
 	}
 	var se *journal.StatusError
 	if errors.As(err, &se) && se.Code == 400 {
-		return rpc.JournalSearchResult{}, fmt.Errorf("%w: %s", store.ErrInvalid, se.Body)
+		return rpc.JournalSearchResult{}, fmt.Errorf("%w: %s", domain.ErrInvalid, se.Body)
 	}
 	if err != nil {
 		return rpc.JournalSearchResult{}, err

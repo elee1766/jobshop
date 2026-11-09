@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -20,16 +21,16 @@ func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
 	c, clk, _ := subController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
-	step := mkTicket(t, c, store.NewTicket{Kind: store.KindStep, Title: "implement", Pool: "dev", Fields: json.RawMessage(`{"run":"x","step":"implement","retries":3}`)})
+	step := mkTicket(t, c, store.NewTicket{Kind: domain.KindStep, Title: "implement", Pool: "dev", Fields: json.RawMessage(`{"run":"x","step":"implement","retries":3}`)})
 	r := &runner{c: c, id: sess.ID, log: slog.New(slog.DiscardHandler)}
 	failures := func() int {
 		got, err := c.store.Get(ctx, step.ID)
 		require.NoError(t, err)
-		f, err := store.DecodeFields[store.StepFields](got)
+		f, err := domain.DecodeFields[domain.StepFields](got)
 		require.NoError(t, err)
 		return f.Failures
 	}
-	turn := func() store.Ticket {
+	turn := func() domain.Ticket {
 		_, err := c.store.Update(ctx, "controller", step.ID, store.Update{DeferUntil: &time.Time{}})
 		require.NoError(t, err)
 		_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
@@ -42,12 +43,12 @@ func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
 	}
 
 	got := turn()
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.True(t, got.DeferUntil.After(clk.now()), "deferred")
 	assert.Equal(t, 0, failures(), "first unclosed turn is not a failure")
 
 	got = turn()
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.True(t, got.DeferUntil.After(clk.now()), "deferred")
 	assert.Equal(t, 1, failures(), "a repeat counts")
 }

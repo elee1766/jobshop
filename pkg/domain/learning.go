@@ -1,4 +1,4 @@
-package store
+package domain
 
 import (
 	"fmt"
@@ -6,7 +6,48 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
+
+// Learning kinds, sources and statuses (#264).
+const (
+	LearningCorrection = "correction"
+	LearningFailure    = "failure"
+	LearningWorkaround = "workaround"
+
+	LearningSourceAgent      = "agent"
+	LearningSourceController = "controller"
+
+	LearningOpen     = "open"
+	LearningApplied  = "applied"
+	LearningRejected = "rejected"
+)
+
+// LearningKinds are the default learning kinds, used when the config
+// sets no learnings.kinds (#524). The controller's own learnings use
+// correction and failure and are always allowed.
+var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkaround}
+
+// Learning is a correction, failure or workaround recorded for the curator.
+// Scope is "global", "repo:<owner/name>" or "pool:<name>".
+type Learning struct {
+	ID      int64  `json:"id"`
+	Kind    string `json:"kind"`
+	Summary string `json:"summary"`
+	Fix     string `json:"fix,omitempty"`
+	Scope   string `json:"scope"`
+	Ticket  string `json:"ticket,omitempty"`
+	Session string `json:"session,omitempty"`
+	Source  string `json:"source"`
+	Status  string `json:"status"`
+	// PR is the curator's PR that addresses it (#273): pending while
+	// open, kept when applied or rejected.
+	PR string `json:"pr,omitempty"`
+	// Gate is the curator gate's result on the edit that cited it
+	// (#274): "helped: ..." or "not_helped: ...".
+	Gate      string    `json:"gate,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
 
 // Learning scopes (#264).
 const (

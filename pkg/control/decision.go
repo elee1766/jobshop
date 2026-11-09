@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -48,7 +49,7 @@ func (r decisionRef) String() string {
 	return fmt.Sprintf("%s#%d", r.Repo, r.Issue)
 }
 
-func decisionOf(t store.Ticket) (decisionRef, bool) {
+func decisionOf(t domain.Ticket) (decisionRef, bool) {
 	var m struct {
 		GitHub struct {
 			Repo  string `json:"repo"`
@@ -80,14 +81,14 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 		return nil, forbidden("%s is in another project", p.ID)
 	}
 	if !slices.Contains(t.Labels, proposedLabel) {
-		return nil, fmt.Errorf("%w: %s is not a decision (no %s label)", store.ErrInvalid, t.ID, proposedLabel)
+		return nil, fmt.Errorf("%w: %s is not a decision (no %s label)", domain.ErrInvalid, t.ID, proposedLabel)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: %s is already closed (%s)", store.ErrClosed, t.ID, t.Resolution)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: %s is already closed (%s)", domain.ErrClosed, t.ID, t.Resolution)
 	}
 	ref, ok := decisionOf(t)
 	if !ok && p.Action != rpc.DecisionDismiss {
-		return nil, fmt.Errorf("%w: %s has no meta.github repo and issue or meta.linear issue", store.ErrInvalid, t.ID)
+		return nil, fmt.Errorf("%w: %s has no meta.github repo and issue or meta.linear issue", domain.ErrInvalid, t.ID)
 	}
 	who := sc.actor
 	note := strings.TrimSpace(p.Note)
@@ -120,7 +121,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 		resolution = "dismissed"
 		comment = "Dismissed: not now. The proposal issue is left as is."
 	default:
-		return nil, fmt.Errorf("%w: action must be approve, reject or dismiss", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: action must be approve, reject or dismiss", domain.ErrInvalid)
 	}
 	if note != "" {
 		comment += "\n\n" + note
@@ -143,8 +144,8 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 // undeferWaiting clears defer_until on open tickets waiting on the
 // proposal: in the decision's project, with the same meta.github issue,
 // or naming the issue (owner/repo#n or #n) in their title or body.
-func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref decisionRef, hasRef bool, who string) []string {
-	ts, err := c.store.List(ctx, store.Filter{Project: d.Project, Status: store.StatusOpen, Limit: math.MaxInt32})
+func (c *Controller) undeferWaiting(ctx context.Context, d domain.Ticket, ref decisionRef, hasRef bool, who string) []string {
+	ts, err := c.store.List(ctx, store.Filter{Project: d.Project, Status: domain.StatusOpen, Limit: math.MaxInt32})
 	if err != nil {
 		c.log.WarnContext(ctx, "decision: list waiting", "ticket", d.ID, "err", err)
 		return nil
@@ -155,7 +156,7 @@ func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref dec
 		if t.ID == d.ID || !t.DeferUntil.After(now) {
 			continue
 		}
-		if t.Kind != store.KindTask && t.Kind != store.KindStep {
+		if t.Kind != domain.KindTask && t.Kind != domain.KindStep {
 			continue
 		}
 		if !hasRef || !waitsOn(t, ref) {
@@ -171,7 +172,7 @@ func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref dec
 }
 
 // waitsOn reports whether t is about the proposal issue.
-func waitsOn(t store.Ticket, ref decisionRef) bool {
+func waitsOn(t domain.Ticket, ref decisionRef) bool {
 	if r, ok := decisionOf(t); ok && strings.EqualFold(r.Repo, ref.Repo) && r.Issue == ref.Issue && strings.EqualFold(r.Linear, ref.Linear) {
 		return true
 	}
@@ -199,7 +200,7 @@ func waitsOn(t store.Ticket, ref decisionRef) bool {
 }
 
 // clearDefer sets defer_until to zero and notes who did it.
-func (c *Controller) clearDefer(ctx context.Context, t store.Ticket, who, why string) (store.Ticket, error) {
+func (c *Controller) clearDefer(ctx context.Context, t domain.Ticket, who, why string) (domain.Ticket, error) {
 	zero := time.Time{}
 	u, err := c.store.Update(ctx, who, t.ID, store.Update{DeferUntil: &zero})
 	if err != nil {
@@ -218,7 +219,7 @@ func (c *Controller) ticketUndefer(ctx context.Context, sc scope, p rpc.IDParams
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: ticket id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: ticket id is required", domain.ErrInvalid)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {

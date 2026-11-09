@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -41,7 +42,7 @@ func TestQuestionAnswerGrant(t *testing.T) {
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	step := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev"})
-	asker := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	asker := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err := c.store.Claim(ctx, step.ID, asker.ID, time.Hour)
 	require.NoError(t, err)
 	ask := scope{actor: asker.ID, session: asker.ID, project: "js", pool: "dev"}
@@ -50,7 +51,7 @@ func TestQuestionAnswerGrant(t *testing.T) {
 	q := *out.(rpc.ReportResult).Question
 
 	key := attentionKey(rpc.AttentionQuestion, q.ID)
-	chat := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "plan", Fields: json.RawMessage(`{"agent":"fake","key":"` + key + `"}`)})
+	chat := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "plan", Fields: json.RawMessage(`{"agent":"fake","key":"` + key + `"}`)})
 	csc := scope{actor: chat.ID, session: chat.ID, project: "js", pool: "plan"}
 	_, err = c.answerQuestion(ctx, csc, rpc.AnswerParams{ID: q.ID, Text: "use main"})
 	require.ErrorIs(t, err, rpc.ErrForbidden, "no grant")
@@ -65,13 +66,13 @@ func TestQuestionAnswerGrant(t *testing.T) {
 	require.NoError(t, err)
 	ar := res.(rpc.AnswerResult)
 	require.NotNil(t, ar.Message)
-	mf, err := store.DecodeFields[store.MessageFields](*ar.Message)
+	mf, err := domain.DecodeFields[domain.MessageFields](*ar.Message)
 	require.NoError(t, err)
 	assert.Equal(t, "desk:alice", mf.From, "the operator, not the session or a spoofed from")
 
 	got, err := c.store.Get(ctx, chat.ID)
 	require.NoError(t, err)
-	f, err := store.DecodeFields[store.SessionFields](got)
+	f, err := domain.DecodeFields[domain.SessionFields](got)
 	require.NoError(t, err)
 	require.NotNil(t, f.Follow)
 	assert.Equal(t, ar.Message.ID, f.Follow.Message)
@@ -85,10 +86,10 @@ func TestQuestionAnswerGrant(t *testing.T) {
 	rqt, err := c.store.Get(ctx, rq.ID)
 	require.NoError(t, err)
 	assert.Equal(t, key, metaString(rqt.Meta, deskMetaPack, "attention_chat"), "re-ask reuses the chat")
-	c.answerDelivered(ctx, []store.Ticket{*ar.Message})
+	c.answerDelivered(ctx, []domain.Ticket{*ar.Message})
 	assert.Contains(t, chatContext(t, c, chat.ID), "re-asked. New question "+rq.ID)
 	got, _ = c.store.Get(ctx, chat.ID)
-	f, _ = store.DecodeFields[store.SessionFields](got)
+	f, _ = domain.DecodeFields[domain.SessionFields](got)
 	assert.Nil(t, f.Follow)
 	assert.True(t, c.questionChatOpen(ctx, got, f), "the open re-ask keeps the chat")
 
@@ -96,12 +97,12 @@ func TestQuestionAnswerGrant(t *testing.T) {
 	// the chat may close once nobody watches.
 	res, err = c.answerQuestion(ctx, csc, rpc.AnswerParams{ID: rq.ID, Text: "release branch"})
 	require.NoError(t, err)
-	_, err = c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: step.ID, Reason: "CI on PR 7", Conds: []store.WaitCond{{Type: store.WaitRun, Run: step.ID, State: "done"}}})
+	_, err = c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: step.ID, Reason: "CI on PR 7", Conds: []domain.WaitCond{{Type: domain.WaitRun, Run: step.ID, State: "done"}}})
 	require.NoError(t, err)
-	c.answerDelivered(ctx, []store.Ticket{*res.(rpc.AnswerResult).Message})
+	c.answerDelivered(ctx, []domain.Ticket{*res.(rpc.AnswerResult).Message})
 	assert.Contains(t, chatContext(t, c, chat.ID), "parked: "+step.ID+" waits on CI on PR 7")
 	got, _ = c.store.Get(ctx, chat.ID)
-	f, _ = store.DecodeFields[store.SessionFields](got)
+	f, _ = domain.DecodeFields[domain.SessionFields](got)
 	assert.False(t, c.questionChatOpen(ctx, got, f), "settled")
 	done := c.watch(chat.ID)
 	assert.True(t, c.questionChatOpen(ctx, got, f), "a Desk client is attached")
@@ -113,7 +114,7 @@ func chatContext(t *testing.T, c *Controller, id string) string {
 	t.Helper()
 	var b strings.Builder
 	for _, m := range runnerInbox(t, c, id) {
-		f, err := store.DecodeFields[store.MessageFields](m)
+		f, err := domain.DecodeFields[domain.MessageFields](m)
 		require.NoError(t, err)
 		b.WriteString(m.Title + "\n" + m.Body + "\n" + f.Context + "\n")
 	}

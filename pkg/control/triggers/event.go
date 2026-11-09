@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -30,7 +31,7 @@ type Event map[string]string
 
 // EventOf reads the matchable fields of an inbox item. Labels are joined
 // with newlines in "label".
-func EventOf(it store.InboxItem) Event {
+func EventOf(it domain.InboxItem) Event {
 	ev := Event{"source": it.Source, "event": it.Kind, "repo": it.RepoOrTeam, "delivery": it.DeliveryID}
 	if it.Number > 0 {
 		ev["pr"] = fmt.Sprint(it.Number)
@@ -216,7 +217,7 @@ func (ev Event) Key() string {
 // Events fires the triggers whose on: matches one of the dispatched
 // webhook rows. It runs in the background under the tick lock: dispatch
 // may run inside a pass.
-func (e *Engine) Events(items []store.InboxItem) {
+func (e *Engine) Events(items []domain.InboxItem) {
 	type fire struct {
 		name string
 		ev   Event

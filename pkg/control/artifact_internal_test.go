@@ -11,18 +11,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // artifactSession makes a session holding a work step and returns its scope.
-func artifactSession(t *testing.T, c *Controller) (scope, store.Ticket) {
+func artifactSession(t *testing.T, c *Controller) (scope, domain.Ticket) {
 	t.Helper()
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(c.root.SessionDir(sess.ID), "work"), 0o700))
@@ -47,7 +48,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 	out, err := c.artifactDeliver(ctx, sc, rpc.ArtifactDeliverParams{Title: "Weekly report", Body: "# hi"})
 	require.NoError(t, err)
 	a := out.(rpc.Artifact)
-	assert.Equal(t, store.KindMessage, a.Ticket.Kind)
+	assert.Equal(t, domain.KindMessage, a.Ticket.Kind)
 	assert.Contains(t, a.Ticket.Labels, artifactLabel)
 	assert.Equal(t, step.ID, a.Meta.Ticket)
 	assert.Equal(t, step.ParentID, a.Meta.Run)
@@ -57,7 +58,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 	assert.NoDirExists(t, c.artifactDir(a.Ticket.ID))
 	edges, err := store.Edges(ctx, c.store, a.Ticket.ID)
 	require.NoError(t, err)
-	assert.Contains(t, edges, store.Edge{From: a.Ticket.ID, To: step.ID, Kind: store.EdgeTracks, CreatedAt: edges[0].CreatedAt})
+	assert.Contains(t, edges, domain.Edge{From: a.Ticket.ID, To: step.ID, Kind: domain.EdgeTracks, CreatedAt: edges[0].CreatedAt})
 	cms, err := store.Comments(ctx, c.store, step.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "artifact delivered: "+a.Ticket.ID+" Weekly report", cms[len(cms)-1].Body)
@@ -98,7 +99,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 	assert.Equal(t, "close", last.Op)
 	assert.Equal(t, "admin", last.Actor)
 	_, err = c.artifactAck(ctx, admin, rpc.ArtifactAckParams{ID: b.Ticket.ID})
-	require.ErrorIs(t, err, store.ErrClosed)
+	require.ErrorIs(t, err, domain.ErrClosed)
 
 	ls, err = c.artifactList(ctx, admin, rpc.ArtifactListParams{})
 	require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestArtifactDeliverRefused(t *testing.T) {
 	p1 := writeSessionFile(t, c, sc, "a.txt", 60)
 	p2 := writeSessionFile(t, c, sc, "b.txt", 60)
 	_, err = c.artifactDeliver(ctx, sc, rpc.ArtifactDeliverParams{Title: "big", Files: []string{p1, p2}})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	assert.Contains(t, err.Error(), "max_bytes")
 	assert.NoDirExists(t, filepath.Join(dir, "artifacts"))
 	ls, err := c.artifactList(ctx, scope{admin: true}, rpc.ArtifactListParams{})

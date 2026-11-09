@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/gateway"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type gatewayCmd struct {
@@ -80,8 +80,8 @@ func (s socketController) Send(ctx context.Context, p rpc.SessionSendParams) (rp
 	return res, s.call(ctx, rpc.MethodSessionSend, p, &res)
 }
 
-func (s socketController) List(ctx context.Context, p rpc.ListParams) ([]store.Ticket, error) {
-	var res []store.Ticket
+func (s socketController) List(ctx context.Context, p rpc.ListParams) ([]domain.Ticket, error) {
+	var res []domain.Ticket
 	return res, s.call(ctx, rpc.MethodTicketList, p, &res)
 }
 
@@ -90,8 +90,8 @@ func (s socketController) Show(ctx context.Context, id string) (rpc.ShowResult, 
 	return res, s.call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: id}, &res)
 }
 
-func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error) {
-	var res store.Ticket
+func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (domain.Ticket, error) {
+	var res domain.Ticket
 	return res, s.call(ctx, rpc.MethodTicketUpdate, p, &res)
 }
 

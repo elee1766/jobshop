@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestSessionClose closes a working session (JOB-111): the dry run lists
@@ -29,7 +29,7 @@ func TestSessionClose(t *testing.T) {
 		return got
 	}
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "work", Pool: "dev"}, &task))
 	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
@@ -42,23 +42,23 @@ func TestSessionClose(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID, DryRun: true}, &dry))
 	assert.True(t, dry.DryRun)
 	require.Len(t, dry.Held, 1)
-	assert.Equal(t, rpc.HeldTicket{ID: task.ID, Title: "work", Kind: store.KindTask, Status: store.StatusInProgress, Pool: "dev"}, dry.Held[0])
-	assert.Equal(t, store.StatusOpen, show(sessID).Ticket.Status, "dry run leaves the session open")
+	assert.Equal(t, rpc.HeldTicket{ID: task.ID, Title: "work", Kind: domain.KindTask, Status: domain.StatusInProgress, Pool: "dev"}, dry.Held[0])
+	assert.Equal(t, domain.StatusOpen, show(sessID).Ticket.Status, "dry run leaves the session open")
 
 	sess := dial(t, filepath.Join(root.SessionDir(sessID), "cli.sock"))
 	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID}, nil), rpc.ErrForbidden)
 	err := admin.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID, Handoff: "nope"}, nil)
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 
 	var res rpc.SessionCloseResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID, Reason: "answered"}, &res))
 	require.NotNil(t, res.Session)
-	assert.Equal(t, store.StatusClosed, res.Session.Status)
+	assert.Equal(t, domain.StatusClosed, res.Session.Status)
 	assert.Equal(t, "closed", res.Session.Resolution)
 	require.Len(t, res.Held, 1)
 
 	got := show(task.ID)
-	assert.Equal(t, store.StatusOpen, got.Ticket.Status)
+	assert.Equal(t, domain.StatusOpen, got.Ticket.Status)
 	assert.Empty(t, got.Ticket.Holder)
 	assert.Equal(t, "dev", got.Ticket.Pool)
 	require.NotEmpty(t, got.Comments)
@@ -69,10 +69,10 @@ func TestSessionClose(t *testing.T) {
 	var j rpc.SessionJournalResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionJournal, rpc.SessionJournalParams{ID: sessID}, &j))
 	assert.NotEmpty(t, j.Frames, "journal of a closed session stays readable")
-	assert.ErrorIs(t, admin.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID}, nil), store.ErrClosed)
+	assert.ErrorIs(t, admin.Call(t.Context(), rpc.MethodSessionClose, rpc.SessionCloseParams{ID: sessID}, nil), domain.ErrClosed)
 
 	// The slot is free: a new session takes the handed-back ticket.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	passEventually(t, root.Dir, func() bool { return show(task.ID).Ticket.Status == store.StatusClosed }, "a new session finishes the ticket")
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Ticket.Status == domain.StatusClosed }, "a new session finishes the ticket")
 	assert.NotEqual(t, sessID, show(task.ID).Ticket.Holder)
 }

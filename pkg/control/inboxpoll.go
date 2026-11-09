@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Pollers only write the inbox (#335, #442). Each find gets a stable
@@ -70,7 +70,7 @@ func (b pollCommentBody) comment() threads.Comment {
 // dispatcher only delivers poller rows), so the poller then stores its
 // own row without the natural key.
 func (c *Controller) inboxComment(ctx context.Context, th threads.Thread, cm threads.Comment) error {
-	it := store.InboxItem{ReceivedAt: c.now(), Actor: cm.Author}
+	it := domain.InboxItem{ReceivedAt: c.now(), Actor: cm.Author}
 	seenless := th
 	seenless.Seen = time.Time{}
 	p := pollComment{Thread: seenless, Comment: newPollCommentBody(cm)}
@@ -127,13 +127,13 @@ func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem
 	if len(items) == 0 {
 		return
 	}
-	its := make([]store.InboxItem, 0, len(items))
+	its := make([]domain.InboxItem, 0, len(items))
 	for _, a := range items {
 		if a.Source != ingest.SourceGitHub && a.Source != ingest.SourceLinear {
 			continue
 		}
 		p, _ := json.Marshal(a)
-		it := store.InboxItem{
+		it := domain.InboxItem{
 			Source: a.Source, DeliveryID: activityPrefix + a.ID, Kind: a.Kind, RepoOrTeam: a.Repo,
 			Actor: a.Actor, ReceivedAt: c.now(), Payload: p,
 		}

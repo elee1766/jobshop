@@ -13,6 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -204,7 +205,7 @@ func (c *Engine) Process(ctx context.Context) (bool, error) {
 	}
 	lease := config.Duration(c.host.CurrentHooks().Config.Automation.Timeout, 30*time.Second) + time.Minute
 	rec, err := col.Claim(ctx, store.RecordFilter{States: []string{"pending", "planned"}}, "controller-hooks", lease)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {

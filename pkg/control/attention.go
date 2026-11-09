@@ -8,6 +8,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -47,20 +48,20 @@ type attentionSource struct {
 
 func (s attentionSource) Now() time.Time { return s.c.now() }
 
-func (s attentionSource) Ticket(ctx context.Context, id string) (store.Ticket, error) {
+func (s attentionSource) Ticket(ctx context.Context, id string) (domain.Ticket, error) {
 	return s.c.store.Get(ctx, id)
 }
 
-func (s attentionSource) Steps(ctx context.Context, run string) ([]store.Ticket, error) {
+func (s attentionSource) Steps(ctx context.Context, run string) ([]domain.Ticket, error) {
 	return store.Children(ctx, s.c.store, run)
 }
 
-func (s attentionSource) LabeledOpen(ctx context.Context, label string) ([]store.Ticket, error) {
+func (s attentionSource) LabeledOpen(ctx context.Context, label string) ([]domain.Ticket, error) {
 	return triggers.LabeledOpen(ctx, s.c.store, label)
 }
 
-func (s attentionSource) NeedsHumanRuns(ctx context.Context) ([]store.Ticket, error) {
-	return s.c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest, Limit: math.MaxInt32})
+func (s attentionSource) NeedsHumanRuns(ctx context.Context) ([]domain.Ticket, error) {
+	return s.c.store.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunNeedsHuman, Order: store.OrderNewest, Limit: math.MaxInt32})
 }
 
 func (s attentionSource) TimedOut(ctx context.Context) ([]attention.Waiting, error) {
@@ -117,6 +118,6 @@ func (s attentionSource) Health() attention.Health {
 }
 
 // ticketItem lists t as an attention row of kind (see attention.TicketItem).
-func ticketItem(kind string, t store.Ticket) rpc.AttentionItem { return attention.TicketItem(kind, t) }
+func ticketItem(kind string, t domain.Ticket) rpc.AttentionItem { return attention.TicketItem(kind, t) }
 
 const maxSummary = attention.MaxSummary

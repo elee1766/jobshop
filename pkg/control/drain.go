@@ -6,8 +6,8 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // drainAll is the key in Controller.drained that drains every pool.
@@ -25,7 +25,7 @@ func (c *Controller) drainPools(ctx context.Context, sc scope, p rpc.DrainParams
 	}
 	if p.Pool != "" {
 		if _, ok := c.config().Pools[p.Pool]; !ok {
-			return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+			return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Pool)
 		}
 	}
 	key := p.Pool

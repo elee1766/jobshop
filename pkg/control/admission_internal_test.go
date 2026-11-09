@@ -19,6 +19,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -46,7 +47,7 @@ func admissionController(t *testing.T, hooks []config.AdmissionHook, intake ...s
 	return c, clk
 }
 
-func putInbox(t *testing.T, c *Controller, it store.InboxItem) store.InboxItem {
+func putInbox(t *testing.T, c *Controller, it domain.InboxItem) domain.InboxItem {
 	t.Helper()
 	if it.Source == "" {
 		it.Source = "github"
@@ -63,7 +64,7 @@ func putInbox(t *testing.T, c *Controller, it store.InboxItem) store.InboxItem {
 	return out
 }
 
-func admitOne(t *testing.T, c *Controller, id int64) (store.InboxItem, []ingestqueue.Result) {
+func admitOne(t *testing.T, c *Controller, id int64) (domain.InboxItem, []ingestqueue.Result) {
 	t.Helper()
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
@@ -86,9 +87,9 @@ func val(name, cmd string) config.AdmissionHook {
 func TestAdmissionNoHooksAdmits(t *testing.T) {
 	t.Parallel()
 	c, _ := admissionController(t, nil)
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.JSONEq(t, string(it.Payload), string(got.Admitted))
 	assert.Empty(t, rs)
 	ok, err := c.admitNext(t.Context())
@@ -107,12 +108,12 @@ func TestAdmissionOrderAndMutation(t *testing.T) {
 		mut("redact", `echo redact >> `+log+`; echo '{"patch":[{"op":"replace","path":"/payload/token","value":"[redacted]"}],"reason":"secret"}'`),
 		mut("full", `echo full >> `+log+`; echo '{"event":{"kind":"issue_comment","payload":{"body":"HELLO","token":"[redacted]"}}}'`),
 	})
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
 	b, err := os.ReadFile(log)
 	require.NoError(t, err)
 	assert.Equal(t, "redact\nfull\ncheck\n", string(b))
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.JSONEq(t, `{"body":"HELLO","token":"[redacted]"}`, string(got.Admitted))
 	assert.JSONEq(t, string(it.Payload), string(got.Payload), "the raw payload stays")
 	require.Len(t, rs, 3)
@@ -137,9 +138,9 @@ func TestAdmissionDeny(t *testing.T) {
 		val("ok", ""+`echo '{"decision":"allow"}'`),
 		val("no", `echo '{"decision":"deny","reason":"spam"}'`),
 	})
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxDenied, got.State)
+	assert.Equal(t, domain.InboxDenied, got.State)
 	assert.Nil(t, got.Admitted)
 	assert.Equal(t, "spam", rs[1].Reason)
 }
@@ -147,9 +148,9 @@ func TestAdmissionDeny(t *testing.T) {
 func TestAdmissionAskHumanHolds(t *testing.T) {
 	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
-	it := putInbox(t, c, store.InboxItem{RepoOrTeam: "acme/app", Number: 7, Actor: "mallory"})
+	it := putInbox(t, c, domain.InboxItem{RepoOrTeam: "acme/app", Number: 7, Actor: "mallory"})
 	got, _ := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxHeld, got.State)
+	assert.Equal(t, domain.InboxHeld, got.State)
 	ts, err := c.store.List(t.Context(), store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: "admission/d1"})
 	require.NoError(t, err)
 	require.Len(t, ts, 1)
@@ -165,19 +166,19 @@ func TestAdmissionHeldReleased(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		resolution, want string
-	}{{"done", store.InboxAdmitted}, {"wontfix", store.InboxDenied}} {
+	}{{"done", domain.InboxAdmitted}, {"wontfix", domain.InboxDenied}} {
 		t.Run(tc.resolution, func(t *testing.T) {
 			t.Parallel()
 			c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
-			it := putInbox(t, c, store.InboxItem{})
+			it := putInbox(t, c, domain.InboxItem{})
 			got, _ := admitOne(t, c, it.ID)
-			require.Equal(t, store.InboxHeld, got.State)
+			require.Equal(t, domain.InboxHeld, got.State)
 
 			// Unanswered: stays held.
 			require.NoError(t, c.releaseAnswered(t.Context()))
 			got, err := ingest.InboxGet(t.Context(), c.store, it.ID)
 			require.NoError(t, err)
-			assert.Equal(t, store.InboxHeld, got.State)
+			assert.Equal(t, domain.InboxHeld, got.State)
 
 			ts, err := c.store.List(t.Context(), store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: "admission/d1"})
 			require.NoError(t, err)
@@ -188,7 +189,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 			require.NoError(t, c.releaseAnswered(t.Context()))
 			got, err = ingest.InboxGet(t.Context(), c.store, it.ID)
 			require.NoError(t, err)
-			assert.Equal(t, store.InboxPending, got.State)
+			assert.Equal(t, domain.InboxPending, got.State)
 
 			got, rs := admitOne(t, c, it.ID)
 			assert.Equal(t, tc.want, got.State)
@@ -203,22 +204,22 @@ func TestAdmissionTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		policy, typ, state, decision string
 	}{
-		{"", config.AdmissionValidating, store.InboxDenied, "deny"},
-		{"ignore", config.AdmissionValidating, store.InboxAdmitted, ingestqueue.Ignored},
-		{"", config.AdmissionMutating, store.InboxAdmitted, ingestqueue.Failed},
-		{"ignore", config.AdmissionMutating, store.InboxAdmitted, ingestqueue.Ignored},
+		{"", config.AdmissionValidating, domain.InboxDenied, "deny"},
+		{"ignore", config.AdmissionValidating, domain.InboxAdmitted, ingestqueue.Ignored},
+		{"", config.AdmissionMutating, domain.InboxAdmitted, ingestqueue.Failed},
+		{"ignore", config.AdmissionMutating, domain.InboxAdmitted, ingestqueue.Ignored},
 	} {
 		t.Run(tc.typ+"/"+tc.policy, func(t *testing.T) {
 			t.Parallel()
 			h := config.AdmissionHook{Name: "slow", Type: tc.typ, Command: "sleep 5", Timeout: "100ms", FailurePolicy: tc.policy}
 			c, _ := admissionController(t, []config.AdmissionHook{h})
-			it := putInbox(t, c, store.InboxItem{})
+			it := putInbox(t, c, domain.InboxItem{})
 			got, rs := admitOne(t, c, it.ID)
 			assert.Equal(t, tc.state, got.State)
 			require.Len(t, rs, 1)
 			assert.Equal(t, tc.decision, rs[0].Decision)
 			assert.Contains(t, rs[0].Error, "timed out")
-			if tc.state == store.InboxAdmitted {
+			if tc.state == domain.InboxAdmitted {
 				assert.JSONEq(t, string(it.Payload), string(got.Admitted), "a failed mutation leaves the event unchanged")
 			}
 		})
@@ -228,19 +229,19 @@ func TestAdmissionTimeout(t *testing.T) {
 func TestAdmissionBadJSONDenies(t *testing.T) {
 	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("bad", "echo nope")})
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxDenied, got.State)
+	assert.Equal(t, domain.InboxDenied, got.State)
 	assert.Contains(t, rs[0].Error, "not JSON")
 }
 
 func TestAdmissionMatch(t *testing.T) {
 	t.Parallel()
 	yes, no := true, false
-	base := store.InboxItem{Source: "github", Kind: "issue_comment", RepoOrTeam: "acme/app", Actor: "bob"}
+	base := domain.InboxItem{Source: "github", Kind: "issue_comment", RepoOrTeam: "acme/app", Actor: "bob"}
 	for name, tc := range map[string]struct {
 		m    config.AdmissionMatch
-		it   store.InboxItem
+		it   domain.InboxItem
 		runs bool
 	}{
 		"empty":         {config.AdmissionMatch{}, base, true},
@@ -249,12 +250,12 @@ func TestAdmissionMatch(t *testing.T) {
 		"kind miss":     {config.AdmissionMatch{Kinds: []string{"issues"}}, base, false},
 		"repo glob":     {config.AdmissionMatch{Repos: []string{"acme/*"}}, base, true},
 		"repo miss":     {config.AdmissionMatch{Repos: []string{"other/*"}}, base, false},
-		"team glob":     {config.AdmissionMatch{Teams: []string{"EN*"}}, store.InboxItem{Source: "linear", RepoOrTeam: "ENG"}, true},
-		"team miss":     {config.AdmissionMatch{Teams: []string{"OPS"}}, store.InboxItem{Source: "linear", RepoOrTeam: "ENG"}, false},
+		"team glob":     {config.AdmissionMatch{Teams: []string{"EN*"}}, domain.InboxItem{Source: "linear", RepoOrTeam: "ENG"}, true},
+		"team miss":     {config.AdmissionMatch{Teams: []string{"OPS"}}, domain.InboxItem{Source: "linear", RepoOrTeam: "ENG"}, false},
 		"actor":         {config.AdmissionMatch{Actors: []string{"alice"}}, base, false},
 		"bots only":     {config.AdmissionMatch{Bots: &yes}, base, false},
 		"humans only":   {config.AdmissionMatch{Bots: &no}, base, true},
-		"bot actor":     {config.AdmissionMatch{Bots: &yes}, store.InboxItem{Source: "github", Actor: "dep[bot]"}, true},
+		"bot actor":     {config.AdmissionMatch{Bots: &yes}, domain.InboxItem{Source: "github", Actor: "dep[bot]"}, true},
 		"project":       {config.AdmissionMatch{Projects: []string{"nope"}}, base, false},
 		"project match": {config.AdmissionMatch{Projects: []string{"PROJECT"}}, base, true},
 	} {
@@ -271,7 +272,7 @@ func TestAdmissionMatch(t *testing.T) {
 			it := putInbox(t, c, tc.it)
 			got, rs := admitOne(t, c, it.ID)
 			assert.Equal(t, tc.runs, len(rs) == 1)
-			assert.Equal(t, tc.runs, got.State == store.InboxDenied)
+			assert.Equal(t, tc.runs, got.State == domain.InboxDenied)
 		})
 	}
 }
@@ -280,12 +281,12 @@ func TestAdmissionIntakeHooksCoverLinear(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	c, _ := admissionController(t, nil, "cat > "+filepath.Join(dir, "ev.json")+`; echo '{"decision":"deny","reason":"inj"}'`)
-	gh := putInbox(t, c, store.InboxItem{Source: "github", DeliveryID: "g"})
+	gh := putInbox(t, c, domain.InboxItem{Source: "github", DeliveryID: "g"})
 	got, _ := admitOne(t, c, gh.ID)
-	assert.Equal(t, store.InboxAdmitted, got.State, "intake hooks match linear only")
-	ln := putInbox(t, c, store.InboxItem{Source: "linear", DeliveryID: "l"})
+	assert.Equal(t, domain.InboxAdmitted, got.State, "intake hooks match linear only")
+	ln := putInbox(t, c, domain.InboxItem{Source: "linear", DeliveryID: "l"})
 	got, _ = admitOne(t, c, ln.ID)
-	assert.Equal(t, store.InboxDenied, got.State)
+	assert.Equal(t, domain.InboxDenied, got.State)
 	b, err := os.ReadFile(filepath.Join(dir, "ev.json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(b), `"on":"intake"`)
@@ -327,16 +328,16 @@ func TestAdmissionURLSignature(t *testing.T) {
 
 	h := config.AdmissionHook{Name: "remote", Type: config.AdmissionValidating, URL: srv.URL, SecretFile: config.SecretPath(filepath.Join(dir, "sec"))}
 	c, _ := admissionController(t, []config.AdmissionHook{h})
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	got, _ := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.Equal(t, []string{"d1"}, deliveries)
 
 	// A wrong secret is refused by the server, which denies under fail.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sec"), []byte("other"), 0o600))
-	it2 := putInbox(t, c, store.InboxItem{DeliveryID: "d2"})
+	it2 := putInbox(t, c, domain.InboxItem{DeliveryID: "d2"})
 	got, rs := admitOne(t, c, it2.ID)
-	assert.Equal(t, store.InboxDenied, got.State)
+	assert.Equal(t, domain.InboxDenied, got.State)
 	assert.Contains(t, rs[0].Error, "HTTP 401")
 }
 
@@ -345,10 +346,10 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	c, clk := admissionController(t, []config.AdmissionHook{val("v", `grep -o '"delivery_id":"[^"]*"' >> `+log)})
-	it := putInbox(t, c, store.InboxItem{DeliveryID: "dx"})
+	it := putInbox(t, c, domain.InboxItem{DeliveryID: "dx"})
 	// A first admitter claims the item, runs the hooks and dies before
 	// storing the result.
-	claimed, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxPending}, ingestqueue.Holder, time.Minute)
+	claimed, err := ingest.InboxClaim(t.Context(), c.store, []string{domain.InboxPending}, ingestqueue.Holder, time.Minute)
 	require.NoError(t, err)
 	c.admissionRunner().Run(t.Context(), "", ingestqueue.Hooks(c.config()), claimed, false)
 	ok, err := c.admitNext(t.Context())
@@ -356,7 +357,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	assert.False(t, ok, "leased item is not claimable")
 	clk.advance(2 * time.Minute)
 	got, _ := admitOne(t, c, it.ID)
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.EqualValues(t, 2, got.Attempts)
 	b, err := os.ReadFile(log)
 	require.NoError(t, err)

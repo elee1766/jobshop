@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/learning"
@@ -32,7 +33,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	t.Helper()
 	ctx := t.Context()
 	var f Filled
-	require.NoError(t, s.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"emu": 2}, Providers: []string{"dev"}}))
+	require.NoError(t, s.SetResources(ctx, domain.ResourceConfig{Caps: map[string]int{"emu": 2}, Providers: []string{"dev"}}))
 	_, err := addSlot(ctx, s, "dev", "d1", map[string]string{"X": "1"})
 	require.NoError(t, err)
 
@@ -42,9 +43,9 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	f.Step, err2 = s.NewID(proj)
 	require.NoError(t, err2)
 	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{
-		{ID: f.Run, Project: proj, Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"w","state":"running","key":"k"}`)},
+		{ID: f.Run, Project: proj, Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"w","state":"running","key":"k"}`)},
 		{
-			ID: f.Step, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: f.Run, Title: "step",
+			ID: f.Step, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: f.Run, Title: "step",
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s","index":0,"retries":2,"resources":["emu"]}`, f.Run)),
 		},
 	}, Edges: nil})
@@ -58,19 +59,19 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	})
 	f.Task = tk.ID
 	f.Blocker = task(t, s, "blocker", "dev").ID
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: f.Task, To: f.Blocker, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: f.Task, To: f.Blocker, Kind: domain.EdgeBlocks}))
 	_, err = store.AddComment(ctx, s, "u", f.Task, "vendorHash mismatch after go.sum change")
 	require.NoError(t, err)
 	_, _, err = s.Claim(ctx, f.Step, "sess", lease)
 	require.NoError(t, err)
 
-	l, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
+	l, err := learning.Add(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
 	require.NoError(t, err)
 	f.Learning = l.ID
 	require.NoError(t, journal.Index(ctx, s, journal.Doc{Session: "sess", Ticket: f.Task, Project: proj, At: c.T, Text: "journal about nftables"}))
-	_, err = memedit.AddWrite(ctx, s, store.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
+	_, err = memedit.AddWrite(ctx, s, domain.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
 	require.NoError(t, err)
-	it, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
+	it, _, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
 	require.NoError(t, err)
 	f.Inbox = it.ID
 
@@ -101,7 +102,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	assert.Equal(t, []string{f.Step}, ids(kids))
 	step, err := s.Get(ctx, f.Step)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusInProgress, step.Status)
+	assert.Equal(t, domain.StatusInProgress, step.Status)
 	assert.Equal(t, "sess", step.Holder)
 	ru, err := resourceUse(ctx, s)
 	require.NoError(t, err)
@@ -151,13 +152,13 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	c2, err := store.AddComment(ctx, s, "u", f.Task, "after the copy")
 	require.NoError(t, err)
 	assert.Greater(t, c2.ID, cs[0].ID)
-	l2, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "x", Source: "agent"}, "")
+	l2, err := learning.Add(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "x", Source: "agent"}, "")
 	require.NoError(t, err)
 	assert.Greater(t, l2.ID, f.Learning)
-	it, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})
+	it, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	assert.False(t, dup)
 	assert.Greater(t, it.ID, f.Inbox)
-	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindTask, Title: "new"})
+	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: domain.KindTask, Title: "new"})
 	require.NoError(t, err)
 }

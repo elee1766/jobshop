@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -17,21 +18,21 @@ import (
 // are free, back up when a higher one frees first.
 
 // resolvePlacement fills a step's placement from run vars.
-func resolvePlacement(cfg *config.Config, w *config.Workflow, p *config.Placement, vars map[string]any) (*store.StepPlacement, error) {
+func resolvePlacement(cfg *config.Config, w *config.Workflow, p *config.Placement, vars map[string]any) (*domain.StepPlacement, error) {
 	opts, err := cfg.ResolvePlacement(w, p, vars)
 	if err != nil {
 		return nil, err
 	}
-	sp := &store.StepPlacement{PreferMS: p.PreferDuration().Milliseconds()}
+	sp := &domain.StepPlacement{PreferMS: p.PreferDuration().Milliseconds()}
 	for _, o := range opts {
-		sp.Options = append(sp.Options, store.PlacementOption{Pool: o.Pool, Resources: o.Resources, Weight: o.Weight})
+		sp.Options = append(sp.Options, domain.PlacementOption{Pool: o.Pool, Resources: o.Resources, Weight: o.Weight})
 	}
 	return sp, nil
 }
 
 // placeSteps re-places open steps with placement options.
 func (c *Controller) placeSteps(ctx context.Context, cfg *config.Config) {
-	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Status: store.StatusOpen, Limit: store.DefaultLimit})
+	steps, err := c.store.List(ctx, store.Filter{Kind: domain.KindStep, Status: domain.StatusOpen, Limit: store.DefaultLimit})
 	if err != nil {
 		return
 	}
@@ -40,7 +41,7 @@ func (c *Controller) placeSteps(ctx context.Context, cfg *config.Config) {
 		if t.Holder != "" {
 			continue
 		}
-		sf, err := store.DecodeFields[store.StepFields](t)
+		sf, err := domain.DecodeFields[domain.StepFields](t)
 		if err != nil || sf.Placement == nil || len(sf.Placement.Options) < 2 {
 			continue
 		}
@@ -72,13 +73,13 @@ func (c *Controller) slotsFree(ctx context.Context, cfg *config.Config) (func(st
 	return func(key string) bool {
 		n, ok := caps[key]
 		if !ok {
-			n, ok = caps[store.ResourceName(key)]
+			n, ok = caps[domain.ResourceName(key)]
 		}
 		return !ok || held[key] < n
 	}, nil
 }
 
-func (c *Controller) placeStep(ctx context.Context, t store.Ticket, sf store.StepFields, free func(string) bool) error {
+func (c *Controller) placeStep(ctx context.Context, t domain.Ticket, sf domain.StepFields, free func(string) bool) error {
 	now := c.now()
 	p := sf.Placement
 	if !t.DeferUntil.IsZero() && t.DeferUntil.After(now) {
@@ -138,20 +139,20 @@ func allFree(keys []string, free func(string) bool) bool {
 }
 
 // stepBlocked reports whether a blocker of t is unfinished.
-func (c *Controller) stepBlocked(ctx context.Context, t store.Ticket) (bool, error) {
+func (c *Controller) stepBlocked(ctx context.Context, t domain.Ticket) (bool, error) {
 	edges, err := store.Edges(ctx, c.store, t.ID)
 	if err != nil {
 		return false, err
 	}
 	for _, e := range edges {
-		if e.From != t.ID || (e.Kind != store.EdgeBlocks && e.Kind != store.EdgeWaitsFor) {
+		if e.From != t.ID || (e.Kind != domain.EdgeBlocks && e.Kind != domain.EdgeWaitsFor) {
 			continue
 		}
 		b, err := c.store.Get(ctx, e.To)
 		if err != nil {
 			return false, err
 		}
-		if b.Status != store.StatusClosed || (b.Kind == store.KindStep && !store.StepFinished(b)) {
+		if b.Status != domain.StatusClosed || (b.Kind == domain.KindStep && !domain.StepFinished(b)) {
 			return true, nil
 		}
 	}

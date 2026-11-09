@@ -8,6 +8,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -16,8 +17,8 @@ const resolutionDelivered = "delivered"
 
 // inbox returns open messages addressed to this session by id or key, or
 // to its pool. interruptOnly limits it to interrupt messages.
-func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
-	msgs, err := r.c.store.List(ctx, store.Filter{Kind: store.KindMessage, Status: store.StatusOpen})
+func (r *runner) inbox(ctx context.Context, interruptOnly bool) []domain.Ticket {
+	msgs, err := r.c.store.List(ctx, store.Filter{Kind: domain.KindMessage, Status: domain.StatusOpen})
 	if err != nil {
 		return nil
 	}
@@ -26,13 +27,13 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 		to["pool:"+r.pool] = true
 	}
 	if t, err := r.c.store.Get(ctx, r.id); err == nil {
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Key != "" {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Key != "" {
 			to[f.Key] = true
 		}
 	}
-	var out []store.Ticket
+	var out []domain.Ticket
 	for _, m := range msgs {
-		f, err := store.DecodeFields[store.MessageFields](m)
+		f, err := domain.DecodeFields[domain.MessageFields](m)
 		if err != nil || !to[f.To] || (interruptOnly && !f.Interrupt) {
 			continue
 		}
@@ -47,10 +48,10 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 // current ticket. Delivery is at most once: a crash mid-prompt loses it.
 func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) error {
 	defer func() { r.promptAttachments = nil }()
-	var claimed []store.Ticket
+	var claimed []domain.Ticket
 	attachmentBytes := 0
 	for _, m := range r.inbox(ctx, false) {
-		f, _ := store.DecodeFields[store.MessageFields](m)
+		f, _ := domain.DecodeFields[domain.MessageFields](m)
 		size := 0
 		for _, a := range f.Attachments {
 			size += a.Size
@@ -62,7 +63,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 		if err != nil {
 			continue // another session took it
 		}
-		if _, err := store.Close(ctx, r.c.store, "controller", t.ID, &cl, resolutionDelivered); err != nil && !errors.Is(err, store.ErrClosed) {
+		if _, err := store.Close(ctx, r.c.store, "controller", t.ID, &cl, resolutionDelivered); err != nil && !errors.Is(err, domain.ErrClosed) {
 			r.log.WarnContext(ctx, "close delivered message", "message", t.ID, "err", err)
 			continue
 		}
@@ -77,7 +78,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	var generated []string
 	presentation := &rpc.PromptPresentation{Version: 1}
 	for _, m := range claimed {
-		f, _ := store.DecodeFields[store.MessageFields](m)
+		f, _ := domain.DecodeFields[domain.MessageFields](m)
 		attached, content, err := r.messageAttachments(m, f)
 		if err != nil {
 			return err

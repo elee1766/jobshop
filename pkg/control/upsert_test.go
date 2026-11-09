@@ -12,8 +12,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestTicketUpsert: one open ticket per key, updated in place, listed in
@@ -58,7 +58,7 @@ func TestTicketUpsert(t *testing.T) {
 
 	closed := up(rpc.UpsertParams{Key: "deploy:rollback", Close: true, Body: "deployed ghi"})
 	assert.Equal(t, "closed", closed.Op)
-	assert.Equal(t, store.StatusClosed, closed.Ticket.Status)
+	assert.Equal(t, domain.StatusClosed, closed.Ticket.Status)
 	require.NoError(t, admin.Call(ctx, rpc.MethodAttention, struct{}{}, &att))
 	assert.Empty(t, att.Items)
 

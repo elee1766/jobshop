@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -68,7 +69,7 @@ func runLinearAPI(t *testing.T, g *Globals, url string, c linearAPICmd, in strin
 func TestLinearAPIStdinTeam(t *testing.T) {
 	t.Setenv("LINEAR_API_KEY", "")
 	lin := &fakeLinear{}
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	out, _, err := runLinearAPI(t, g, lin.serve(t), linearAPICmd{Team: "ENG", Input: "-"}, "{ viewer { id name } }\n")
 	require.NoError(t, err)
@@ -78,13 +79,13 @@ func TestLinearAPIStdinTeam(t *testing.T) {
 	assert.Equal(t, "Bearer tok-ENG", lin.reqs[0].Auth, "team identity token")
 	assert.Empty(t, f.guards, "a query asks no guard")
 	require.Len(t, f.records, 1)
-	assert.Equal(t, rpc.ActivityRecordParams{Action: "linear-api-query", Target: "ENG", Decision: rpc.GuardAllow, Command: "linear api query"}, f.records[0])
+	assert.Equal(t, rpc.ActivityRecordParams{Action: "linear-api-query", Target: "ENG", Decision: domain.GuardAllow, Command: "linear api query"}, f.records[0])
 }
 
 func TestLinearAPIJSONInputAndVariables(t *testing.T) {
 	t.Setenv("LINEAR_API_KEY", "")
 	lin := &fakeLinear{}
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "v.json")
@@ -116,7 +117,7 @@ func TestLinearAPIOwnKey(t *testing.T) {
 func TestLinearAPINoTeam(t *testing.T) {
 	t.Setenv("LINEAR_API_KEY", "")
 	lin := &fakeLinear{}
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	_, _, err := runLinearAPI(t, &Globals{Socket: f.serve(t)}, lin.serve(t), linearAPICmd{Query: "{ viewer { id } }"}, "")
 	require.EqualError(t, err, "linear api: no LINEAR_API_KEY and no --team (or issue key in variables) to pick an identity")
 	assert.Empty(t, lin.reqs)
@@ -132,9 +133,9 @@ mutation Make($t: String!) { made: issueCreate(input: {title: $t, note: "x { y"}
 		decision, key string
 		sent          bool
 	}{
-		{rpc.GuardDeny, "", false},
-		{rpc.GuardAskHuman, "lin_api_mine", false},
-		{rpc.GuardAllow, "", true},
+		{domain.GuardDeny, "", false},
+		{domain.GuardAskHuman, "lin_api_mine", false},
+		{domain.GuardAllow, "", true},
 	} {
 		t.Run(tc.decision, func(t *testing.T) {
 			t.Setenv("LINEAR_API_KEY", tc.key)
@@ -166,7 +167,7 @@ mutation Make($t: String!) { made: issueCreate(input: {title: $t, note: "x { y"}
 func TestLinearAPIErrorsExit1(t *testing.T) {
 	t.Setenv("LINEAR_API_KEY", "")
 	lin := &fakeLinear{resp: `{"data":null,"errors":[{"message":"nope"}]}`}
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	out, errOut, err := runLinearAPI(t, &Globals{Socket: f.serve(t)}, lin.serve(t), linearAPICmd{Team: "ENG", Query: "{ viewer { id } }"}, "")
 	require.ErrorIs(t, err, errGraphQL)
 	assert.Equal(t, 1, exitCode(err))

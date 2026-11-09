@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -72,17 +73,17 @@ func open(ctx context.Context, st Store) (store.Collection, error) {
 
 // Add records l (validated by store.ValidLearning) under the next id.
 // project is the project of l.Ticket, or empty.
-func Add(ctx context.Context, st Store, l store.Learning, project string) (store.Learning, error) {
-	if err := store.ValidLearning(&l); err != nil {
-		return store.Learning{}, err
+func Add(ctx context.Context, st Store, l domain.Learning, project string) (domain.Learning, error) {
+	if err := domain.ValidLearning(&l); err != nil {
+		return domain.Learning{}, err
 	}
 	col, err := open(ctx, st)
 	if err != nil {
-		return store.Learning{}, err
+		return domain.Learning{}, err
 	}
 	last, err := col.List(ctx, store.RecordFilter{Order: store.OrderCreatedDesc, Limit: newest})
 	if err != nil {
-		return store.Learning{}, err
+		return domain.Learning{}, err
 	}
 	id := int64(1)
 	for _, r := range last {
@@ -95,35 +96,35 @@ func Add(ctx context.Context, st Store, l store.Learning, project string) (store
 		v.ID, v.Project = id, project
 		b, err := json.Marshal(v)
 		if err != nil {
-			return store.Learning{}, err
+			return domain.Learning{}, err
 		}
 		r, created, err := col.Put(ctx, store.Record{Key: key(id), State: l.Status, Value: b})
 		if err != nil {
-			return store.Learning{}, err
+			return domain.Learning{}, err
 		}
 		if created {
 			return fromRecord(r)
 		}
 		id++ // taken by a concurrent add
 	}
-	return store.Learning{}, fmt.Errorf("%w: learning: lost every id race", store.ErrConflict)
+	return domain.Learning{}, fmt.Errorf("%w: learning: lost every id race", domain.ErrConflict)
 }
 
 // Get reads one learning; ErrNotFound if missing.
-func Get(ctx context.Context, st Store, id int64) (store.Learning, error) {
+func Get(ctx context.Context, st Store, id int64) (domain.Learning, error) {
 	col, err := open(ctx, st)
 	if err != nil {
-		return store.Learning{}, err
+		return domain.Learning{}, err
 	}
 	r, err := col.Get(ctx, key(id))
 	if err != nil {
-		return store.Learning{}, err
+		return domain.Learning{}, err
 	}
 	return fromRecord(r)
 }
 
 // List returns learnings matching f, newest first.
-func List(ctx context.Context, st Store, f store.LearningFilter) ([]store.Learning, error) {
+func List(ctx context.Context, st Store, f store.LearningFilter) ([]domain.Learning, error) {
 	rf := store.RecordFilter{Since: f.Since, Order: store.OrderCreatedDesc, Limit: f.Limit, Where: map[string]string{}}
 	if f.Status != "" {
 		rf.States = []string{f.Status}
@@ -137,25 +138,25 @@ func List(ctx context.Context, st Store, f store.LearningFilter) ([]store.Learni
 }
 
 // Between returns learnings recorded in [since, until), oldest first.
-func Between(ctx context.Context, st Store, since, until time.Time) ([]store.Learning, error) {
+func Between(ctx context.Context, st Store, since, until time.Time) ([]domain.Learning, error) {
 	if until.IsZero() || !since.Before(until) {
-		return []store.Learning{}, nil
+		return []domain.Learning{}, nil
 	}
 	return list(ctx, st, store.RecordFilter{Since: since, Until: until, Limit: all})
 }
 
 // ByPR returns the learnings whose PR is pr, oldest first.
-func ByPR(ctx context.Context, st Store, pr string) ([]store.Learning, error) {
+func ByPR(ctx context.Context, st Store, pr string) ([]domain.Learning, error) {
 	pr = strings.TrimSpace(pr)
 	if pr == "" {
-		return []store.Learning{}, nil
+		return []domain.Learning{}, nil
 	}
 	return list(ctx, st, store.RecordFilter{Where: map[string]string{"pr": pr}, Limit: all})
 }
 
 // Count counts learnings created at or after since that match f. Kind
 // and scope globs are matched here.
-func Count(ctx context.Context, st Store, since time.Time, f store.LearningCount) (int, error) {
+func Count(ctx context.Context, st Store, since time.Time, f domain.LearningCount) (int, error) {
 	rf := store.RecordFilter{Since: since, Limit: all}
 	if f.Status != "" {
 		rf.States = []string{f.Status}
@@ -174,9 +175,9 @@ func Count(ctx context.Context, st Store, since time.Time, f store.LearningCount
 }
 
 // Update sets a learning's status and PR (#273).
-func Update(ctx context.Context, st Store, id int64, status, pr string) (store.Learning, error) {
-	if status != store.LearningOpen && status != store.LearningApplied && status != store.LearningRejected {
-		return store.Learning{}, fmt.Errorf("%w: learning status %q", store.ErrInvalid, status)
+func Update(ctx context.Context, st Store, id int64, status, pr string) (domain.Learning, error) {
+	if status != domain.LearningOpen && status != domain.LearningApplied && status != domain.LearningRejected {
+		return domain.Learning{}, fmt.Errorf("%w: learning status %q", domain.ErrInvalid, status)
 	}
 	return update(ctx, st, id, func(r *store.Record, v *value) {
 		r.State, v.PR = status, strings.TrimSpace(pr)
@@ -189,34 +190,34 @@ func SetGate(ctx context.Context, st Store, id int64, gate string) error {
 	return err
 }
 
-func update(ctx context.Context, st Store, id int64, fn func(*store.Record, *value)) (store.Learning, error) {
+func update(ctx context.Context, st Store, id int64, fn func(*store.Record, *value)) (domain.Learning, error) {
 	col, err := open(ctx, st)
 	if err != nil {
-		return store.Learning{}, err
+		return domain.Learning{}, err
 	}
 	for range maxTries {
 		r, err := col.Get(ctx, key(id))
 		if err != nil {
-			return store.Learning{}, err
+			return domain.Learning{}, err
 		}
 		var v value
 		if err := json.Unmarshal(r.Value, &v); err != nil {
-			return store.Learning{}, fmt.Errorf("learning %d: %w", id, err)
+			return domain.Learning{}, fmt.Errorf("learning %d: %w", id, err)
 		}
 		fn(&r, &v)
 		if r.Value, err = json.Marshal(v); err != nil {
-			return store.Learning{}, err
+			return domain.Learning{}, err
 		}
 		r, err = col.Update(ctx, r)
-		if errors.Is(err, store.ErrConflict) {
+		if errors.Is(err, domain.ErrConflict) {
 			continue
 		}
 		if err != nil {
-			return store.Learning{}, err
+			return domain.Learning{}, err
 		}
 		return fromRecord(r)
 	}
-	return store.Learning{}, fmt.Errorf("%w: learning %d: lost every race", store.ErrConflict, id)
+	return domain.Learning{}, fmt.Errorf("%w: learning %d: lost every race", domain.ErrConflict, id)
 }
 
 // snippetMax bounds a recall snippet.
@@ -265,7 +266,7 @@ func Recall(ctx context.Context, st Store, text, project, ticketID string, limit
 	return out, nil
 }
 
-func list(ctx context.Context, st Store, f store.RecordFilter) ([]store.Learning, error) {
+func list(ctx context.Context, st Store, f store.RecordFilter) ([]domain.Learning, error) {
 	col, err := open(ctx, st)
 	if err != nil {
 		return nil, err
@@ -277,7 +278,7 @@ func list(ctx context.Context, st Store, f store.RecordFilter) ([]store.Learning
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.Learning, 0, len(rs))
+	out := make([]domain.Learning, 0, len(rs))
 	for _, r := range rs {
 		l, err := fromRecord(r)
 		if err != nil {
@@ -287,7 +288,7 @@ func list(ctx context.Context, st Store, f store.RecordFilter) ([]store.Learning
 	}
 	// created_at ties order by key as text; ids order numerically.
 	desc := f.Order == store.OrderCreatedDesc
-	slices.SortStableFunc(out, func(a, b store.Learning) int {
+	slices.SortStableFunc(out, func(a, b domain.Learning) int {
 		c := a.CreatedAt.Compare(b.CreatedAt)
 		if c == 0 {
 			c = cmpInt(a.ID, b.ID)
@@ -312,19 +313,19 @@ func cmpInt(a, b int64) int {
 
 func key(id int64) string { return strconv.FormatInt(id, 10) }
 
-func toValue(l store.Learning) value {
+func toValue(l domain.Learning) value {
 	return value{
 		ID: l.ID, Kind: l.Kind, Summary: l.Summary, Fix: l.Fix, Scope: l.Scope, Ticket: l.Ticket,
 		Session: l.Session, Source: l.Source, PR: l.PR, Gate: l.Gate,
 	}
 }
 
-func fromRecord(r store.Record) (store.Learning, error) {
+func fromRecord(r store.Record) (domain.Learning, error) {
 	var v value
 	if err := json.Unmarshal(r.Value, &v); err != nil {
-		return store.Learning{}, fmt.Errorf("learning %s: %w", r.Key, err)
+		return domain.Learning{}, fmt.Errorf("learning %s: %w", r.Key, err)
 	}
-	return store.Learning{
+	return domain.Learning{
 		ID: v.ID, Kind: v.Kind, Summary: v.Summary, Fix: v.Fix, Scope: v.Scope, Ticket: v.Ticket,
 		Session: v.Session, Source: v.Source, Status: r.State, PR: v.PR, Gate: v.Gate, CreatedAt: r.CreatedAt,
 	}, nil

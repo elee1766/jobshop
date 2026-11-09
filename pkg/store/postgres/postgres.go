@@ -20,8 +20,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ids"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 //go:embed migrations/*.sql
@@ -138,11 +138,11 @@ func classify(err error) error {
 	}
 	switch pe.Code {
 	case "23505":
-		return store.ErrAlreadyExist
+		return domain.ErrAlreadyExist
 	case "23503":
-		return store.ErrNotFound
+		return domain.ErrNotFound
 	case "23514":
-		return store.ErrInvalid
+		return domain.ErrInvalid
 	}
 	return nil
 }

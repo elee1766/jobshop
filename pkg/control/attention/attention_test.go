@@ -11,47 +11,47 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/attention"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 var t0 = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
 // fake is an attention.Source over fixed tickets.
 type fake struct {
-	byLabel map[string][]store.Ticket
-	runs    []store.Ticket
+	byLabel map[string][]domain.Ticket
+	runs    []domain.Ticket
 	waits   []attention.Waiting
 	sub     []rpc.AttentionItem
 	stale   []rpc.AttentionItem
 	health  attention.Health
-	tickets map[string]store.Ticket
-	steps   map[string][]store.Ticket
+	tickets map[string]domain.Ticket
+	steps   map[string][]domain.Ticket
 }
 
 func (f fake) Now() time.Time { return t0 }
-func (f fake) Ticket(_ context.Context, id string) (store.Ticket, error) {
+func (f fake) Ticket(_ context.Context, id string) (domain.Ticket, error) {
 	if t, ok := f.tickets[id]; ok {
 		return t, nil
 	}
-	return store.Ticket{}, store.ErrNotFound
+	return domain.Ticket{}, domain.ErrNotFound
 }
 
-func (f fake) Steps(_ context.Context, run string) ([]store.Ticket, error) {
+func (f fake) Steps(_ context.Context, run string) ([]domain.Ticket, error) {
 	return f.steps[run], nil
 }
 
-func (f fake) LabeledOpen(_ context.Context, label string) ([]store.Ticket, error) {
+func (f fake) LabeledOpen(_ context.Context, label string) ([]domain.Ticket, error) {
 	return f.byLabel[label], nil
 }
-func (f fake) NeedsHumanRuns(context.Context) ([]store.Ticket, error)  { return f.runs, nil }
+func (f fake) NeedsHumanRuns(context.Context) ([]domain.Ticket, error) { return f.runs, nil }
 func (f fake) TimedOut(context.Context) ([]attention.Waiting, error)   { return f.waits, nil }
 func (f fake) Subsystems(context.Context) ([]rpc.AttentionItem, error) { return f.sub, nil }
 func (f fake) Stale(context.Context) ([]rpc.AttentionItem, error)      { return f.stale, nil }
 func (f fake) Health() attention.Health                                { return f.health }
 
-func ticket(id string, at time.Duration, labels []string, meta string) store.Ticket {
-	return store.Ticket{ID: id, Title: id, Labels: labels, Meta: json.RawMessage(meta), CreatedAt: t0.Add(at), UpdatedAt: t0.Add(at)}
+func ticket(id string, at time.Duration, labels []string, meta string) domain.Ticket {
+	return domain.Ticket{ID: id, Title: id, Labels: labels, Meta: json.RawMessage(meta), CreatedAt: t0.Add(at), UpdatedAt: t0.Add(at)}
 }
 
 func kinds(items []rpc.AttentionItem) []string {
@@ -77,10 +77,10 @@ func TestEscalationDedup(t *testing.T) {
 	esc := ticket("esc", time.Minute, []string{attention.NeedsHumanLabel}, `{"run":{"id":"r1"},"pool":{"name":"dev"}}`)
 	both := ticket("both", 2*time.Minute, []string{attention.NeedsHumanLabel, attention.QuestionLabel}, `{}`)
 	f := fake{
-		byLabel: map[string][]store.Ticket{attention.NeedsHumanLabel: {esc, both}, attention.QuestionLabel: {both}},
-		runs: []store.Ticket{
-			{ID: "r1", Kind: store.KindRun, UpdatedAt: t0},
-			{ID: "r2", Kind: store.KindRun, UpdatedAt: t0.Add(time.Hour)},
+		byLabel: map[string][]domain.Ticket{attention.NeedsHumanLabel: {esc, both}, attention.QuestionLabel: {both}},
+		runs: []domain.Ticket{
+			{ID: "r1", Kind: domain.KindRun, UpdatedAt: t0},
+			{ID: "r2", Kind: domain.KindRun, UpdatedAt: t0.Add(time.Hour)},
 		},
 		health: attention.Health{Started: t0, Quarantined: map[string]string{"dev": "bad", "plan": "bad too"}},
 	}
@@ -91,14 +91,14 @@ func TestEscalationDedup(t *testing.T) {
 
 func TestKindOfLabel(t *testing.T) {
 	t.Parallel()
-	f := fake{byLabel: map[string][]store.Ticket{
+	f := fake{byLabel: map[string][]domain.Ticket{
 		attention.QuestionLabel: {ticket("q", 0, []string{attention.QuestionLabel}, `{}`)},
 		attention.ProposedLabel: {
 			ticket("p", time.Minute, []string{attention.ProposedLabel}, `{}`),
 			ticket("held", 2*time.Minute, []string{attention.ProposedLabel, attention.NeedsHumanLabel}, `{}`),
 		},
 	}}
-	f.byLabel[attention.NeedsHumanLabel] = []store.Ticket{f.byLabel[attention.ProposedLabel][1]}
+	f.byLabel[attention.NeedsHumanLabel] = []domain.Ticket{f.byLabel[attention.ProposedLabel][1]}
 	items, err := attention.Build(t.Context(), f)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"question q", "decision p", "ticket held"}, kinds(items))
@@ -110,8 +110,8 @@ func TestTimedOutWaitReplacesTicketRow(t *testing.T) {
 	t.Parallel()
 	tk := ticket("w", 0, []string{attention.NeedsHumanLabel}, `{}`)
 	f := fake{
-		byLabel: map[string][]store.Ticket{attention.NeedsHumanLabel: {tk}},
-		waits:   []attention.Waiting{{Ticket: tk, Wait: &store.Wait{Reason: "ci", Owner: "ann", Timeout: t0.Add(time.Hour)}}},
+		byLabel: map[string][]domain.Ticket{attention.NeedsHumanLabel: {tk}},
+		waits:   []attention.Waiting{{Ticket: tk, Wait: &domain.Wait{Reason: "ci", Owner: "ann", Timeout: t0.Add(time.Hour)}}},
 	}
 	items, err := attention.Build(t.Context(), f)
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestStaleListedOnce(t *testing.T) {
 	t.Parallel()
 	tk := ticket("s", 0, []string{attention.NeedsHumanLabel}, `{}`)
 	f := fake{
-		byLabel: map[string][]store.Ticket{attention.NeedsHumanLabel: {tk}},
+		byLabel: map[string][]domain.Ticket{attention.NeedsHumanLabel: {tk}},
 		stale:   []rpc.AttentionItem{{Kind: rpc.AttentionStale, ID: "s"}, {Kind: rpc.AttentionStale, ID: "o", Since: t0.Add(time.Minute)}},
 	}
 	items, err := attention.Build(t.Context(), f)
@@ -205,15 +205,15 @@ func titles(as []attention.Action) []string {
 
 func TestActions(t *testing.T) {
 	t.Parallel()
-	done := store.Ticket{Kind: store.KindStep, Status: store.StatusClosed, Resolution: "done", Fields: json.RawMessage(`{"step":"build"}`)}
+	done := domain.Ticket{Kind: domain.KindStep, Status: domain.StatusClosed, Resolution: "done", Fields: json.RawMessage(`{"step":"build"}`)}
 	f := fake{
-		tickets: map[string]store.Ticket{
+		tickets: map[string]domain.Ticket{
 			"esc":   ticket("esc", 0, nil, `{"run":{"id":"r1"}}`),
 			"guard": ticket("guard", 0, nil, `{"hook":{"key":"k"}}`),
 			"w":     ticket("w", 0, nil, `{"run":{"id":"r1"}}`),
 			"rec":   ticket("rec", 0, nil, `{"desk":{"attention_recommend":"2"}}`),
 		},
-		steps: map[string][]store.Ticket{"r1": {done, {Kind: store.KindStep, Status: store.StatusOpen}}},
+		steps: map[string][]domain.Ticket{"r1": {done, {Kind: domain.KindStep, Status: domain.StatusOpen}}},
 	}
 	ctx := t.Context()
 	run := attention.Actions(ctx, f, rpc.AttentionItem{Kind: rpc.AttentionTicket, ID: "esc"})
@@ -228,7 +228,7 @@ func TestActions(t *testing.T) {
 	assert.Equal(t, []string{"Unquarantine after fix", "Keep quarantined"}, titles(attention.Actions(ctx, f, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: "dev"})))
 	assert.Equal(t, []string{"Discuss", "Leave waiting"}, titles(attention.Actions(ctx, f, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config"})))
 
-	q := attention.Actions(ctx, f, rpc.AttentionItem{Kind: rpc.AttentionQuestion, ID: "q", Options: []rpc.QuestionOption{{ID: 1, Title: "A"}, {ID: 2, Title: "B"}}})
+	q := attention.Actions(ctx, f, rpc.AttentionItem{Kind: rpc.AttentionQuestion, ID: "q", Options: []domain.QuestionOption{{ID: 1, Title: "A"}, {ID: 2, Title: "B"}}})
 	assert.Equal(t, attention.VerbQuestion, q[1].Verb)
 	assert.Equal(t, 2, q[1].Option.ID)
 
@@ -250,7 +250,7 @@ func TestKey(t *testing.T) {
 
 type failing struct{ fake }
 
-func (failing) NeedsHumanRuns(context.Context) ([]store.Ticket, error) {
+func (failing) NeedsHumanRuns(context.Context) ([]domain.Ticket, error) {
 	return nil, errors.New("boom")
 }
 

@@ -13,7 +13,8 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // setRules rewrites the root's prompt_rules section.
@@ -40,7 +41,7 @@ func TestPromptRules(t *testing.T) {
 	stop := start()
 	defer func() { stop() }()
 	admin := dial(t, root.AdminSocket())
-	show := func(id string) store.Ticket {
+	show := func(id string) domain.Ticket {
 		var got rpc.ShowResult
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &got))
 		return got.Ticket
@@ -58,9 +59,9 @@ func TestPromptRules(t *testing.T) {
 	}
 	runTicket := func(title string) {
 		t.Helper()
-		var tk store.Ticket
+		var tk domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, &tk))
-		passEventually(t, root.Dir, func() bool { return show(tk.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+		passEventually(t, root.Dir, func() bool { return show(tk.ID).Status == domain.StatusClosed }, "condition not met after supervisor passes")
 	}
 
 	runTicket("first")
@@ -104,7 +105,7 @@ func TestPromptRules(t *testing.T) {
 
 	// session prompt: the next ready ticket, labeled, nothing claimed.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
-	var next store.Ticket
+	var next domain.Ticket
 	stop()
 	stop = start()
 	admin = dial(t, root.AdminSocket())
@@ -129,7 +130,7 @@ func TestPromptRules(t *testing.T) {
 	if pr.Parts[1].Status == "unchanged" {
 		assert.Empty(t, pr.Rules)
 		assert.Contains(t, pr.Text, "=== rule:dev-only (unchanged, not sent) ===\n")
-		assert.Equal(t, store.StatusInProgress, show(next.ID).Status, "rules unchanged only after the turn was sent")
+		assert.Equal(t, domain.StatusInProgress, show(next.ID).Status, "rules unchanged only after the turn was sent")
 	} else {
 		assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
 		assert.Contains(t, pr.Text, "=== rule:dev-only (new) ===\nDEV-RULE\n")
@@ -146,7 +147,7 @@ func TestPromptRules(t *testing.T) {
 		return p != 0 && p != pid && hostRunning(sdir)
 	}, "condition not met after supervisor passes")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == domain.StatusClosed }, "condition not met after supervisor passes")
 	p = prompts()
 	last := p[len(p)-1]
 	assert.Contains(t, last, next.ID)

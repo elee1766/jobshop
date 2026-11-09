@@ -21,6 +21,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -32,7 +33,7 @@ type fakeHost struct {
 	cfg  *config.Config
 	dir  string
 	now  time.Time
-	open []store.Ticket
+	open []domain.Ticket
 
 	mu      sync.Mutex
 	cursors map[string]int64
@@ -45,15 +46,15 @@ func (h *fakeHost) SessionDir(id string) string          { return filepath.Join(
 func (h *fakeHost) Redactor(string) *redact.Redactor     { return nil }
 func (h *fakeHost) Work(ticket string) journal.Work      { return journal.Work{Run: "run-" + ticket} }
 
-func (h *fakeHost) cursor(id string) int64 { h.mu.Lock(); defer h.mu.Unlock(); return h.cursors[id] }
-func (h *fakeHost) setNow(t time.Time)     { h.now = t }
-func (h *fakeHost) addOpen(t store.Ticket) { h.open = append(h.open, t) }
-func (h *fakeHost) sessionTicket(id, pool string) store.Ticket {
-	return store.Ticket{ID: id, Project: "js", Pool: pool, Kind: store.KindSession, Status: store.StatusOpen}
+func (h *fakeHost) cursor(id string) int64  { h.mu.Lock(); defer h.mu.Unlock(); return h.cursors[id] }
+func (h *fakeHost) setNow(t time.Time)      { h.now = t }
+func (h *fakeHost) addOpen(t domain.Ticket) { h.open = append(h.open, t) }
+func (h *fakeHost) sessionTicket(id, pool string) domain.Ticket {
+	return domain.Ticket{ID: id, Project: "js", Pool: pool, Kind: domain.KindSession, Status: domain.StatusOpen}
 }
 
-func (h *fakeHost) List(_ context.Context, f store.Filter) ([]store.Ticket, error) {
-	if f.Status == store.StatusOpen {
+func (h *fakeHost) List(_ context.Context, f store.Filter) ([]domain.Ticket, error) {
+	if f.Status == domain.StatusOpen {
 		return h.open, nil
 	}
 	return nil, nil

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestShellProbeQuarantines: a host env whose PATH lacks a probed command
@@ -20,7 +20,7 @@ func TestShellProbeQuarantines(t *testing.T) {
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var st rpc.PoolStatusResult
 	passEventually(t, root.Dir, func() bool {
@@ -31,10 +31,10 @@ func TestShellProbeQuarantines(t *testing.T) {
 	assert.NotContains(t, st.Quarantined["dev"], "missing sh")
 
 	var got struct {
-		Ticket store.Ticket `json:"ticket"`
+		Ticket domain.Ticket `json:"ticket"`
 	}
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &got))
-	assert.Equal(t, store.StatusOpen, got.Ticket.Status, "no attempt burned")
+	assert.Equal(t, domain.StatusOpen, got.Ticket.Status, "no attempt burned")
 	assert.Empty(t, got.Ticket.Holder)
 
 	var res rpc.AttentionResult

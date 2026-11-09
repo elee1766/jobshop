@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // DefaultScaleDownAfter is the stabilization window when the pool sets
@@ -66,7 +66,7 @@ func ForPool(desired int, sessions []Session) Plan {
 		switch s.Cordon {
 		case "":
 			active = append(active, s)
-		case store.CordonScale:
+		case domain.CordonScale:
 			scaled = append(scaled, s)
 		}
 	}

@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestTriggerCheckOutsideTick (JOB-109): a trigger check that takes long
@@ -38,8 +38,8 @@ func TestTriggerCheckOutsideTick(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	titles := func() []string {
 		t.Helper()
-		var ts []store.Ticket
-		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindTask}, &ts))
+		var ts []domain.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindTask}, &ts))
 		var out []string
 		for _, tk := range ts {
 			out = append(out, tk.Title)

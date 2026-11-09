@@ -7,6 +7,7 @@ import (
 
 	"github.com/nullism/bqb"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	sqldb "github.com/elee1766/jobshop/pkg/store/postgres/pgdb"
 )
@@ -65,7 +66,7 @@ func filterKinds(f store.Filter) []string {
 		ks = append(ks, string(f.Kind))
 	}
 	if len(ks) == 0 && f.Ready {
-		ks = strs(store.ClaimableKinds)
+		ks = strs(domain.ClaimableKinds)
 	}
 	return ks
 }
@@ -89,7 +90,7 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 		metas = append([]store.MetaMatch{{Pack: f.MetaPack, Key: f.MetaKey, Value: f.MetaValue}}, metas...)
 	}
 	if len(metas) > store.MaxMetaFilters {
-		return nil, fmt.Errorf("%w: at most %d meta filters", store.ErrInvalid, store.MaxMetaFilters)
+		return nil, fmt.Errorf("%w: at most %d meta filters", domain.ErrInvalid, store.MaxMetaFilters)
 	}
 	order := f.Order
 	w := bqb.Optional("WHERE")
@@ -178,11 +179,11 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 		}
 	case store.OrderIndex:
 		if f.After != "" {
-			return nil, fmt.Errorf("%w: order %q has no cursor", store.ErrInvalid, order)
+			return nil, fmt.Errorf("%w: order %q has no cursor", domain.ErrInvalid, order)
 		}
 		by = "t.f_index, t.created_at, t.id"
 	default:
-		return nil, fmt.Errorf("%w: order %q", store.ErrInvalid, order)
+		return nil, fmt.Errorf("%w: order %q", domain.ErrInvalid, order)
 	}
 	q := bqb.New("SELECT "+ticketCols+" FROM tickets t ?", w)
 	q.Space("ORDER BY " + by)
@@ -251,7 +252,7 @@ func (s *Store) queryTickets(ctx context.Context, d sqldb.DBTX, q *bqb.Query) ([
 }
 
 // List returns tickets matching f in f.Order.
-func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
+func (s *Store) List(ctx context.Context, f store.Filter) ([]domain.Ticket, error) {
 	q, err := listQuery(f, ns(s.now()))
 	if err != nil {
 		return nil, err

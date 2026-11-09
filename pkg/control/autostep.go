@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/stepexec"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -42,7 +43,7 @@ type autoSteps struct {
 func (c *Controller) runAutoSteps(ctx context.Context, cfg *config.Config) {
 	// Held by the controller but not running here: a restart cut the
 	// attempt short.
-	held, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Holder: autoHolder, Status: store.StatusInProgress})
+	held, err := c.store.List(ctx, store.Filter{Kind: domain.KindStep, Holder: autoHolder, Status: domain.StatusInProgress})
 	if err != nil {
 		return
 	}
@@ -58,7 +59,7 @@ func (c *Controller) runAutoSteps(ctx context.Context, cfg *config.Config) {
 			continue
 		}
 		for _, t := range ready {
-			if t.Kind != store.KindStep || t.Pool != "" || t.Holder != "" {
+			if t.Kind != domain.KindStep || t.Pool != "" || t.Holder != "" {
 				continue
 			}
 			c.startAutoStep(ctx, cfg, t, false)
@@ -69,7 +70,7 @@ func (c *Controller) runAutoSteps(ctx context.Context, cfg *config.Config) {
 // resumeAutoStep handles a step the controller holds with no attempt in
 // this process: on_restart retry runs it again under the same claim, so
 // the attempt key is unchanged; fail releases it as a failed attempt.
-func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t store.Ticket) {
+func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t domain.Ticket) {
 	c.autoMu.Lock()
 	running := c.auto.running[t.ID]
 	c.autoMu.Unlock()
@@ -89,19 +90,19 @@ func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t s
 }
 
 // autoStepConfig finds the step's config through its run's workflow.
-func (c *Controller) autoStepConfig(cfg *config.Config, t store.Ticket) (config.Step, store.StepFields, bool) {
-	sf, err := store.DecodeFields[store.StepFields](t)
+func (c *Controller) autoStepConfig(cfg *config.Config, t domain.Ticket) (config.Step, domain.StepFields, bool) {
+	sf, err := domain.DecodeFields[domain.StepFields](t)
 	if err != nil || !sf.Auto() {
 		return config.Step{}, sf, false
 	}
-	if sf.Type == store.StepScript {
+	if sf.Type == domain.StepScript {
 		return stepexec.ScriptConfig(sf), sf, true
 	}
 	run, err := c.store.Get(c.ctx, sf.Run)
 	if err != nil {
 		return config.Step{}, sf, false
 	}
-	rf, err := store.DecodeFields[store.RunFields](run)
+	rf, err := domain.DecodeFields[domain.RunFields](run)
 	if err != nil {
 		return config.Step{}, sf, false
 	}
@@ -118,7 +119,7 @@ func (c *Controller) autoStepConfig(cfg *config.Config, t store.Ticket) (config.
 }
 
 // startAutoStep claims t (unless held already) and runs one attempt.
-func (c *Controller) startAutoStep(ctx context.Context, cfg *config.Config, t store.Ticket, held bool) {
+func (c *Controller) startAutoStep(ctx context.Context, cfg *config.Config, t domain.Ticket, held bool) {
 	s, sf, ok := c.autoStepConfig(cfg, t)
 	if !ok {
 		return
@@ -169,11 +170,11 @@ func (c *Controller) startAutoStep(ctx context.Context, cfg *config.Config, t st
 }
 
 // runAutoAttempt runs one attempt and records it.
-func (c *Controller) runAutoAttempt(cfg *config.Config, t store.Ticket, cl store.Claim, s config.Step, sf store.StepFields, attemptKey string) {
+func (c *Controller) runAutoAttempt(cfg *config.Config, t domain.Ticket, cl store.Claim, s config.Step, sf domain.StepFields, attemptKey string) {
 	ctx := c.ctx
 	start := c.now()
 	a := stepexec.Attempt{Cfg: cfg, Ticket: t, Step: s, Fields: sf, Key: attemptKey, Store: c.store}
-	if s.Type == store.StepScript {
+	if s.Type == domain.StepScript {
 		a.Engine = c.hooks()
 		a.Inputs = func(ctx context.Context) (stepexec.ScriptInputs, error) { return c.scriptInputs(ctx, t, sf) }
 	}
@@ -194,7 +195,7 @@ func (c *Controller) runAutoAttempt(cfg *config.Config, t store.Ticket, cl store
 
 // finishAutoStep writes the attempt's record on the step and closes,
 // defers or fails it.
-func (c *Controller) finishAutoStep(ctx context.Context, cfg *config.Config, t store.Ticket, cl store.Claim, sf store.StepFields, res stepexec.Result) {
+func (c *Controller) finishAutoStep(ctx context.Context, cfg *config.Config, t domain.Ticket, cl store.Claim, sf domain.StepFields, res stepexec.Result) {
 	sf.Command, sf.Output, sf.Outcome, sf.Result = res.Command, res.Output, res.Outcome, res.Result
 	sf = stepexec.ApplyScript(sf, res)
 	b, err := json.Marshal(sf)
@@ -242,7 +243,7 @@ func (h stepHost) Worktree(repo, ref, dir, reason, what string) error {
 	return h.c.addWorktree(repo, ref, dir, reason, what)
 }
 
-func (h stepHost) SlotEnv(ctx context.Context, t store.Ticket) []string {
+func (h stepHost) SlotEnv(ctx context.Context, t domain.Ticket) []string {
 	return h.c.slotEnv(ctx, t)
 }
 

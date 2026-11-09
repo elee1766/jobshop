@@ -14,8 +14,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestPreflightQuarantine (#728): a sandboxed pool whose host fails the
@@ -49,7 +49,7 @@ func TestPreflightQuarantine(t *testing.T) {
 		return st
 	}
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	pass(t, root.Dir, 2)
 	st := status()
@@ -62,10 +62,10 @@ func TestPreflightQuarantine(t *testing.T) {
 	assert.Equal(t, []string{"10.0.0.0/8"}, seen.Load().Sandbox.Deny, "deny reaches Preflight for its nft check")
 	assert.Equal(t, int32(1), opts.Load(), "dns_check adds WithDNSCheck")
 
-	var sessions []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	var sessions []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &sessions))
 	assert.Empty(t, sessions, "no spawn while quarantined")
-	var esc []store.Ticket
+	var esc []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Label: "needs-human"}, &esc))
 	require.Len(t, esc, 1)
 	assert.Contains(t, esc[0].Body, "fix: install passt")

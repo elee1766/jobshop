@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/attention"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -43,9 +44,9 @@ type Escalation struct {
 }
 
 // EscalationOf is meta.escalation of t, false when it has no chat key.
-func EscalationOf(t store.Ticket) (Escalation, bool) {
+func EscalationOf(t domain.Ticket) (Escalation, bool) {
 	var e Escalation
-	raw, ok := store.MetaMap(t.Meta)[store.MetaEscalation]
+	raw, ok := domain.MetaMap(t.Meta)[domain.MetaEscalation]
 	if !ok || json.Unmarshal(raw, &e) != nil || e.Key == "" {
 		return e, false
 	}
@@ -76,15 +77,15 @@ const maxReason = 1000
 // or step labeled needs-human that is not a question. Questions (report
 // --question, admission and intake approvals) keep their own answer path
 // and get no chat.
-func Hold(t store.Ticket) bool {
-	return (t.Kind == store.KindTask || t.Kind == store.KindStep) && slices.Contains(t.Labels, attention.NeedsHumanLabel) &&
-		!slices.Contains(t.Labels, attention.QuestionLabel) && store.MetaString(t.Meta, store.MetaQuestion, "ticket") == ""
+func Hold(t domain.Ticket) bool {
+	return (t.Kind == domain.KindTask || t.Kind == domain.KindStep) && slices.Contains(t.Labels, attention.NeedsHumanLabel) &&
+		!slices.Contains(t.Labels, attention.QuestionLabel) && domain.MetaString(t.Meta, domain.MetaQuestion, "ticket") == ""
 }
 
 // Reason is why the run's steps need a human.
-func Reason(steps []store.Ticket) string {
+func Reason(steps []domain.Ticket) string {
 	for _, s := range steps {
-		if store.ReviewCapped(s) {
+		if domain.ReviewCapped(s) {
 			return "a review step requested changes past its review round limit"
 		}
 	}
@@ -94,24 +95,24 @@ func Reason(steps []store.Ticket) string {
 // ClassifyHold classifies the hold ticket t and gathers its cause. A run
 // escalation names the failed step and the session that last held it; a
 // timed-out wait, a guard ask and a plain label name the held ticket.
-func ClassifyHold(ctx context.Context, s store.Store, t store.Ticket) Cause {
+func ClassifyHold(ctx context.Context, s store.Store, t domain.Ticket) Cause {
 	switch {
-	case store.MetaString(t.Meta, store.MetaRun, "escalation") != "":
+	case domain.MetaString(t.Meta, domain.MetaRun, "escalation") != "":
 		x := Cause{
-			Kind: CauseRun, Run: store.MetaString(t.Meta, store.MetaRun, "id"), Workflow: store.MetaString(t.Meta, store.MetaRun, "workflow"),
+			Kind: CauseRun, Run: domain.MetaString(t.Meta, domain.MetaRun, "id"), Workflow: domain.MetaString(t.Meta, domain.MetaRun, "workflow"),
 			IssueRef: IssueRef(t), Reason: "a step failed at its retry limit",
 		}
 		if steps, err := store.Children(ctx, s, x.Run); err == nil {
 			for i := len(steps) - 1; i >= 0; i-- {
-				if !store.StepExhausted(steps[i]) {
+				if !domain.StepExhausted(steps[i]) {
 					continue
 				}
 				st := steps[i]
 				x.Held, x.HeldTitle, x.Worker = st.ID, st.Title, store.LastClaimant(ctx, s, st.ID)
-				if sf, err := store.DecodeFields[store.StepFields](st); err == nil {
+				if sf, err := domain.DecodeFields[domain.StepFields](st); err == nil {
 					x.Step = sf.Step
 					x.Reason = fmt.Sprintf("step %s failed %d/%d times", sf.Step, sf.Failures, sf.Retries)
-					if store.ReviewCapped(st) {
+					if domain.ReviewCapped(st) {
 						x.Reason = fmt.Sprintf("step %s requested changes in review round %d, over its limit of %d", sf.Step, sf.ReviewRounds, sf.ReviewRoundLimit())
 					}
 				}
@@ -124,13 +125,13 @@ func ClassifyHold(ctx context.Context, s store.Store, t store.Ticket) Cause {
 			}
 		}
 		return x
-	case store.MetaString(t.Meta, store.MetaPool, "name") != "":
-		q := store.MetaString(t.Meta, store.MetaPool, "quarantine")
-		return Cause{Kind: CausePool, Pool: store.MetaString(t.Meta, store.MetaPool, "name"), Quarn: q, Reason: q}
-	case store.MetaString(t.Meta, store.MetaHook, "session") != "":
+	case domain.MetaString(t.Meta, domain.MetaPool, "name") != "":
+		q := domain.MetaString(t.Meta, domain.MetaPool, "quarantine")
+		return Cause{Kind: CausePool, Pool: domain.MetaString(t.Meta, domain.MetaPool, "name"), Quarn: q, Reason: q}
+	case domain.MetaString(t.Meta, domain.MetaHook, "session") != "":
 		x := Cause{
-			Kind: CauseGuard, Worker: store.MetaString(t.Meta, store.MetaHook, "session"), Held: store.MetaString(t.Meta, store.MetaHook, "ticket"),
-			Reason: store.MetaString(t.Meta, store.MetaHook, "reason"), IssueRef: IssueRef(t),
+			Kind: CauseGuard, Worker: domain.MetaString(t.Meta, domain.MetaHook, "session"), Held: domain.MetaString(t.Meta, domain.MetaHook, "ticket"),
+			Reason: domain.MetaString(t.Meta, domain.MetaHook, "reason"), IssueRef: IssueRef(t),
 		}
 		if x.Held != "" {
 			if h, err := s.Get(ctx, x.Held); err == nil {
@@ -140,7 +141,7 @@ func ClassifyHold(ctx context.Context, s store.Store, t store.Ticket) Cause {
 		return x
 	}
 	x := Cause{Kind: CauseLabel, Held: t.ID, HeldTitle: t.Title, Worker: t.Holder, IssueRef: IssueRef(t), Reason: clip(t.Body, maxReason)}
-	if w := store.WaitOf(t); w != nil && w.TimedOut {
+	if w := domain.WaitOf(t); w != nil && w.TimedOut {
 		x.Kind = CauseWait
 		x.Reason = fmt.Sprintf("wait (%s) passed its timeout %s; owner %s", w.Reason, w.Timeout.Format(time.RFC3339), cmp.Or(w.Owner, "unset"))
 		x.Worker = cmp.Or(w.Session, x.Worker)
@@ -158,7 +159,7 @@ func ClassifyHold(ctx context.Context, s store.Store, t store.Ticket) Cause {
 		}
 	}
 	if x.Worker != "" {
-		if w, err := s.Get(ctx, x.Worker); err != nil || w.Kind != store.KindSession {
+		if w, err := s.Get(ctx, x.Worker); err != nil || w.Kind != domain.KindSession {
 			x.Worker = "" // an actor like admin, not a session to message
 		}
 	}
@@ -166,9 +167,9 @@ func ClassifyHold(ctx context.Context, s store.Store, t store.Ticket) Cause {
 }
 
 // failedReason is the note of the worker's last failed or dropped report.
-func failedReason(t store.Ticket) string {
-	if st := store.MetaString(t.Meta, "report", "state"); st == rpc.ReportFailed || st == rpc.ReportDropped {
-		return store.MetaString(t.Meta, "report", "note")
+func failedReason(t domain.Ticket) string {
+	if st := domain.MetaString(t.Meta, "report", "state"); st == rpc.ReportFailed || st == rpc.ReportDropped {
+		return domain.MetaString(t.Meta, "report", "note")
 	}
 	return ""
 }
@@ -186,7 +187,7 @@ func clip(s string, n int) string {
 // cause x, ok false when t gets no chat: no policy for its cause, or a
 // pool quarantine of the chat pool itself. A prompt that fails to render
 // is returned as err with ok false.
-func Policy(cfg *config.Config, t store.Ticket, x Cause) (pool, prompt string, ok bool, err error) {
+func Policy(cfg *config.Config, t domain.Ticket, x Cause) (pool, prompt string, ok bool, err error) {
 	var e *config.EscalationChat
 	var tmpl string
 	switch x.Kind {
@@ -266,14 +267,14 @@ func poolPolicy(cfg *config.Config, dest string) *config.EscalationChat {
 }
 
 // IssueRef tells the chat session which issue to read, with its repo.
-func IssueRef(t store.Ticket) string {
+func IssueRef(t domain.Ticket) string {
 	repo := ""
-	if r := store.MetaString(t.Meta, "github", "repo"); r != "" {
+	if r := domain.MetaString(t.Meta, "github", "repo"); r != "" {
 		repo = " --repo " + r
 	}
 	var m map[string]map[string]any
 	_ = json.Unmarshal(t.Meta, &m)
-	if k := store.MetaString(t.Meta, "linear", "issue"); k != "" {
+	if k := domain.MetaString(t.Meta, "linear", "issue"); k != "" {
 		return fmt.Sprintf("its Linear issue (`jobshop linear issue %s`)", k)
 	}
 	g := m["github"]

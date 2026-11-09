@@ -3,7 +3,7 @@ package control
 import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 )
@@ -37,7 +37,7 @@ func (c *Controller) mappedHomeDirIn(cfg *config.Config, pool string, slot *int)
 
 // sessionMappedHome returns the mapped user's home for t, prepared, or ""
 // when the pool has no isolation.user.
-func (c *Controller) sessionMappedHome(t store.Ticket, f store.SessionFields) (string, error) {
+func (c *Controller) sessionMappedHome(t domain.Ticket, f domain.SessionFields) (string, error) {
 	uid, gids, ok, err := c.mappedUser(t.Pool, f.Slot)
 	if err != nil || !ok {
 		return "", err
@@ -55,12 +55,12 @@ func (c *Controller) sessionMappedHome(t store.Ticket, f store.SessionFields) (s
 // Per-pool homes are shared by design and kept. The decision (closed
 // session, per_session pool, a slot on the row) is the controller's; the
 // deletion is sessionrt's.
-func (c *Controller) removeSlotHome(cfg *config.Config, t store.Ticket) {
+func (c *Controller) removeSlotHome(cfg *config.Config, t domain.Ticket) {
 	u := cfg.IsolationFor(t.Pool).User
-	if t.Kind != store.KindSession || t.Status != store.StatusClosed || u == nil || u.Slots() == 0 {
+	if t.Kind != domain.KindSession || t.Status != domain.StatusClosed || u == nil || u.Slots() == 0 {
 		return
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil || f.Slot == nil {
 		return
 	}

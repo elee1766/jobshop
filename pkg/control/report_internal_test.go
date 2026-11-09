@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -19,14 +20,14 @@ func TestReportQuestionAnswer(t *testing.T) {
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 	sc := scope{actor: sess.ID, session: sess.ID, project: "js", pool: "dev"}
 	admin := scope{admin: true, actor: "admin"}
 
 	_, err = c.report(ctx, sc, rpc.ReportParams{State: "stuck"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	// blocked labels the ticket; any other state clears the label.
 	_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportBlocked, Note: "needs #12"})
@@ -40,14 +41,14 @@ func TestReportQuestionAnswer(t *testing.T) {
 	assert.Contains(t, string(got.Meta), `"github"`, "other packs are kept")
 	ls, err := c.list(ctx, admin, rpc.ListParams{Report: rpc.ReportBlocked})
 	require.NoError(t, err)
-	assert.Len(t, ls.([]store.Ticket), 1)
+	assert.Len(t, ls.([]domain.Ticket), 1)
 
 	// A waiting report with a question files a needs-human question.
 	out, err := c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportWaiting, Note: "base?", Question: "Which base branch?"})
 	require.NoError(t, err)
 	q := out.(rpc.ReportResult).Question
 	require.NotNil(t, q)
-	assert.Equal(t, store.KindMessage, q.Kind)
+	assert.Equal(t, domain.KindMessage, q.Kind)
 	assert.Contains(t, q.Labels, needsHumanLabel)
 	qm, ok := questionOf(*q)
 	require.True(t, ok)
@@ -88,9 +89,9 @@ func TestReportQuestionAnswer(t *testing.T) {
 	ar := ans.(rpc.AnswerResult)
 	assert.Equal(t, resolutionAnswered, ar.Question.Resolution)
 	require.NotNil(t, ar.Message)
-	mf, err := store.DecodeFields[store.MessageFields](*ar.Message)
+	mf, err := domain.DecodeFields[domain.MessageFields](*ar.Message)
 	require.NoError(t, err)
-	assert.Equal(t, store.MessageFields{To: sess.ID, From: "@op"}, mf)
+	assert.Equal(t, domain.MessageFields{To: sess.ID, From: "@op"}, mf)
 	assert.Equal(t, "use main", ar.Message.Body)
 	inbox := runnerInbox(t, c, sess.ID)
 	require.Len(t, inbox, 1)
@@ -102,37 +103,37 @@ func TestReportQuestionAnswer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, cs[len(cs)-1].Body, "use main")
 	_, err = c.answerQuestion(ctx, admin, rpc.AnswerParams{ID: q.ID, Text: "again"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	// Context and options need a question; at most five options, each
 	// with a one-line title (JOB-101).
-	six := make([]rpc.QuestionOption, 6)
+	six := make([]domain.QuestionOption, 6)
 	for i := range six {
 		six[i].Title = "o"
 	}
 	for _, bad := range []rpc.ReportParams{
 		{State: rpc.ReportWaiting, Context: "a\nb"},
-		{State: rpc.ReportWaiting, Options: []rpc.QuestionOption{{Title: "a"}}},
+		{State: rpc.ReportWaiting, Options: []domain.QuestionOption{{Title: "a"}}},
 		{State: rpc.ReportWaiting, Question: "q", Options: six},
-		{State: rpc.ReportWaiting, Question: "q", Options: []rpc.QuestionOption{{Title: " "}}},
-		{State: rpc.ReportWaiting, Question: "q", Options: []rpc.QuestionOption{{Title: "two\nlines"}}},
+		{State: rpc.ReportWaiting, Question: "q", Options: []domain.QuestionOption{{Title: " "}}},
+		{State: rpc.ReportWaiting, Question: "q", Options: []domain.QuestionOption{{Title: "two\nlines"}}},
 	} {
 		_, err = c.report(ctx, sc, bad)
-		require.ErrorIs(t, err, store.ErrInvalid, "%+v", bad)
+		require.ErrorIs(t, err, domain.ErrInvalid, "%+v", bad)
 	}
 	// waiting --until hands the ticket back deferred.
 	until := clk.now().Add(2 * time.Hour)
 	_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportReady, Until: &until})
-	require.ErrorIs(t, err, store.ErrInvalid, "until is only for waiting")
+	require.ErrorIs(t, err, domain.ErrInvalid, "until is only for waiting")
 	_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportWaiting, Note: "CI", Until: &until})
 	require.NoError(t, err)
 	got, _ = c.store.Get(ctx, step.ID)
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.True(t, got.DeferUntil.Equal(until))
 }
 
 // runnerInbox is the inbox a session runner for id would read.
-func runnerInbox(t *testing.T, c *Controller, id string) []store.Ticket {
+func runnerInbox(t *testing.T, c *Controller, id string) []domain.Ticket {
 	t.Helper()
 	r := &runner{c: c, id: id, pool: "dev"}
 	return r.inbox(t.Context(), false)

@@ -20,6 +20,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -161,7 +162,7 @@ func TestLinearQuestion(t *testing.T) {
 
 	got, err = c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.Equal(t, domain.StatusClosed, got.Status)
 	assert.Equal(t, resolutionAnswered, got.Resolution)
 	msgs := messagesTo(t, c, sess.ID)
 	var answer, news bool
@@ -182,11 +183,11 @@ func TestLinearEscalation(t *testing.T) {
 	c, _, f := askController(t)
 	ctx := t.Context()
 	esc := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindTask, Title: "Escalate run r1", Body: "Run r1 needs a human.\n\n## Step 0 implement: failed\n- long", Labels: []string{needsHumanLabel},
+		Kind: domain.KindTask, Title: "Escalate run r1", Body: "Run r1 needs a human.\n\n## Step 0 implement: failed\n- long", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"linear":{"issue":"ENG-5"},"run":{"id":"r1","escalation":"r1/1"}}`),
 	})
 	gh := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindTask, Title: "Escalate run r2", Body: "Run r2", Labels: []string{needsHumanLabel},
+		Kind: domain.KindTask, Title: "Escalate run r2", Body: "Run r2", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"github":{"repo":"acme/app","issue":3},"run":{"id":"r2","escalation":"r2/1"}}`),
 	})
 	c.sweepLinearAsks(ctx, c.config())
@@ -213,7 +214,7 @@ func TestLinearAskRetry(t *testing.T) {
 	c, _, f := askController(t)
 	ctx := t.Context()
 	esc := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindTask, Title: "Escalate run r1", Body: "Run r1", Labels: []string{needsHumanLabel},
+		Kind: domain.KindTask, Title: "Escalate run r1", Body: "Run r1", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"linear":{"issue":"ENG-5"},"run":{"id":"r1","escalation":"r1/1"}}`),
 	})
 	c.sweepLinearAsks(ctx, c.config())
@@ -261,7 +262,7 @@ func TestLinearAskOff(t *testing.T) {
 	c.live.Store(lc)
 
 	esc := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindTask, Title: "Escalate run r1", Body: "Run r1 needs a human.", Labels: []string{needsHumanLabel},
+		Kind: domain.KindTask, Title: "Escalate run r1", Body: "Run r1 needs a human.", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"linear":{"issue":"ENG-5"},"run":{"id":"r1","escalation":"r1/1"}}`),
 	})
 	c.sweepLinearAsks(ctx, c.config())
@@ -280,7 +281,7 @@ func TestLinearAskOff(t *testing.T) {
 
 	got, err = c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, got.Status, "a Linear reply is not an answer")
+	assert.Equal(t, domain.StatusOpen, got.Status, "a Linear reply is not an answer")
 	var news bool
 	for _, m := range messagesTo(t, c, sess.ID) {
 		assert.NotContains(t, m.Title, "Answer to your question")

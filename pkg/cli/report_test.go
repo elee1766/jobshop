@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -32,7 +33,7 @@ func TestReportQuestionArgs(t *testing.T) {
 	a := reportArgs{Question: "which base?", Context: "rebased on both\nmain has the API", Option: []string{"main|ship next minor", "release | backport"}, Recommend: 1}
 	require.NoError(t, a.question(&p))
 	assert.Equal(t, "rebased on both\nmain has the API", p.Context)
-	assert.Equal(t, []rpc.QuestionOption{
+	assert.Equal(t, []domain.QuestionOption{
 		{Title: "main", Description: "ship next minor", Recommended: true},
 		{Title: "release", Description: "backport"},
 	}, p.Options)
@@ -40,7 +41,7 @@ func TestReportQuestionArgs(t *testing.T) {
 	p = rpc.ReportParams{}
 	a = reportArgs{Question: "q", Context: "a\nb", OptionsJSON: `[{"title":"x","description":"long\ntext"}]`}
 	require.NoError(t, a.question(&p))
-	assert.Equal(t, []rpc.QuestionOption{{Title: "x", Description: "long\ntext"}}, p.Options)
+	assert.Equal(t, []domain.QuestionOption{{Title: "x", Description: "long\ntext"}}, p.Options)
 
 	// A report with no question needs none of it.
 	p = rpc.ReportParams{}

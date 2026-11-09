@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -225,9 +226,9 @@ func TestGHGuard(t *testing.T) {
 		code     int
 		ran      bool
 	}{
-		{rpc.GuardAllow, 5, true},
-		{rpc.GuardDeny, 1, false},
-		{rpc.GuardAskHuman, 1, false},
+		{domain.GuardAllow, 5, true},
+		{domain.GuardDeny, 1, false},
+		{domain.GuardAskHuman, 1, false},
 	} {
 		t.Run(tc.decision, func(t *testing.T) {
 			dir := t.TempDir()
@@ -269,7 +270,7 @@ func TestGHExplicitToken(t *testing.T) {
 	gh, marker := tokenGH(t, dir)
 	t.Setenv("JOBSHOP_GH", gh)
 	t.Setenv("GH_TOKEN", "mine")
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	var out, errb bytes.Buffer
 	assert.Equal(t, 5, runGH(g, []string{"pr", "view", "-R", "o/n"}, nil, &out, &errb))

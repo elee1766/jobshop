@@ -13,6 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -80,7 +81,7 @@ func TestDispatchRacingDispatchers(t *testing.T) {
 		assert.Equal(t, 1, deliveredCounts(t, c, sess.ID, bodies)[b], b)
 	}
 	for _, st := range inboxStates(t, c) {
-		assert.Equal(t, store.InboxDispatched, st)
+		assert.Equal(t, domain.InboxDispatched, st)
 	}
 }
 
@@ -93,7 +94,7 @@ func TestDispatchWorkerOnlyWhenExternal(t *testing.T) {
 	bodies := admitComments(t, c, clk, src, 2)
 	c.ingestPass(t.Context())
 	assert.Empty(t, messagesTo(t, c, sess.ID))
-	assert.Equal(t, []string{store.InboxAdmitted, store.InboxAdmitted}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxAdmitted, domain.InboxAdmitted}, inboxStates(t, c))
 
 	w := worker(c, "w1")
 	w.Dispatch, w.NoAdmit = true, true
@@ -114,7 +115,7 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	c, clk, src, sess := dispatchController(t)
 	setDispatch(t, c, config.IngestWorkersExternal)
 	bodies := admitComments(t, c, clk, src, 1)
-	dead, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, ingestqueue.WorkerPrefix+"dead", dispatchLease)
+	dead, err := ingest.InboxClaim(t.Context(), c.store, []string{domain.InboxAdmitted}, ingestqueue.WorkerPrefix+"dead", dispatchLease)
 	require.NoError(t, err)
 
 	n, err := worker(c, "w2").DispatchOnce(t.Context())
@@ -127,8 +128,8 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 	assert.Equal(t, 1, deliveredCounts(t, c, sess.ID, bodies)[bodies[0]])
-	assert.Equal(t, []string{store.InboxDispatched}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxDispatched}, inboxStates(t, c))
 
-	_, err = ingest.InboxSetState(t.Context(), c.store, dead.ID, ingestqueue.WorkerPrefix+"dead", store.InboxUpdate{State: store.InboxDispatched})
-	require.ErrorIs(t, err, store.ErrConflict)
+	_, err = ingest.InboxSetState(t.Context(), c.store, dead.ID, ingestqueue.WorkerPrefix+"dead", store.InboxUpdate{State: domain.InboxDispatched})
+	require.ErrorIs(t, err, domain.ErrConflict)
 }

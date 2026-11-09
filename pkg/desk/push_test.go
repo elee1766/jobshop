@@ -27,8 +27,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func unb64(t *testing.T, s string) []byte {
@@ -54,7 +54,7 @@ func TestPushControllerEvents(t *testing.T) {
 	}, "initial event subscription did not prime notifications")
 	br := newBrowser(t, p.publicKey())
 	require.NoError(t, p.subscribe(br.sub()))
-	var ticket store.Ticket
+	var ticket domain.Ticket
 	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Title: "operator decision", Labels: []string{NeedsHuman}}, &ticket)
 	c.PassUntil(func() bool {
 		br.mu.Lock()
@@ -214,7 +214,7 @@ func TestPushRoutes(t *testing.T) {
 	off := New(Config{}, &fakeCtl{}, nil).Handler()
 	assert.Equal(t, http.StatusOK, get(t, off, "/api/push/key", nil).Code)
 	p := &Push{File: filepath.Join(t.TempDir(), "push.json")}
-	s := New(Config{Push: p}, &fakeCtl{results: map[string]any{rpc.MethodRunList + ":" + store.RunNeedsHuman: []store.Ticket{}}}, nil)
+	s := New(Config{Push: p}, &fakeCtl{results: map[string]any{rpc.MethodRunList + ":" + domain.RunNeedsHuman: []domain.Ticket{}}}, nil)
 	require.NoError(t, p.open())
 	var k map[string]string
 	get(t, s.Handler(), "/api/push/key", &k)

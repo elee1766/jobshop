@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -41,7 +41,7 @@ const outputMax = 64 << 10
 type Host interface {
 	Now() time.Time
 	// Resources reads slots and demand; pool "" is every pool.
-	Resources(ctx context.Context, pool string) (store.ResourceReport, error)
+	Resources(ctx context.Context, pool string) (domain.ResourceReport, error)
 	// Go runs f in the background, tracked so the controller waits for it
 	// on shutdown.
 	Go(f func())
@@ -56,11 +56,11 @@ type Host interface {
 
 // Call is the JSON a provider gets on stdin or as the POST body.
 type Call struct {
-	Op       string            `json:"op"` // reset, demand, remove
-	Resource string            `json:"resource"`
-	Slot     string            `json:"slot,omitempty"`
-	Env      map[string]string `json:"env,omitempty"`
-	Demand   *store.SlotDemand `json:"demand,omitempty"`
+	Op       string             `json:"op"` // reset, demand, remove
+	Resource string             `json:"resource"`
+	Slot     string             `json:"slot,omitempty"`
+	Env      map[string]string  `json:"env,omitempty"`
+	Demand   *domain.SlotDemand `json:"demand,omitempty"`
 }
 
 // Client calls providers and tracks demand and idle release. Its state is
@@ -70,7 +70,7 @@ type Client struct {
 	log *slog.Logger
 
 	demandAt   map[string]time.Time
-	demandLast map[string]store.SlotDemand
+	demandLast map[string]domain.SlotDemand
 	// removing marks slots already asked to be removed, so a slow
 	// provider is not asked every pass.
 	removing map[string]time.Time
@@ -81,7 +81,7 @@ func New(h Host, log *slog.Logger) *Client {
 	return &Client{
 		h: h, log: log,
 		demandAt:   map[string]time.Time{},
-		demandLast: map[string]store.SlotDemand{},
+		demandLast: map[string]domain.SlotDemand{},
 		removing:   map[string]time.Time{},
 	}
 }
@@ -144,7 +144,7 @@ func (c *Client) Pass(ctx context.Context, cfg *config.Config) {
 	// Forget remove marks of slots that are gone or no longer idle.
 	idleNow := map[string]bool{}
 	for _, sl := range slots {
-		if sl.State == store.SlotReady {
+		if sl.State == domain.SlotReady {
 			idleNow[sl.Pool+"/"+sl.ID] = true
 		}
 	}
@@ -166,7 +166,7 @@ func (c *Client) Pass(ctx context.Context, cfg *config.Config) {
 		}
 		for _, sl := range slots {
 			k := sl.Pool + "/" + sl.ID
-			if sl.Pool != name || sl.State != store.SlotReady || now.Sub(sl.UpdatedAt) < idle {
+			if sl.Pool != name || sl.State != domain.SlotReady || now.Sub(sl.UpdatedAt) < idle {
 				continue
 			}
 			if at, ok := c.removing[k]; ok && now.Sub(at) < idle {
@@ -189,9 +189,9 @@ func (c *Client) async(p *config.Provider, call Call) {
 
 // Env is the env of the slots t's claim holds in rep, sorted, as
 // KEY=value.
-func Env(rep store.ResourceReport, t store.Ticket) []string {
+func Env(rep domain.ResourceReport, t domain.Ticket) []string {
 	var out []string
-	for _, sl := range store.TicketSlots(rep, t) {
+	for _, sl := range domain.TicketSlots(rep, t) {
 		out = append(out, "JOBSHOP_SLOT_"+strings.ToUpper(sl.Pool)+"="+sl.ID)
 		for _, k := range slices.Sorted(maps.Keys(sl.Env)) {
 			out = append(out, k+"="+sl.Env[k])

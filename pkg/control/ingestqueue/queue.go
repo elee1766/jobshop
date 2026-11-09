@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/clock"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Ingest queue (#335, #679, docs/notes/679-ingest-queue.md). Every
@@ -57,10 +57,10 @@ type Host interface {
 	// SpoolPath is the configured spool file now.
 	SpoolPath() string
 	// WakeWaits wakes the waits whose conditions name a new item.
-	WakeWaits(items []store.InboxItem)
+	WakeWaits(items []domain.InboxItem)
 	// Drained is called with the new items a drain moved, after the
 	// notifier advanced: the Linear consumer reads them.
-	Drained(items []store.InboxItem)
+	Drained(items []domain.InboxItem)
 }
 
 // Service is the queue state. The zero value is not usable; use New.
@@ -139,7 +139,7 @@ func (s *Service) Changed() <-chan struct{} { return s.inbox.Changed() }
 // (#679): it wakes the inbox's consumers and the waits whose conditions
 // name a new item's subject. Items are the new ones only; dedupes do not
 // call it.
-func (s *Service) Appended(items []store.InboxItem) {
+func (s *Service) Appended(items []domain.InboxItem) {
 	if len(items) == 0 {
 		return
 	}
@@ -244,10 +244,10 @@ func (s *Service) Next(ctx context.Context, after int64, timeout time.Duration) 
 // PutPolled stores a poller's row. When the webhook copy came first
 // under the same natural key, it keeps that one (deduped for the
 // record) and adds the poller row the dispatcher delivers.
-func (s *Service) PutPolled(ctx context.Context, it store.InboxItem) error {
+func (s *Service) PutPolled(ctx context.Context, it domain.InboxItem) error {
 	got, dup, err := ingest.InboxPut(ctx, s.h.Store(), it)
 	if err == nil && !dup {
-		s.Appended([]store.InboxItem{got})
+		s.Appended([]domain.InboxItem{got})
 	}
 	if err != nil || !dup || got.DeliveryID == it.DeliveryID {
 		return err
@@ -255,14 +255,14 @@ func (s *Service) PutPolled(ctx context.Context, it store.InboxItem) error {
 	it.NaturalKey = ""
 	got, dup, err = ingest.InboxPut(ctx, s.h.Store(), it)
 	if err == nil && !dup {
-		s.Appended([]store.InboxItem{got})
+		s.Appended([]domain.InboxItem{got})
 	}
 	return err
 }
 
 // PutBatch stores activity poller rows and returns how it went; the
 // fresh ones wake the consumers even when the batch failed part way.
-func (s *Service) PutBatch(ctx context.Context, items []store.InboxItem) error {
+func (s *Service) PutBatch(ctx context.Context, items []domain.InboxItem) error {
 	fresh, err := ingest.InboxPutBatch(ctx, s.h.Store(), items)
 	s.Appended(fresh)
 	return err

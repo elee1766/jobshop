@@ -11,9 +11,9 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // workerController is an admissionController in ingest.workers external
@@ -63,24 +63,24 @@ func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
 		mut("upper", `echo '{"patch":[{"op":"replace","path":"/payload/body","value":"HELLO"}]}'`),
 		val("deny-bad", `grep -q '"actor":"bad"' && echo '{"decision":"deny","reason":"bad actor"}' || true`),
 	}, nil)
-	ok1 := putInbox(t, c, store.InboxItem{DeliveryID: "a"})
-	bad := putInbox(t, c, store.InboxItem{DeliveryID: "b", Actor: "bad"})
+	ok1 := putInbox(t, c, domain.InboxItem{DeliveryID: "a"})
+	bad := putInbox(t, c, domain.InboxItem{DeliveryID: "b", Actor: "bad"})
 
 	c.ingestPass(t.Context())
 	got, err := ingest.InboxGet(t.Context(), c.store, ok1.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.InboxPending, got.State, "the controller does not admit in external mode")
+	assert.Equal(t, domain.InboxPending, got.State, "the controller does not admit in external mode")
 
 	n, err := worker(c, "w1").Once(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 	got, err = ingest.InboxGet(t.Context(), c.store, ok1.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.JSONEq(t, `{"body":"HELLO","token":"s3cret"}`, string(got.Admitted))
 	got, err = ingest.InboxGet(t.Context(), c.store, bad.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.InboxDenied, got.State)
+	assert.Equal(t, domain.InboxDenied, got.State)
 
 	ws := c.queue().Workers()
 	require.Len(t, ws, 1)
@@ -92,9 +92,9 @@ func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
 func TestIngestWorkerClaimRefusedInternal(t *testing.T) {
 	t.Parallel()
 	c, _ := admissionController(t, nil)
-	putInbox(t, c, store.InboxItem{})
+	putInbox(t, c, domain.InboxItem{})
 	_, err := worker(c, "w1").Once(t.Context())
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 }
 
 // TestIngestWorkerDeadLeaseExpires: a worker that claims and dies leaves
@@ -103,7 +103,7 @@ func TestIngestWorkerClaimRefusedInternal(t *testing.T) {
 func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 	t.Parallel()
 	c, clk := workerController(t, nil, nil)
-	it := putInbox(t, c, store.InboxItem{})
+	it := putInbox(t, c, domain.InboxItem{})
 	var cl rpc.IngestClaimResult
 	require.NoError(t, inProcCall(c)(t.Context(), rpc.MethodIngestClaim, rpc.IngestClaimParams{Worker: "dead"}, &cl))
 	require.NotNil(t, cl.Item)
@@ -118,12 +118,12 @@ func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 	assert.Equal(t, 1, n)
 	got, err := ingest.InboxGet(t.Context(), c.store, it.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.InboxAdmitted, got.State)
+	assert.Equal(t, domain.InboxAdmitted, got.State)
 	assert.EqualValues(t, 2, got.Attempts)
 
 	run, _ := json.Marshal(ingestqueue.Run{})
 	err = inProcCall(c)(t.Context(), rpc.MethodIngestAdmit, rpc.IngestAdmitParams{Worker: "dead", ID: it.ID, Run: run}, &json.RawMessage{})
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 }
 
 func attentionIDs(t *testing.T, c *Controller) []string {
@@ -166,8 +166,8 @@ func TestIngestBacklogAttention(t *testing.T) {
 	c, clk := workerController(t, nil, func(i *config.Ingest) {
 		i.BacklogAfter, i.BacklogMax, i.WorkerMissing = "10m", 1, "1h"
 	})
-	putInbox(t, c, store.InboxItem{DeliveryID: "a"})
-	putInbox(t, c, store.InboxItem{DeliveryID: "b"})
+	putInbox(t, c, domain.InboxItem{DeliveryID: "a"})
+	putInbox(t, c, domain.InboxItem{DeliveryID: "b"})
 	clk.advance(5 * time.Minute)
 	assert.Empty(t, attentionIDs(t, c), "not old enough")
 	clk.advance(6 * time.Minute)
@@ -182,6 +182,6 @@ func TestIngestBacklogAttention(t *testing.T) {
 	assert.Empty(t, attentionIDs(t, c), "admitted")
 	counts, err := ingest.InboxCounts(t.Context(), c.store)
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, counts[store.InboxAdmitted])
-	assert.Zero(t, counts[store.InboxPending])
+	assert.EqualValues(t, 2, counts[domain.InboxAdmitted])
+	assert.Zero(t, counts[domain.InboxPending])
 }

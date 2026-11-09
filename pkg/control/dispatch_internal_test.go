@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -19,7 +20,7 @@ import (
 // dispatchController is a subController with admission hooks, a working
 // session holding a ticket that follows acme/widget#7, and the thread
 // registered.
-func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controller, *scanClock, *fakeThreads, store.Ticket) {
+func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controller, *scanClock, *fakeThreads, domain.Ticket) {
 	t.Helper()
 	c, clk, src := subController(t)
 	cfg := *c.config()
@@ -62,7 +63,7 @@ func TestDispatchMutatedPayload(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.Contains(t, msgs[0].Body, "[redacted]")
 	assert.NotContains(t, msgs[0].Body, "hunter2")
-	assert.Equal(t, []string{store.InboxDispatched}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxDispatched}, inboxStates(t, c))
 }
 
 // TestDispatchDenied: a validating deny means no delivery, and the read
@@ -74,7 +75,7 @@ func TestDispatchDenied(t *testing.T) {
 	c.pollSubscriptions(t.Context(), src)
 	c.pollSubscriptions(t.Context(), src)
 	assert.Empty(t, messagesTo(t, c, sess.ID))
-	assert.Equal(t, []string{store.InboxDenied}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxDenied}, inboxStates(t, c))
 }
 
 // TestDispatchHeldThenReleased: a held row is not delivered; once the
@@ -85,7 +86,7 @@ func TestDispatchHeldThenReleased(t *testing.T) {
 	src.add("acme/widget#7", comment(clk, "c1", "hello").Comment)
 	c.pollSubscriptions(t.Context(), src)
 	assert.Empty(t, messagesTo(t, c, sess.ID))
-	assert.Equal(t, []string{store.InboxHeld}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxHeld}, inboxStates(t, c))
 
 	asks, err := c.store.List(t.Context(), store.Filter{Label: needsHumanLabel})
 	require.NoError(t, err)
@@ -95,7 +96,7 @@ func TestDispatchHeldThenReleased(t *testing.T) {
 	c.ingestPass(t.Context())
 	c.ingestPass(t.Context())
 	require.Len(t, messagesTo(t, c, sess.ID), 1)
-	assert.Equal(t, []string{store.InboxDispatched}, inboxStates(t, c))
+	assert.Equal(t, []string{domain.InboxDispatched}, inboxStates(t, c))
 }
 
 // TestDispatchCrashAfterAdmit: a dispatcher that dies holding admitted
@@ -112,7 +113,7 @@ func TestDispatchCrashAfterAdmit(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	// A dispatcher claims it and dies.
-	it, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, dispatchHolder, dispatchLease)
+	it, err := ingest.InboxClaim(t.Context(), c.store, []string{domain.InboxAdmitted}, dispatchHolder, dispatchLease)
 	require.NoError(t, err)
 	c.ingestPass(t.Context())
 	assert.Empty(t, messagesTo(t, c, sess.ID), "leased by the dead dispatcher")
@@ -122,7 +123,7 @@ func TestDispatchCrashAfterAdmit(t *testing.T) {
 	require.Len(t, messagesTo(t, c, sess.ID), 1, "redelivered after the lease expires")
 
 	// The same row admitted again (a lost dispatched write): no repeat.
-	_, err = ingest.InboxRequeue(t.Context(), c.store, it.ID, store.InboxDispatched, store.InboxAdmitted)
+	_, err = ingest.InboxRequeue(t.Context(), c.store, it.ID, domain.InboxDispatched, domain.InboxAdmitted)
 	require.NoError(t, err)
 	c.ingestPass(t.Context())
 	assert.Len(t, messagesTo(t, c, sess.ID), 1, "the write key stops a second delivery")
@@ -134,7 +135,7 @@ func TestDispatchWebhookFirst(t *testing.T) {
 	t.Parallel()
 	c, clk, src, sess := dispatchController(t)
 	cm := comment(clk, "c42", "hi")
-	putInbox(t, c, store.InboxItem{DeliveryID: "github:w1", NaturalKey: "github:comment:acme/widget:42:" + cm.At.UTC().Format(time.RFC3339)})
+	putInbox(t, c, domain.InboxItem{DeliveryID: "github:w1", NaturalKey: "github:comment:acme/widget:42:" + cm.At.UTC().Format(time.RFC3339)})
 	src.add("acme/widget#7", cm.Comment)
 	c.pollSubscriptions(t.Context(), src)
 	require.Len(t, messagesTo(t, c, sess.ID), 1)

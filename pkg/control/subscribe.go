@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -104,15 +105,15 @@ func (c *Controller) deliverThread(ctx context.Context, th threads.Thread, cs []
 		return err
 	}
 	switch t.Status {
-	case store.StatusInProgress:
+	case domain.StatusInProgress:
 		// The working session gets it now: interrupt, deliver, then the
 		// held ticket is prompted again (runner.work).
-		fields, err := json.Marshal(store.MessageFields{To: t.Holder, From: author, Interrupt: true})
+		fields, err := json.Marshal(domain.MessageFields{To: t.Holder, From: author, Interrupt: true})
 		if err != nil {
 			return err
 		}
 		_, err = store.Create(ctx, c.store, "controller", store.NewTicket{
-			Project: t.Project, Kind: store.KindMessage,
+			Project: t.Project, Kind: domain.KindMessage,
 			Title: fmt.Sprintf("%s has new comments for %s", th.Name(), t.ID),
 			Body:  text, Fields: fields,
 		})
@@ -121,16 +122,16 @@ func (c *Controller) deliverThread(ctx context.Context, th threads.Thread, cs []
 			c.wakeRunner(t.Holder)
 		}
 		return err
-	case store.StatusOpen:
+	case domain.StatusOpen:
 		return nil // the comment is in the prompt when it is claimed
 	}
 	if now.Sub(t.ClosedAt) > window {
 		return nil
 	}
-	if t.Kind == store.KindStep && t.ParentID != "" {
+	if t.Kind == domain.KindStep && t.ParentID != "" {
 		// A finished run stays finished; its step keeps the comment and
 		// the operator decides (run resume).
-		if run, err := c.store.Get(ctx, t.ParentID); err != nil || run.Status == store.StatusClosed {
+		if run, err := c.store.Get(ctx, t.ParentID); err != nil || run.Status == domain.StatusClosed {
 			return nil
 		}
 	}
@@ -140,7 +141,7 @@ func (c *Controller) deliverThread(ctx context.Context, th threads.Thread, cs []
 // resumeFollower reopens a closed ticket for a human comment and, when
 // the session that last held it is still open, assigns it there so the
 // same conversation continues.
-func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th threads.Thread) error {
+func (c *Controller) resumeFollower(ctx context.Context, t domain.Ticket, th threads.Thread) error {
 	last := c.lastHolder(ctx, t.ID)
 	if _, err := store.Reopen(ctx, c.store, "controller", t.ID); err != nil {
 		return err
@@ -149,7 +150,7 @@ func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thre
 	if last == "" {
 		return nil
 	}
-	if s, err := c.store.Get(ctx, last); err != nil || s.Kind != store.KindSession || s.Status == store.StatusClosed {
+	if s, err := c.store.Get(ctx, last); err != nil || s.Kind != domain.KindSession || s.Status == domain.StatusClosed {
 		return nil
 	}
 	if _, err := c.store.Update(ctx, "controller", t.ID, store.Update{Holder: &last}); err != nil {
@@ -166,7 +167,7 @@ func (c *Controller) lastHolder(ctx context.Context, id string) string {
 // subscribe adds a thread to a ticket's meta.subscribe (session or admin).
 func (c *Controller) subscribe(ctx context.Context, sc scope, p rpc.SubscribeParams) (any, error) {
 	if !config.RepoPattern.MatchString(p.Repo) || p.Number <= 0 {
-		return nil, fmt.Errorf("%w: thread must be owner/name and a positive number", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: thread must be owner/name and a positive number", domain.ErrInvalid)
 	}
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
@@ -184,7 +185,7 @@ func (c *Controller) subscribe(ctx context.Context, sc scope, p rpc.SubscribePar
 	f := &threads.Follower{T: t, Threads: append(sm.Threads, th)}
 	c.threadEngine().Save(ctx, f)
 	if !slices.ContainsFunc(f.Threads, func(x threads.Thread) bool { return x.Key() == th.Key() }) {
-		return nil, fmt.Errorf("%w: %s changed, try again", store.ErrConflict, id)
+		return nil, fmt.Errorf("%w: %s changed, try again", domain.ErrConflict, id)
 	}
 	return f.T, nil
 }

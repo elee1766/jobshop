@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/control/attention"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -43,7 +44,7 @@ func (c *Controller) executeAttention(ctx context.Context, sc scope, a attention
 		}
 		w := waitOf(current)
 		if w == nil {
-			return fmt.Errorf("%w: wait already cleared", store.ErrConflict)
+			return fmt.Errorf("%w: wait already cleared", domain.ErrConflict)
 		}
 		w.Timeout, w.TimedOut = c.now().Add(time.Hour), false
 		fields, fieldErr := withWait(current, w)
@@ -63,7 +64,7 @@ func (c *Controller) attentionAnswer(ctx context.Context, sc scope, p rpc.Attent
 		return nil, err
 	}
 	if len(p.Note) > 32<<10 {
-		return nil, fmt.Errorf("%w: note is too long", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: note is too long", domain.ErrInvalid)
 	}
 	items, err := c.attentionItems(ctx, c.config())
 	if err != nil {
@@ -71,7 +72,7 @@ func (c *Controller) attentionAnswer(ctx context.Context, sc scope, p rpc.Attent
 	}
 	index := slices.IndexFunc(items, func(it rpc.AttentionItem) bool { return it.Kind == p.Kind && it.ID == p.ID })
 	if index < 0 {
-		return nil, fmt.Errorf("%w: item is no longer waiting", store.ErrConflict)
+		return nil, fmt.Errorf("%w: item is no longer waiting", domain.ErrConflict)
 	}
 	it := items[index]
 	if !sc.admin && it.Project != sc.project {
@@ -80,15 +81,15 @@ func (c *Controller) attentionAnswer(ctx context.Context, sc scope, p rpc.Attent
 	actions := c.attentionActions(ctx, it)
 	choice := slices.IndexFunc(actions, func(a attention.Action) bool { return a.Option.ID == p.Option })
 	if choice < 0 {
-		return nil, fmt.Errorf("%w: unknown option", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: unknown option", domain.ErrInvalid)
 	}
 	a := actions[choice]
 	if p.ExpectedTitle != "" && p.ExpectedTitle != a.Option.Title {
-		return nil, fmt.Errorf("%w: choices changed, refresh before answering", store.ErrConflict)
+		return nil, fmt.Errorf("%w: choices changed, refresh before answering", domain.ErrConflict)
 	}
 	if !sc.admin {
 		if t, err := c.store.Get(ctx, sc.session); err == nil {
-			if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Operator != "" {
+			if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Operator != "" {
 				sc.actor = f.Operator
 			}
 		}
@@ -106,7 +107,7 @@ func (c *Controller) attentionAnswer(ctx context.Context, sc scope, p rpc.Attent
 			c.log.WarnContext(ctx, "attention follow-up", "session", res.Session, "err", err)
 		}
 	}
-	if t, err := c.store.Get(ctx, it.ID); err == nil && t.Kind != store.KindSession {
+	if t, err := c.store.Get(ctx, it.ID); err == nil && t.Kind != domain.KindSession {
 		if _, err := store.AddComment(ctx, c.store, sc.actor, t.ID, fmt.Sprintf("Attention answer: %s. %s", a.Option.Title, p.Note)); err != nil {
 			c.log.WarnContext(ctx, "record attention answer", "ticket", t.ID, "err", err)
 		}

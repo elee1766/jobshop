@@ -14,9 +14,9 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // titleGitHub serves issue and PR titles of acme/app and counts reads.
@@ -69,7 +69,7 @@ func titleController(t *testing.T) (*Controller, *titleGitHub) {
 	return c, gh
 }
 
-func startTitled(t *testing.T, c *Controller, p rpc.RunStartParams) store.Ticket {
+func startTitled(t *testing.T, c *Controller, p rpc.RunStartParams) domain.Ticket {
 	t.Helper()
 	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, p, nil)
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestRunTitle(t *testing.T) {
 	r := startTitled(t, c, rpc.RunStartParams{Workflow: "pw", Vars: map[string]string{"issue": "7"}, Key: "issue-7"})
 	assert.Equal(t, "Add a thing", r.Title)
 	assert.Equal(t, 7, int(metaNumber(t, r, "issue")))
-	f, err := store.DecodeFields[store.RunFields](r)
+	f, err := domain.DecodeFields[domain.RunFields](r)
 	require.NoError(t, err)
 	assert.Equal(t, "issue-7", f.Key, "the dedup key does not depend on the title")
 
@@ -156,7 +156,7 @@ func TestFindingTitle(t *testing.T) {
 	assert.Equal(t, "Run plain scan:needs_human:js-1", stuck.Title, "stuck work keeps its descriptive title")
 }
 
-func metaNumber(t *testing.T, r store.Ticket, key string) float64 {
+func metaNumber(t *testing.T, r domain.Ticket, key string) float64 {
 	t.Helper()
 	var m map[string]map[string]any
 	require.NoError(t, json.Unmarshal(r.Meta, &m))

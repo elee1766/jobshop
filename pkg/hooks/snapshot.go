@@ -3,12 +3,12 @@ package hooks
 import (
 	"strconv"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // StepInput is a step ticket as a callback sees it.
-func StepInput(t store.Ticket) (Step, error) {
-	f, err := store.DecodeFields[store.StepFields](t)
+func StepInput(t domain.Ticket) (Step, error) {
+	f, err := domain.DecodeFields[domain.StepFields](t)
 	return Step{ID: f.Step, TicketID: t.ID, Pool: t.Pool, Status: string(t.Status), Resolution: t.Resolution, Outcome: f.Outcome, Output: f.StructuredOutput, Inputs: f.Inputs, Failures: f.Failures, Retries: f.Retries}, err
 }
 
@@ -16,12 +16,12 @@ func StepInput(t store.Ticket) (Step, error) {
 // revision of the run and of every child (steps or not) that was read. The
 // host checks that read set again before it commits what the callback
 // returned, so a change in between supersedes the invocation.
-func RunSnapshot(run store.Ticket, f store.RunFields, children []store.Ticket) (*Run, map[string]int64, error) {
+func RunSnapshot(run domain.Ticket, f domain.RunFields, children []domain.Ticket) (*Run, map[string]int64, error) {
 	in := &Run{ID: run.ID, Workflow: f.Workflow, Key: f.Key, Project: run.Project, Inputs: f.Inputs, Vars: f.Vars, State: f.State, Steps: []Step{}}
 	readSet := map[string]int64{run.ID: run.Revision}
 	for _, child := range children {
 		readSet[child.ID] = child.Revision
-		if child.Kind != store.KindStep {
+		if child.Kind != domain.KindStep {
 			continue
 		}
 		step, err := StepInput(child)
@@ -40,7 +40,7 @@ func RunSnapshot(run store.Ticket, f store.RunFields, children []store.Ticket) (
 // automation version, so enqueueing again is harmless (Put deduplicates).
 // parent is the invocation that started the run, for the audit chain.
 // ok is false when nothing is due. run must have f.Automation set.
-func RunDue(run store.Ticket, f store.RunFields, children []store.Ticket, parent string) (key string, in Invocation, ok bool, err error) {
+func RunDue(run domain.Ticket, f domain.RunFields, children []domain.Ticket, parent string) (key string, in Invocation, ok bool, err error) {
 	a := f.Automation
 	input, readSet, err := RunSnapshot(run, f, children)
 	if err != nil {
@@ -52,7 +52,7 @@ func RunDue(run store.Ticket, f store.RunFields, children []store.Ticket, parent
 		in.Entry = a.OnStart
 	} else {
 		for _, child := range children {
-			if child.Kind != store.KindStep || !store.StepFinished(child) || a.Completed[child.ID] == child.Revision {
+			if child.Kind != domain.KindStep || !domain.StepFinished(child) || a.Completed[child.ID] == child.Revision {
 				continue
 			}
 			step, err := StepInput(child)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -22,13 +23,13 @@ import (
 // prWorkRun returns the pr-work run whose steps posted a link to
 // repo#n (the "PR <url> head <sha>" handoff), so only PRs jobshop
 // merged through a run count.
-func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.Ticket, bool) {
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (domain.Ticket, bool) {
+	runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, Order: store.OrderNewest})
 	if err != nil {
-		return store.Ticket{}, false
+		return domain.Ticket{}, false
 	}
 	for _, r := range runs {
-		rf, err := store.DecodeFields[store.RunFields](r)
+		rf, err := domain.DecodeFields[domain.RunFields](r)
 		if err != nil || rf.Workflow != "pr-work" || !strings.EqualFold(metaString(r.Meta, "github", "repo"), repo) {
 			continue
 		}
@@ -36,7 +37,7 @@ func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.T
 		if err != nil {
 			continue
 		}
-		for _, s := range append([]store.Ticket{r}, steps...) {
+		for _, s := range append([]domain.Ticket{r}, steps...) {
 			cs, err := store.Comments(ctx, c.store, s.ID)
 			if err != nil {
 				continue
@@ -48,7 +49,7 @@ func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.T
 			}
 		}
 	}
-	return store.Ticket{}, false
+	return domain.Ticket{}, false
 }
 
 // revertKey marks a revert learning so a later poll or a restart does
@@ -89,7 +90,7 @@ func (c *Controller) checkRevert(ctx context.Context, src github.PullSource, rep
 		return nil
 	}
 	key := revertKey(repo, pr.Number)
-	prior, err := learning.List(ctx, c.store, store.LearningFilter{Ticket: run.ID, Kind: store.LearningCorrection})
+	prior, err := learning.List(ctx, c.store, store.LearningFilter{Ticket: run.ID, Kind: domain.LearningCorrection})
 	if err != nil {
 		return err
 	}
@@ -111,6 +112,6 @@ func (c *Controller) checkRevert(ctx context.Context, src github.PullSource, rep
 	}
 	summary := fmt.Sprintf("%s: PR #%d%s (run %s) was reverted by PR #%d %s",
 		key, orig.Number, issue, run.ID, pr.Number, pr.HTMLURL)
-	c.record(ctx, store.LearningCorrection, run, summary, pr.Body)
+	c.record(ctx, domain.LearningCorrection, run, summary, pr.Body)
 	return nil
 }

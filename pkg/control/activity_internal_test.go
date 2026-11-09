@@ -16,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -93,8 +94,8 @@ func TestActivityPollListAndLinks(t *testing.T) {
 	t.Parallel()
 	c, clk, src := activityController(t)
 	now := clk.now()
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":255}}`)})
-	mkTicket(t, c, store.NewTicket{Kind: store.KindStep, Title: "step", Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`), ParentID: run.ID, Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","pr":"260"}}`)})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":255}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: domain.KindStep, Title: "step", Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`), ParentID: run.ID, Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","pr":"260"}}`)})
 	src.gh["elee1766/jobshop"] = []rpc.ActivityItem{
 		ghItem("elee1766/jobshop", "1", "comment", "elee1766", "255", now.Add(-time.Hour)),
 		ghItem("elee1766/jobshop", "2", "review", "elee-agent[bot]", "260", now.Add(-2*time.Hour)),
@@ -122,7 +123,7 @@ func TestActivityGrantAndOff(t *testing.T) {
 	_, err = c.activityList(t.Context(), scope{pool: "plan"}, rpc.ActivityListParams{})
 	require.NoError(t, err)
 	_, err = c.activityList(t.Context(), scope{admin: true}, rpc.ActivityListParams{Bots: "robots"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 // pollActivity runs one poll pass on src.

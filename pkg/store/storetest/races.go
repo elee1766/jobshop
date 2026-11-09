@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -40,7 +41,7 @@ func race(n int, f func(i int)) {
 func retryConflict(f func() error) error {
 	var err error
 	for range 50 {
-		if err = f(); !errors.Is(err, store.ErrConflict) {
+		if err = f(); !errors.Is(err, domain.ErrConflict) {
 			return err
 		}
 	}
@@ -64,7 +65,7 @@ func testRaceClaimNextExtend(t *testing.T, s store.Store, _ *Clock) {
 		holder := fmt.Sprintf("h%d", i%n)
 		for range 4 {
 			tk, c, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: holder, Lease: lease})
-			if errors.Is(err, store.ErrNoWork) || errors.Is(err, store.ErrConflict) {
+			if errors.Is(err, domain.ErrNoWork) || errors.Is(err, domain.ErrConflict) {
 				continue
 			}
 			if !assert.NoError(t, err, holder) {
@@ -84,7 +85,7 @@ func testRaceClaimNextExtend(t *testing.T, s store.Store, _ *Clock) {
 		assert.Len(t, hs, 1, "one holder for %s", id)
 		got, err := s.Get(ctx, id)
 		require.NoError(t, err)
-		assert.Equal(t, store.StatusInProgress, got.Status)
+		assert.Equal(t, domain.StatusInProgress, got.Status)
 		for h := range hs {
 			assert.Equal(t, h, got.Holder)
 		}
@@ -153,7 +154,7 @@ func testRaceReleaseExpire(t *testing.T, s store.Store, _ *Clock) {
 		if i < n {
 			_, err := s.Release(ctx, "", h.id, &h.c, store.Outcome{Reason: "done"})
 			if err != nil {
-				assert.True(t, errors.Is(err, store.ErrNotHolder) || errors.Is(err, store.ErrConflict), "release %s: %v", h.id, err)
+				assert.True(t, errors.Is(err, domain.ErrNotHolder) || errors.Is(err, domain.ErrConflict), "release %s: %v", h.id, err)
 			}
 			return
 		}
@@ -166,10 +167,10 @@ func testRaceReleaseExpire(t *testing.T, s store.Store, _ *Clock) {
 	for _, h := range hs {
 		got, err := s.Get(ctx, h.id)
 		require.NoError(t, err)
-		assert.Equal(t, store.StatusOpen, got.Status, h.id)
+		assert.Equal(t, domain.StatusOpen, got.Status, h.id)
 		assert.Empty(t, got.Holder, h.id)
 		_, err = s.Heartbeat(ctx, h.c, lease)
-		assert.ErrorIs(t, err, store.ErrNotHolder)
+		assert.ErrorIs(t, err, domain.ErrNotHolder)
 	}
 }
 
@@ -202,7 +203,7 @@ func testRaceHeartbeatSweep(t *testing.T, s store.Store, c *Clock) {
 				beat[cl.TicketID] = true
 				mu.Unlock()
 			} else {
-				assert.ErrorIs(t, err, store.ErrNotHolder)
+				assert.ErrorIs(t, err, domain.ErrNotHolder)
 			}
 			return
 		}
@@ -226,12 +227,12 @@ func testRaceHeartbeatSweep(t *testing.T, s store.Store, c *Clock) {
 		got, err := s.Get(ctx, cl.TicketID)
 		require.NoError(t, err)
 		if swept[cl.TicketID] {
-			assert.Equal(t, store.StatusOpen, got.Status, cl.TicketID)
+			assert.Equal(t, domain.StatusOpen, got.Status, cl.TicketID)
 			_, err = s.Heartbeat(ctx, cl, lease)
-			assert.ErrorIs(t, err, store.ErrNotHolder, "swept %s cannot heartbeat", cl.TicketID)
+			assert.ErrorIs(t, err, domain.ErrNotHolder, "swept %s cannot heartbeat", cl.TicketID)
 		} else {
 			assert.True(t, beat[cl.TicketID], "%s neither swept nor renewed", cl.TicketID)
-			assert.Equal(t, store.StatusInProgress, got.Status, cl.TicketID)
+			assert.Equal(t, domain.StatusInProgress, got.Status, cl.TicketID)
 			assert.Equal(t, cl.Holder, got.Holder)
 		}
 	}
@@ -286,7 +287,7 @@ func testRaceCASUpdates(t *testing.T, s store.Store, _ *Clock) {
 			mu.Unlock()
 			return
 		}
-		assert.ErrorIs(t, err, store.ErrConflict)
+		assert.ErrorIs(t, err, domain.ErrConflict)
 	})
 	require.Len(t, won, 1)
 	got, err := s.Get(ctx, a.ID)
@@ -314,7 +315,7 @@ func testRaceSlotRelease(t *testing.T, s store.Store, _ *Clock) {
 		if i%4 == 0 {
 			_, err := s.ReleaseSlots(ctx)
 			if err != nil {
-				assert.ErrorIs(t, err, store.ErrConflict)
+				assert.ErrorIs(t, err, domain.ErrConflict)
 			}
 			return
 		}
@@ -327,7 +328,7 @@ func testRaceSlotRelease(t *testing.T, s store.Store, _ *Clock) {
 		if assert.NoError(t, err) {
 			n := 0
 			for _, sl := range all {
-				if sl.State == store.SlotHeld && sl.Ticket == tk.ID {
+				if sl.State == domain.SlotHeld && sl.Ticket == tk.ID {
 					n++
 				}
 			}
@@ -341,7 +342,7 @@ func testRaceSlotRelease(t *testing.T, s store.Store, _ *Clock) {
 	all, err := allSlots(ctx, s)
 	require.NoError(t, err)
 	for _, sl := range all {
-		assert.NotEqual(t, store.SlotHeld, sl.State, "slot %s held after every claim ended", sl.ID)
+		assert.NotEqual(t, domain.SlotHeld, sl.State, "slot %s held after every claim ended", sl.ID)
 	}
 }
 
@@ -351,7 +352,7 @@ func testRaceSlotRelease(t *testing.T, s store.Store, _ *Clock) {
 func testReadAfterWrite(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	race(racers, func(i int) {
-		tk, err := store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindTask, Title: fmt.Sprintf("raw%d", i), Pool: "raw"})
+		tk, err := store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: domain.KindTask, Title: fmt.Sprintf("raw%d", i), Pool: "raw"})
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -362,7 +363,7 @@ func testReadAfterWrite(t *testing.T, s store.Store, _ *Clock) {
 		assert.True(t, listed(t, s, store.Filter{Project: proj, Pool: "raw"}, tk.ID), "list after create")
 
 		title := fmt.Sprintf("raw%d-b", i)
-		var u store.Ticket
+		var u domain.Ticket
 		err = retryConflict(func() error {
 			u, err = s.Update(ctx, "test", tk.ID, store.Update{Title: &title, AddLabels: []string{"x"}})
 			return err
@@ -388,7 +389,7 @@ func testReadAfterWrite(t *testing.T, s store.Store, _ *Clock) {
 		}
 		got, err = s.Get(ctx, tk.ID)
 		if assert.NoError(t, err) {
-			assert.Equal(t, store.StatusInProgress, got.Status, "get after claim")
+			assert.Equal(t, domain.StatusInProgress, got.Status, "get after claim")
 			assert.Equal(t, holder, got.Holder)
 		}
 		assert.True(t, listed(t, s, store.Filter{Project: proj, Holder: holder}, tk.ID), "list after claim")
@@ -402,9 +403,9 @@ func testReadAfterWrite(t *testing.T, s store.Store, _ *Clock) {
 		}
 		got, err = s.Get(ctx, tk.ID)
 		if assert.NoError(t, err) {
-			assert.Equal(t, store.StatusClosed, got.Status, "get after close")
+			assert.Equal(t, domain.StatusClosed, got.Status, "get after close")
 		}
-		assert.True(t, listed(t, s, store.Filter{Project: proj, Status: store.StatusClosed, Pool: "raw"}, tk.ID), "list after close")
+		assert.True(t, listed(t, s, store.Filter{Project: proj, Status: domain.StatusClosed, Pool: "raw"}, tk.ID), "list after close")
 	})
 }
 

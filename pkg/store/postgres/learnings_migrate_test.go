@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
 )
 
@@ -35,7 +35,7 @@ func TestLearningsMigrate(t *testing.T) {
 		l, err := learning.Get(ctx, s, 7)
 		require.NoError(t, err)
 		assert.Equal(t, "paste got", l.Fix)
-		assert.Equal(t, store.LearningApplied, l.Status)
+		assert.Equal(t, domain.LearningApplied, l.Status)
 		assert.Equal(t, "helped: x", l.Gate)
 		assert.Equal(t, time.UnixMilli(1000).UTC(), l.CreatedAt)
 		hits, err := learning.Recall(ctx, s, "vendorHash mismatch", "", "", 0)

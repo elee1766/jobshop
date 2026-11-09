@@ -18,6 +18,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -51,14 +52,14 @@ type Host interface {
 	OffTick(ctx context.Context, key, poller string, timeout time.Duration, run func(ctx context.Context) (any, error)) (val any, pending bool, err error)
 
 	// List and Get read tickets.
-	List(ctx context.Context, f store.Filter) ([]store.Ticket, error)
-	Get(ctx context.Context, id string) (store.Ticket, error)
+	List(ctx context.Context, f store.Filter) ([]domain.Ticket, error)
+	Get(ctx context.Context, id string) (domain.Ticket, error)
 	// OpenNeedsHuman lists open needs-human tickets of kind: questions are
 	// messages, escalations tasks.
-	OpenNeedsHuman(ctx context.Context, kind store.Kind) ([]store.Ticket, error)
+	OpenNeedsHuman(ctx context.Context, kind domain.Kind) ([]domain.Ticket, error)
 	// IsQuestion and IsEscalation classify a ticket for mirroring.
-	IsQuestion(t store.Ticket) bool
-	IsEscalation(t store.Ticket) bool
+	IsQuestion(t domain.Ticket) bool
+	IsEscalation(t domain.Ticket) bool
 	// SetMeta replaces meta[pack] on a ticket.
 	SetMeta(ctx context.Context, id, pack string, v any) error
 	// Comment adds a controller comment to a ticket.

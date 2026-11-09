@@ -15,8 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 const (
@@ -46,37 +45,37 @@ type Meta struct {
 	Session string `json:"session,omitempty"` // who asked; the answer goes there
 	// Context is the asker's context with the controller's links and
 	// recent comments (JOB-101); Options the suggested answers.
-	Context string               `json:"context,omitempty"`
-	Options []rpc.QuestionOption `json:"options,omitempty"`
+	Context string                  `json:"context,omitempty"`
+	Options []domain.QuestionOption `json:"options,omitempty"`
 }
 
 // Of is meta.question of a question ticket.
-func Of(t store.Ticket) (Meta, bool) {
+func Of(t domain.Ticket) (Meta, bool) {
 	var m map[string]json.RawMessage
 	var q Meta
-	if json.Unmarshal(t.Meta, &m) != nil || json.Unmarshal(m[store.MetaQuestion], &q) != nil || q.Ticket == "" {
+	if json.Unmarshal(t.Meta, &m) != nil || json.Unmarshal(m[domain.MetaQuestion], &q) != nil || q.Ticket == "" {
 		return q, false
 	}
 	return q, true
 }
 
 // Options checks the asker's options and numbers them 1..n.
-func Options(in []rpc.QuestionOption) ([]rpc.QuestionOption, error) {
-	if len(in) > rpc.MaxQuestionOptions {
-		return nil, fmt.Errorf("%w: at most %d options, got %d", store.ErrInvalid, rpc.MaxQuestionOptions, len(in))
+func Options(in []domain.QuestionOption) ([]domain.QuestionOption, error) {
+	if len(in) > domain.MaxQuestionOptions {
+		return nil, fmt.Errorf("%w: at most %d options, got %d", domain.ErrInvalid, domain.MaxQuestionOptions, len(in))
 	}
-	var out []rpc.QuestionOption
+	var out []domain.QuestionOption
 	for i, o := range in {
 		o.ID = i + 1
 		o.Title, o.Description = strings.TrimSpace(o.Title), strings.TrimSpace(o.Description)
 		if o.Title == "" {
-			return nil, fmt.Errorf("%w: option %d has no title", store.ErrInvalid, o.ID)
+			return nil, fmt.Errorf("%w: option %d has no title", domain.ErrInvalid, o.ID)
 		}
 		if strings.Contains(o.Title, "\n") || len(o.Title) > maxOptionTitle {
-			return nil, fmt.Errorf("%w: option %d title must be one line of at most %d bytes", store.ErrInvalid, o.ID, maxOptionTitle)
+			return nil, fmt.Errorf("%w: option %d title must be one line of at most %d bytes", domain.ErrInvalid, o.ID, maxOptionTitle)
 		}
 		if len(o.Description) > maxOptionDescription {
-			return nil, fmt.Errorf("%w: option %d description is over %d bytes", store.ErrInvalid, o.ID, maxOptionDescription)
+			return nil, fmt.Errorf("%w: option %d description is over %d bytes", domain.ErrInvalid, o.ID, maxOptionDescription)
 		}
 		out = append(out, o)
 	}
@@ -90,7 +89,7 @@ type Asker struct{ Session, Actor string }
 // comments the controller fills in, so the question reads on its own in
 // Desk, the CLI and Linear. t is the ticket asked about, comments its
 // thread oldest first.
-func Context(asked string, t store.Ticket, by Asker, comments []store.Comment) string {
+func Context(asked string, t domain.Ticket, by Asker, comments []domain.Comment) string {
 	var b strings.Builder
 	if asked = strings.TrimSpace(asked); asked != "" {
 		b.WriteString(asked)
@@ -98,8 +97,8 @@ func Context(asked string, t store.Ticket, by Asker, comments []store.Comment) s
 	}
 	b.WriteString("**Links**\n\n")
 	fmt.Fprintf(&b, "- Ticket: %s (%s)\n", t.ID, t.Title)
-	if t.Kind == store.KindStep {
-		if f, err := store.DecodeFields[store.StepFields](t); err == nil && f.Run != "" {
+	if t.Kind == domain.KindStep {
+		if f, err := domain.DecodeFields[domain.StepFields](t); err == nil && f.Run != "" {
 			fmt.Fprintf(&b, "- Run: %s, step %s\n", f.Run, f.Step)
 		}
 	}
@@ -163,7 +162,7 @@ func metaLinks(raw json.RawMessage) []string {
 }
 
 // OptionsText lists options for a ticket body or prompt.
-func OptionsText(opts []rpc.QuestionOption) string {
+func OptionsText(opts []domain.QuestionOption) string {
 	var b strings.Builder
 	for _, o := range opts {
 		fmt.Fprintf(&b, "%d. %s", o.ID, o.Title)
@@ -180,7 +179,7 @@ func OptionsText(opts []rpc.QuestionOption) string {
 
 // ChosenText is what the asking session gets for an answer that picks an
 // option.
-func ChosenText(o rpc.QuestionOption, note string) string {
+func ChosenText(o domain.QuestionOption, note string) string {
 	s := fmt.Sprintf("Chose option %d: %s", o.ID, o.Title)
 	if o.Description != "" {
 		s += "\n" + o.Description

@@ -216,13 +216,14 @@ func evalRule(g *Graph, r Rule) ([]Violation, []string) {
 		switch r.Scope {
 		case Prod, ProdAndTest:
 			for _, imp := range p.Imports {
-				if target[imp] {
+				if target[imp] && imp != f {
 					out = append(out, Violation{Rule: r.Name, From: f, To: imp})
 				}
 			}
 			if r.Scope == ProdAndTest {
 				for _, imp := range p.TestOnly() {
-					if target[imp] {
+					// An external test package (x_test) importing x is not an edge.
+					if target[imp] && imp != f {
 						out = append(out, Violation{Rule: r.Name, From: f, To: imp, Test: true})
 					}
 				}

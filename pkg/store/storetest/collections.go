@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -66,7 +67,7 @@ func testCollectionSpec(t *testing.T, s store.Store, _ *Clock) {
 		{Name: "ok", Index: []store.Field{{Name: "f", Path: "f"}}, Unique: []store.Field{{Name: "f", Path: "g"}}},
 	} {
 		_, err := s.Collection(ctx, bad)
-		assert.ErrorIs(t, err, store.ErrInvalid, "%+v", bad)
+		assert.ErrorIs(t, err, domain.ErrInvalid, "%+v", bad)
 	}
 	// Registration is idempotent, also with a field added later.
 	coll(t, s)
@@ -103,7 +104,7 @@ func testCollectionPutGet(t *testing.T, s store.Store, c *Clock) {
 	assert.InDelta(t, 12, fields(t, got)["n"], 0)
 
 	_, err = col.Get(ctx, "missing")
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Created time may be given, for migrated or received-at times.
 	at := c.T.Add(-time.Hour)
@@ -113,9 +114,9 @@ func testCollectionPutGet(t *testing.T, s store.Store, c *Clock) {
 	assert.JSONEq(t, `{}`, string(r3.Value))
 
 	_, _, err = col.Put(ctx, store.Record{Key: ""})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, _, err = col.Put(ctx, store.Record{Key: "c", Value: json.RawMessage(`[1]`)})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func testCollectionUnique(t *testing.T, s store.Store, _ *Clock) {
@@ -130,7 +131,7 @@ func testCollectionUnique(t *testing.T, s store.Store, _ *Clock) {
 	assert.False(t, created)
 	assert.Equal(t, first.Key, got.Key)
 	_, err = col.Get(ctx, "d2")
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	// Empty unique values do not collide.
 	for _, k := range []string{"e1", "e2"} {
 		_, created, err := col.Put(ctx, store.Record{Key: k, Value: val(t, map[string]any{"natural_key": ""})})
@@ -145,7 +146,7 @@ func testCollectionUnique(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	e1.Value = val(t, map[string]any{"natural_key": "github:comment:1"})
 	_, err = col.Update(ctx, e1)
-	require.ErrorIs(t, err, store.ErrAlreadyExist)
+	require.ErrorIs(t, err, domain.ErrAlreadyExist)
 }
 
 func testCollectionUpdate(t *testing.T, s store.Store, c *Clock) {
@@ -164,9 +165,9 @@ func testCollectionUpdate(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, r.CreatedAt, r2.CreatedAt)
 	// The stale revision conflicts.
 	_, err = col.Update(ctx, r)
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 	_, err = col.Update(ctx, store.Record{Key: "nope", Revision: 1})
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func testCollectionClaim(t *testing.T, s store.Store, c *Clock) {
@@ -181,9 +182,9 @@ func testCollectionClaim(t *testing.T, s store.Store, c *Clock) {
 	pending := store.RecordFilter{States: []string{"pending"}}
 
 	_, err = col.Claim(ctx, store.RecordFilter{}, "w", time.Minute)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = col.Claim(ctx, pending, "", time.Minute)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	// Oldest created first, not key order.
 	a, err := col.Claim(ctx, pending, "w1", time.Minute)
@@ -201,11 +202,11 @@ func testCollectionClaim(t *testing.T, s store.Store, c *Clock) {
 	other := a
 	other.Holder = "w2"
 	_, err = col.Update(ctx, other)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 	unheld := a
 	unheld.Holder = ""
 	_, err = col.Update(ctx, unheld)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 
 	// Renew extends a live lease without bumping the revision.
 	c.Advance(30 * time.Second)
@@ -214,9 +215,9 @@ func testCollectionClaim(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, c.T.Add(time.Minute), rn.LeaseUntil)
 	assert.Equal(t, a.Revision, rn.Revision)
 	_, err = col.Renew(ctx, "c3", "w2", time.Minute)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 	_, err = col.Renew(ctx, "missing", "w1", time.Minute)
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// The holder finishes, keeping the lease fields as stored.
 	rn.State = "processing"
@@ -238,13 +239,13 @@ func testCollectionClaim(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, "c1", again.Key)
 	assert.Equal(t, int64(2), again.Attempts)
 	_, err = col.Renew(ctx, "c1", "w2", time.Minute)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 
 	next, err := col.Claim(ctx, pending, "w4", time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, "c2", next.Key)
 	_, err = col.Claim(ctx, pending, "w5", time.Minute)
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func testCollectionListCount(t *testing.T, s store.Store, c *Clock) {
@@ -279,9 +280,9 @@ func testCollectionListCount(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, []string{"l2", "l3"}, list(store.RecordFilter{Since: t0.Add(time.Second), Until: t0.Add(3 * time.Second)}))
 
 	_, err := col.List(ctx, store.RecordFilter{Where: map[string]string{"undeclared": "x"}})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = col.List(ctx, store.RecordFilter{Order: "key"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	n, err := col.Count(ctx, store.RecordFilter{})
 	require.NoError(t, err)
@@ -314,7 +315,7 @@ func testCollectionDelete(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 
 	_, err = col.Delete(ctx, store.RecordFilter{})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	n, err := col.Delete(ctx, store.RecordFilter{States: []string{"done"}, UpdatedBefore: c.T.Add(-time.Minute)})
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
@@ -362,11 +363,11 @@ func testCollectionSearch(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, []string{"s1"}, keys(hits))
 
 	_, err = col.Search(ctx, " ", 10)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	plain, err := s.Collection(ctx, store.CollectionSpec{Name: "test_plain"})
 	require.NoError(t, err)
 	_, err = plain.Search(ctx, "x", 10)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 // testCollectionConcurrentClaims checks no record is claimed twice when
@@ -389,10 +390,10 @@ func testCollectionConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 			holder := fmt.Sprintf("w%d", w)
 			for {
 				r, err := col.Claim(context.WithoutCancel(ctx), store.RecordFilter{States: []string{"pending"}}, holder, time.Hour)
-				if errors.Is(err, store.ErrNotFound) {
+				if errors.Is(err, domain.ErrNotFound) {
 					return
 				}
-				if errors.Is(err, store.ErrConflict) {
+				if errors.Is(err, domain.ErrConflict) {
 					continue
 				}
 				if !assert.NoError(t, err) {

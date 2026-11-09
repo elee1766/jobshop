@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -55,17 +56,17 @@ func (c *Controller) eligibleRun(ctx context.Context, p rpc.RunStartParams) erro
 	}
 	cl, err := c.linearClient(key)
 	if err != nil {
-		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", store.ErrInvalid, key, err)
+		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", domain.ErrInvalid, key, err)
 	}
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	is, err := cl.GetContext(lctx, key, false)
 	if err != nil {
-		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", store.ErrInvalid, key, err)
+		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", domain.ErrInvalid, key, err)
 	}
 	open := ""
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Status: st})
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
+		runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, Status: st})
 		if err != nil {
 			return err
 		}
@@ -82,7 +83,7 @@ func (c *Controller) eligibleRun(ctx context.Context, p rpc.RunStartParams) erro
 	}
 	e := linear.Eligible(is, c.linearSkipLabels(key), open)
 	if !e.Eligible {
-		return fmt.Errorf("%w: %s is not eligible: %s (--force starts it anyway)", store.ErrInvalid, key, e.Reason)
+		return fmt.Errorf("%w: %s is not eligible: %s (--force starts it anyway)", domain.ErrInvalid, key, e.Reason)
 	}
 	return nil
 }
@@ -128,7 +129,7 @@ func (c *Controller) startRun(ctx context.Context, cfg *config.Config, sc scope,
 			res.Existing = true
 			return res, nil
 		}
-		if !errors.Is(err, store.ErrNotFound) {
+		if !errors.Is(err, domain.ErrNotFound) {
 			return nil, err
 		}
 	}
@@ -152,16 +153,16 @@ type runPlan struct {
 	vars map[string]any
 	meta json.RawMessage
 	// placements are the resolved placements by step index (#409).
-	placements map[int]*store.StepPlacement
+	placements map[int]*domain.StepPlacement
 	hookDigest string
-	hookScope  *store.RunScope
+	hookScope  *domain.RunScope
 }
 
 // planRun checks p against the config and the caller's scope.
 func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, p rpc.RunStartParams) (runPlan, error) {
 	w, ok := cfg.Workflows[p.Workflow]
 	if !ok {
-		return runPlan{}, fmt.Errorf("%w: unknown workflow %q", store.ErrInvalid, p.Workflow)
+		return runPlan{}, fmt.Errorf("%w: unknown workflow %q", domain.ErrInvalid, p.Workflow)
 	}
 	vars := map[string]any{}
 	for k, v := range w.PackVars {
@@ -172,31 +173,31 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 	}
 	for k, v := range p.Vars {
 		if !slices.Contains(w.Vars, k) {
-			return runPlan{}, fmt.Errorf("%w: workflow %s has no var %q (vars: %v)", store.ErrInvalid, p.Workflow, k, w.Vars)
+			return runPlan{}, fmt.Errorf("%w: workflow %s has no var %q (vars: %v)", domain.ErrInvalid, p.Workflow, k, w.Vars)
 		}
 		// An empty issue or PR var renders "Implement #" with no issue to
 		// work, and its key (issue-) joins every later empty start to one
 		// broken run (#496). Other vars may be empty (a finding's detail).
 		if (k == w.Issue || k == w.PR) && strings.TrimSpace(v) == "" {
-			return runPlan{}, fmt.Errorf("%w: workflow %s var %s is empty", store.ErrInvalid, p.Workflow, k)
+			return runPlan{}, fmt.Errorf("%w: workflow %s var %s is empty", domain.ErrInvalid, p.Workflow, k)
 		}
 		vars[k] = v
 	}
 	for _, k := range w.Vars {
 		if _, ok := vars[k]; !ok {
-			return runPlan{}, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", store.ErrInvalid, p.Workflow, k, k)
+			return runPlan{}, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", domain.ErrInvalid, p.Workflow, k, k)
 		}
 	}
 	// A step pool may name a run var (#384): resolve every one before
 	// any ticket exists, so a bad pool fails the start.
 	w.Steps = slices.Clone(w.Steps)
-	placements := map[int]*store.StepPlacement{}
+	placements := map[int]*domain.StepPlacement{}
 	for i, s := range w.Steps {
 		if s.Placement != nil {
 			// Placement (#409): the step starts on its top option.
 			sp, err := resolvePlacement(cfg, &w, s.Placement, vars)
 			if err != nil {
-				return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+				return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", domain.ErrInvalid, p.Workflow, s.ID, err)
 			}
 			placements[i] = sp
 			w.Steps[i].Pool = sp.Options[0].Pool
@@ -213,13 +214,13 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 			err = cfg.CheckInstancePool(p.Workflow, name)
 		}
 		if err != nil {
-			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", domain.ErrInvalid, p.Workflow, s.ID, err)
 		}
 		w.Steps[i].Pool = name
 		if s.RetryPool != "" {
 			rp, err := cfg.ResolvePool(&w, s.RetryPool, vars)
 			if err != nil {
-				return runPlan{}, fmt.Errorf("%w: workflow %s step %s retry_pool: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+				return runPlan{}, fmt.Errorf("%w: workflow %s step %s retry_pool: %w", domain.ErrInvalid, p.Workflow, s.ID, err)
 			}
 			if rp == name {
 				rp = ""
@@ -229,7 +230,7 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 		// Resource keys too (#400): an unknown resource fails the start.
 		rs, err := cfg.ResolveResources(&w, s.NeedsResources, vars)
 		if err != nil {
-			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", domain.ErrInvalid, p.Workflow, s.ID, err)
 		}
 		w.Steps[i].NeedsResources = rs
 	}
@@ -242,7 +243,7 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 		proj = cfg.DefaultProject
 	}
 	if p.Project != "" && p.Project != proj {
-		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
+		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", domain.ErrInvalid, p.Workflow, proj)
 	}
 	if !sc.admin && sc.project != proj {
 		return runPlan{}, forbidden("session is scoped to project %s", sc.project)
@@ -288,9 +289,9 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 	if w.OnStart != "" {
 		inputs = maps.Clone(vars)
 	}
-	fields := store.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Inputs: inputs, Key: p.Key, State: store.RunRunning}
+	fields := domain.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Inputs: inputs, Key: p.Key, State: domain.RunRunning}
 	if w.OnStart != "" {
-		fields.Automation = &store.RunAutomation{OnStart: w.OnStart, OnStepCompleted: w.OnStepCompleted, Digest: plan.hookDigest, Scope: plan.hookScope, After: p.After}
+		fields.Automation = &domain.RunAutomation{OnStart: w.OnStart, OnStepCompleted: w.OnStepCompleted, Digest: plan.hookDigest, Scope: plan.hookScope, After: p.After}
 	}
 	rf, err := json.Marshal(fields)
 	if err != nil {
@@ -316,29 +317,29 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 			return g, err
 		}
 	}
-	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, ParentID: parent, Fields: rf, Meta: runMetaJSON}}
-	var edges []store.Edge
+	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: domain.KindRun, Title: title, ParentID: parent, Fields: rf, Meta: runMetaJSON}}
+	var edges []domain.Edge
 	if w.OnStart != "" {
 		for _, after := range p.After {
-			edges = append(edges, store.Edge{From: runID, To: after, Kind: store.EdgeBlocks})
+			edges = append(edges, domain.Edge{From: runID, To: after, Kind: domain.EdgeBlocks})
 		}
 	}
 	stepIDs := map[string]string{} // workflow step id -> ticket id
 	for i, s := range w.Steps {
 		title, err := w.Render(s.Title, vars)
 		if err != nil {
-			return g, fmt.Errorf("%w: step %s title: %w", store.ErrInvalid, s.ID, err)
+			return g, fmt.Errorf("%w: step %s title: %w", domain.ErrInvalid, s.ID, err)
 		}
 		body, err := w.Render(s.Prompt, vars)
 		if err != nil {
-			return g, fmt.Errorf("%w: step %s prompt: %w", store.ErrInvalid, s.ID, err)
+			return g, fmt.Errorf("%w: step %s prompt: %w", domain.ErrInvalid, s.ID, err)
 		}
 		id, err := c.store.NewID(stepProject(cfg, s))
 		if err != nil {
 			return g, err
 		}
 		needs := w.StepNeeds(i)
-		stepF := store.StepFields{
+		stepF := domain.StepFields{
 			Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i], RetryPool: s.RetryPool,
 			OnRequestChanges: w.RequestChangesTarget(i), MaxReviewRounds: s.MaxReviewRounds,
 		}
@@ -349,12 +350,12 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 			stepF.Type, pool = s.Type, ""
 		}
 		nt := store.NewTicket{
-			ID: id, Project: stepProject(cfg, s), Kind: store.KindStep, Title: title, Body: body,
+			ID: id, Project: stepProject(cfg, s), Kind: domain.KindStep, Title: title, Body: body,
 			Pool: pool, ParentID: runID, Meta: meta,
 		}
 		if s.When != nil {
 			// Held until checkRun decides: open it, or close it skipped.
-			stepF.When = &store.StepWhen{Step: s.When.Step, Outcome: s.When.Outcome}
+			stepF.When = &domain.StepWhen{Step: s.When.Step, Outcome: s.When.Outcome}
 			nt.DeferUntil = gateHold
 		}
 		if nt.Fields, err = json.Marshal(stepF); err != nil {
@@ -362,13 +363,13 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 		}
 		nts = append(nts, nt)
 		for _, n := range needs {
-			edges = append(edges, store.Edge{From: id, To: stepIDs[n], Kind: store.EdgeBlocks})
+			edges = append(edges, domain.Edge{From: id, To: stepIDs[n], Kind: domain.EdgeBlocks})
 		}
 		if len(needs) == 0 {
 			// Same graph apply as the step: no window where it is
 			// claimable without its outside blockers (#149).
 			for _, a := range p.After {
-				edges = append(edges, store.Edge{From: id, To: a, Kind: store.EdgeBlocks})
+				edges = append(edges, domain.Edge{From: id, To: a, Kind: domain.EdgeBlocks})
 			}
 		}
 		stepIDs[s.ID] = id
@@ -402,22 +403,22 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 		if err != nil {
 			return changed
 		}
-		byID := map[string]store.Ticket{}
-		fields := map[string]store.StepFields{}
+		byID := map[string]domain.Ticket{}
+		fields := map[string]domain.StepFields{}
 		for _, s := range steps {
-			if f, err := store.DecodeFields[store.StepFields](s); err == nil {
+			if f, err := domain.DecodeFields[domain.StepFields](s); err == nil {
 				byID[f.Step], fields[f.Step] = s, f
 			}
 		}
 		acted := false
 		for name, f := range fields {
 			s := byID[name]
-			if f.When == nil || s.Status == store.StatusClosed || !s.DeferUntil.Equal(gateHold) {
+			if f.When == nil || s.Status == domain.StatusClosed || !s.DeferUntil.Equal(gateHold) {
 				continue
 			}
 			ready := true
 			for _, n := range f.Needs {
-				if !store.StepFinished(byID[n]) {
+				if !domain.StepFinished(byID[n]) {
 					ready = false
 				}
 			}
@@ -433,7 +434,7 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 				}
 				c.log.InfoContext(ctx, "gated step opened", "run", runID, "step", name)
 			} else {
-				if _, err := store.Close(ctx, c.store, "controller", s.ID, nil, store.StepSkipped); err != nil {
+				if _, err := store.Close(ctx, c.store, "controller", s.ID, nil, domain.StepSkipped); err != nil {
 					c.log.ErrorContext(ctx, "skip step", "step", s.ID, "err", err)
 					return changed
 				}
@@ -463,14 +464,14 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 	}
 	if w.Tracker == config.TrackerLinear {
 		if w.LinearWorkspace == "" {
-			return nil, fmt.Errorf("%w: workflow has tracker linear but no linear_workspace (set the pack's linear_workspace var)", store.ErrInvalid)
+			return nil, fmt.Errorf("%w: workflow has tracker linear but no linear_workspace (set the pack's linear_workspace var)", domain.ErrInvalid)
 		}
 		// The issue is a Linear key; meta.github keeps only the code repo,
 		// so GitHub readers (subscriptions, issue_no_run) do not take
 		// ENG-123 for a GitHub issue (#201).
 		key := strings.ToUpper(strings.TrimSpace(fmt.Sprint(vars[name])))
 		if !linear.KeyPattern.MatchString(key) {
-			return nil, fmt.Errorf("%w: %s %q is not a Linear issue key like ENG-123", store.ErrInvalid, name, key)
+			return nil, fmt.Errorf("%w: %s %q is not a Linear issue key like ENG-123", domain.ErrInvalid, name, key)
 		}
 		lm := map[string]any{"workspace": w.LinearWorkspace, "issue": key}
 		// Who questions and escalations mention on the issue (#293).
@@ -489,7 +490,7 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 	return json.Marshal(map[string]map[string]any{"github": {"repo": w.Repo, key: ref}})
 }
 
-func (c *Controller) runResult(ctx context.Context, run store.Ticket) (rpc.RunResult, error) {
+func (c *Controller) runResult(ctx context.Context, run domain.Ticket) (rpc.RunResult, error) {
 	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return rpc.RunResult{}, err
@@ -502,18 +503,18 @@ func (c *Controller) runResult(ctx context.Context, run store.Ticket) (rpc.RunRe
 }
 
 // getRun loads a run the caller may see.
-func (c *Controller) getRun(ctx context.Context, sc scope, id string) (store.Ticket, store.RunFields, error) {
+func (c *Controller) getRun(ctx context.Context, sc scope, id string) (domain.Ticket, domain.RunFields, error) {
 	t, err := c.store.Get(ctx, id)
 	if err != nil {
-		return t, store.RunFields{}, err
+		return t, domain.RunFields{}, err
 	}
-	if t.Kind != store.KindRun {
-		return t, store.RunFields{}, fmt.Errorf("%w: %s is a %s, not a run", store.ErrInvalid, id, t.Kind)
+	if t.Kind != domain.KindRun {
+		return t, domain.RunFields{}, fmt.Errorf("%w: %s is a %s, not a run", domain.ErrInvalid, id, t.Kind)
 	}
 	if !sc.admin && t.Project != sc.project {
-		return t, store.RunFields{}, forbidden("session is scoped to project %s", sc.project)
+		return t, domain.RunFields{}, forbidden("session is scoped to project %s", sc.project)
 	}
-	f, err := store.DecodeFields[store.RunFields](t)
+	f, err := domain.DecodeFields[domain.RunFields](t)
 	return t, f, err
 }
 
@@ -534,12 +535,12 @@ func (c *Controller) runList(ctx context.Context, sc scope, p rpc.RunListParams)
 	if !sc.admin {
 		p.Project = sc.project
 	}
-	return c.store.List(ctx, store.Filter{Kind: store.KindRun, Project: p.Project, State: p.State, Order: store.OrderNewest, Limit: p.Limit})
+	return c.store.List(ctx, store.Filter{Kind: domain.KindRun, Project: p.Project, State: p.State, Order: store.OrderNewest, Limit: p.Limit})
 }
 
 // setRunState writes fields.state, closing the run with resolution when
 // it is not empty.
-func (c *Controller) setRunState(ctx context.Context, actor string, t store.Ticket, f store.RunFields, state, resolution string) (store.Ticket, error) {
+func (c *Controller) setRunState(ctx context.Context, actor string, t domain.Ticket, f domain.RunFields, state, resolution string) (domain.Ticket, error) {
 	f.State = state
 	b, err := json.Marshal(f)
 	if err != nil {
@@ -575,23 +576,23 @@ func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (a
 	if err != nil {
 		return nil, err
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: run %s", domain.ErrClosed, t.ID)
 	}
 	steps, err := store.Children(ctx, c.store, t.ID)
 	if err != nil {
 		return nil, err
 	}
 	for _, s := range steps {
-		if s.Status == store.StatusClosed {
+		if s.Status == domain.StatusClosed {
 			continue
 		}
 		// Administrative close: a session holding the step loses it.
-		if _, err := store.Close(ctx, c.store, sc.actor, s.ID, nil, store.RunCancelled); err != nil {
+		if _, err := store.Close(ctx, c.store, sc.actor, s.ID, nil, domain.RunCancelled); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := c.setRunState(ctx, sc.actor, t, f, store.RunCancelled, store.RunCancelled); err != nil {
+	if _, err := c.setRunState(ctx, sc.actor, t, f, domain.RunCancelled, domain.RunCancelled); err != nil {
 		return nil, err
 	}
 	c.log.InfoContext(ctx, "run cancelled", "run", t.ID, "by", sc.actor)
@@ -618,8 +619,8 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if err != nil {
 		return nil, err
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: run %s", domain.ErrClosed, t.ID)
 	}
 	if p.Repin {
 		// It swaps the code and authority the run executes under.
@@ -630,7 +631,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 			return nil, err
 		}
 	}
-	if p.Step == "" && f.Automation != nil && f.State == store.RunNeedsHuman {
+	if p.Step == "" && f.Automation != nil && f.State == domain.RunNeedsHuman {
 		resumed, err := c.resumeHook(ctx, sc.actor, t, f)
 		if err != nil {
 			return nil, err
@@ -647,13 +648,13 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if err != nil {
 		return nil, err
 	}
-	var step *store.Ticket
+	var step *domain.Ticket
 	for i := range steps {
-		sf, err := store.DecodeFields[store.StepFields](steps[i])
+		sf, err := domain.DecodeFields[domain.StepFields](steps[i])
 		if err != nil {
 			return nil, err
 		}
-		done := store.StepFinished(steps[i])
+		done := domain.StepFinished(steps[i])
 		if (p.Step != "" && sf.Step == p.Step) || (p.Step == "" && !done) {
 			step = &steps[i]
 			break
@@ -661,11 +662,11 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	}
 	if step == nil {
 		if p.Step != "" {
-			return nil, fmt.Errorf("%w: run %s has no step %q", store.ErrInvalid, t.ID, p.Step)
+			return nil, fmt.Errorf("%w: run %s has no step %q", domain.ErrInvalid, t.ID, p.Step)
 		}
-		return nil, fmt.Errorf("%w: run %s has no unfinished step", store.ErrInvalid, t.ID)
+		return nil, fmt.Errorf("%w: run %s has no unfinished step", domain.ErrInvalid, t.ID)
 	}
-	sf, err := store.DecodeFields[store.StepFields](*step)
+	sf, err := domain.DecodeFields[domain.StepFields](*step)
 	if err != nil {
 		return nil, err
 	}
@@ -677,15 +678,15 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if err != nil {
 		return nil, err
 	}
-	if step.Status == store.StatusClosed && step.Resolution == "done" {
+	if step.Status == domain.StatusClosed && step.Resolution == "done" {
 		// Reopening a finished step is a review finding against it.
 		c.recordReviewFinding(ctx, sc, *step)
 	}
-	if step.Status == store.StatusClosed || (step.Status == store.StatusOpen && sf.Failures > 0) {
+	if step.Status == domain.StatusClosed || (step.Status == domain.StatusOpen && sf.Failures > 0) {
 		// A failed attempt or a rejected result goes to the retry pool.
 		c.escalatePool(ctx, c.config(), step, "resumed by "+sc.actor)
 	}
-	if step.Status == store.StatusClosed {
+	if step.Status == domain.StatusClosed {
 		if _, err := store.Reopen(ctx, c.store, sc.actor, step.ID); err != nil {
 			return nil, err
 		}
@@ -693,8 +694,8 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if _, err := c.store.Update(ctx, sc.actor, step.ID, store.Update{Fields: b}); err != nil {
 		return nil, err
 	}
-	if f.State != store.RunRunning {
-		if _, err := c.setRunState(ctx, sc.actor, t, f, store.RunRunning, ""); err != nil {
+	if f.State != domain.RunRunning {
+		if _, err := c.setRunState(ctx, sc.actor, t, f, domain.RunRunning, ""); err != nil {
 			return nil, err
 		}
 	}
@@ -715,11 +716,11 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	t, err := c.store.Get(ctx, runID)
-	if err != nil || t.Kind != store.KindRun || t.Status == store.StatusClosed {
+	if err != nil || t.Kind != domain.KindRun || t.Status == domain.StatusClosed {
 		return
 	}
-	f, err := store.DecodeFields[store.RunFields](t)
-	if err != nil || f.State != store.RunRunning || f.Automation != nil {
+	f, err := domain.DecodeFields[domain.RunFields](t)
+	if err != nil || f.State != domain.RunRunning || f.Automation != nil {
 		return
 	}
 	steps, err := store.Children(ctx, c.store, runID)
@@ -727,11 +728,11 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 		return
 	}
 	for _, s := range steps {
-		if !store.StepFinished(s) {
+		if !domain.StepFinished(s) {
 			return
 		}
 	}
-	if _, err := c.setRunState(ctx, "controller", t, f, store.RunDone, "done"); err != nil {
+	if _, err := c.setRunState(ctx, "controller", t, f, domain.RunDone, "done"); err != nil {
 		c.log.ErrorContext(ctx, "complete run", "run", runID, "err", err)
 		return
 	}
@@ -743,13 +744,13 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 func (c *Controller) sweepRuns(ctx context.Context, cfg *config.Config) {
 	defer c.recordRunGauges(ctx, cfg)
 	c.sweepRunDirs()
-	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
-		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: state, Order: store.OrderNewest})
+	for _, state := range []string{domain.RunRunning, domain.RunNeedsHuman} {
+		runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, State: state, Order: store.OrderNewest})
 		if err != nil {
 			return
 		}
 		for _, r := range runs {
-			if r.Status != store.StatusClosed {
+			if r.Status != domain.StatusClosed {
 				c.checkRun(ctx, cfg, r.ID)
 			}
 		}

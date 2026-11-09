@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func parse(t *testing.T, args ...string) *root {
@@ -34,14 +34,14 @@ func TestRunStartParse(t *testing.T) {
 }
 
 func TestPrintRun(t *testing.T) {
-	rf, _ := json.Marshal(store.RunFields{Workflow: "pr", Vars: map[string]string{"issue": "42", "a": "b"}, Key: "k", State: store.RunRunning})
-	s0, _ := json.Marshal(store.StepFields{Run: "js-r", Step: "implement", Index: 0, Retries: 3})
-	s1, _ := json.Marshal(store.StepFields{Run: "js-r", Step: "review", Index: 1, Retries: 2, Failures: 1})
+	rf, _ := json.Marshal(domain.RunFields{Workflow: "pr", Vars: map[string]string{"issue": "42", "a": "b"}, Key: "k", State: domain.RunRunning})
+	s0, _ := json.Marshal(domain.StepFields{Run: "js-r", Step: "implement", Index: 0, Retries: 3})
+	s1, _ := json.Marshal(domain.StepFields{Run: "js-r", Step: "review", Index: 1, Retries: 2, Failures: 1})
 	res := rpc.RunResult{
-		Run: store.Ticket{ID: "js-r", Kind: store.KindRun, Status: store.StatusOpen, Fields: rf},
-		Steps: []store.Ticket{
-			{ID: "js-s0", Kind: store.KindStep, Pool: "dev", Status: store.StatusClosed, Resolution: "done", Fields: s0},
-			{ID: "js-s1", Kind: store.KindStep, Pool: "refinery", Status: store.StatusInProgress, Holder: "js-sess", Fields: s1},
+		Run: domain.Ticket{ID: "js-r", Kind: domain.KindRun, Status: domain.StatusOpen, Fields: rf},
+		Steps: []domain.Ticket{
+			{ID: "js-s0", Kind: domain.KindStep, Pool: "dev", Status: domain.StatusClosed, Resolution: "done", Fields: s0},
+			{ID: "js-s1", Kind: domain.KindStep, Pool: "refinery", Status: domain.StatusInProgress, Holder: "js-sess", Fields: s1},
 		},
 		Existing: true,
 	}
@@ -61,16 +61,16 @@ func TestBatchStartParse(t *testing.T) {
 }
 
 func TestPrintBatch(t *testing.T) {
-	bf, _ := json.Marshal(store.BatchFields{Key: "chat", Issues: []string{"1", "2"}, Order: [][2]string{{"1", "2"}}, State: store.BatchOpen})
+	bf, _ := json.Marshal(domain.BatchFields{Key: "chat", Issues: []string{"1", "2"}, Order: [][2]string{{"1", "2"}}, State: domain.BatchOpen})
 	rf := func(k string) json.RawMessage {
-		b, _ := json.Marshal(store.RunFields{Workflow: "pr-work", Key: k, State: store.RunRunning})
+		b, _ := json.Marshal(domain.RunFields{Workflow: "pr-work", Key: k, State: domain.RunRunning})
 		return b
 	}
 	res := rpc.BatchResult{
-		Batch: store.Ticket{ID: "js-b", Kind: store.KindBatch, Status: store.StatusOpen, Fields: bf},
+		Batch: domain.Ticket{ID: "js-b", Kind: domain.KindBatch, Status: domain.StatusOpen, Fields: bf},
 		Runs: []rpc.RunResult{
-			{Run: store.Ticket{ID: "js-r1", Kind: store.KindRun, Fields: rf("issue-1")}},
-			{Run: store.Ticket{ID: "js-r2", Kind: store.KindRun, Fields: rf("issue-2")}},
+			{Run: domain.Ticket{ID: "js-r1", Kind: domain.KindRun, Fields: rf("issue-1")}},
+			{Run: domain.Ticket{ID: "js-r2", Kind: domain.KindRun, Fields: rf("issue-2")}},
 		},
 		Adopted: []string{"js-r2"},
 	}
@@ -86,22 +86,22 @@ issue-2  run js-r2  state running  [adopted]
 // TestPrintBatchShow: batch show prints the current step and which issue
 // blocks each member.
 func TestPrintBatchShow(t *testing.T) {
-	bf, _ := json.Marshal(store.BatchFields{Key: "chat", Issues: []string{"1", "2"}, State: store.BatchRunning})
+	bf, _ := json.Marshal(domain.BatchFields{Key: "chat", Issues: []string{"1", "2"}, State: domain.BatchRunning})
 	rf := func(k string) json.RawMessage {
-		b, _ := json.Marshal(store.RunFields{Workflow: "pr-work", Key: k, State: store.RunRunning})
+		b, _ := json.Marshal(domain.RunFields{Workflow: "pr-work", Key: k, State: domain.RunRunning})
 		return b
 	}
-	step := func(id, name string, status store.Status, res string) store.Ticket {
-		b, _ := json.Marshal(store.StepFields{Step: name})
-		return store.Ticket{ID: id, Kind: store.KindStep, Status: status, Resolution: res, Fields: b}
+	step := func(id, name string, status domain.Status, res string) domain.Ticket {
+		b, _ := json.Marshal(domain.StepFields{Step: name})
+		return domain.Ticket{ID: id, Kind: domain.KindStep, Status: status, Resolution: res, Fields: b}
 	}
 	res := rpc.BatchResult{
-		Batch: store.Ticket{ID: "js-b", Kind: store.KindBatch, Status: store.StatusOpen, Fields: bf},
+		Batch: domain.Ticket{ID: "js-b", Kind: domain.KindBatch, Status: domain.StatusOpen, Fields: bf},
 		Runs: []rpc.RunResult{
-			{Run: store.Ticket{ID: "js-r1", Fields: rf("issue-1")}, Steps: []store.Ticket{
-				step("s1", "implement", store.StatusClosed, "done"), step("s2", "review-merge", store.StatusInProgress, ""),
+			{Run: domain.Ticket{ID: "js-r1", Fields: rf("issue-1")}, Steps: []domain.Ticket{
+				step("s1", "implement", domain.StatusClosed, "done"), step("s2", "review-merge", domain.StatusInProgress, ""),
 			}},
-			{Run: store.Ticket{ID: "js-r2", Fields: rf("issue-2")}, Steps: []store.Ticket{step("s3", "implement", store.StatusOpen, "")}},
+			{Run: domain.Ticket{ID: "js-r2", Fields: rf("issue-2")}, Steps: []domain.Ticket{step("s3", "implement", domain.StatusOpen, "")}},
 		},
 		BlockedBy: map[string][]string{"js-r2": {"1"}},
 	}
@@ -122,14 +122,14 @@ func TestBatchShowListParse(t *testing.T) {
 
 // TestPrintRunGraph renders needs, when and outcome (#385).
 func TestPrintRunGraph(t *testing.T) {
-	rf, _ := json.Marshal(store.RunFields{Workflow: "g", State: store.RunRunning})
-	s0, _ := json.Marshal(store.StepFields{Step: "review", Index: 1, Needs: []string{"build"}, Outcome: "approve"})
-	when := &store.StepWhen{Step: "review", Outcome: "approve"}
-	s1, _ := json.Marshal(store.StepFields{Step: "rollout", Index: 2, Needs: []string{"review", "device"}, When: when})
+	rf, _ := json.Marshal(domain.RunFields{Workflow: "g", State: domain.RunRunning})
+	s0, _ := json.Marshal(domain.StepFields{Step: "review", Index: 1, Needs: []string{"build"}, Outcome: "approve"})
+	when := &domain.StepWhen{Step: "review", Outcome: "approve"}
+	s1, _ := json.Marshal(domain.StepFields{Step: "rollout", Index: 2, Needs: []string{"review", "device"}, When: when})
 	var buf bytes.Buffer
 	require.NoError(t, printRun(&buf, rpc.RunResult{
-		Run:   store.Ticket{ID: "js-r", Fields: rf},
-		Steps: []store.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
+		Run:   domain.Ticket{ID: "js-r", Fields: rf},
+		Steps: []domain.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
 	}))
 	assert.Contains(t, buf.String(), "needs build  outcome approve")
 	assert.Contains(t, buf.String(), "needs review,device  when review=approve")
@@ -138,13 +138,13 @@ func TestPrintRunGraph(t *testing.T) {
 // TestPrintRunReviewRounds shows review rounds and an open change
 // request (JOB-98).
 func TestPrintRunReviewRounds(t *testing.T) {
-	rf, _ := json.Marshal(store.RunFields{Workflow: "g", State: store.RunRunning})
-	s0, _ := json.Marshal(store.StepFields{Step: "deliver", Changes: &store.StepChanges{Step: "review", Round: 2}})
-	s1, _ := json.Marshal(store.StepFields{Step: "review", Index: 1, ReviewRounds: 2})
+	rf, _ := json.Marshal(domain.RunFields{Workflow: "g", State: domain.RunRunning})
+	s0, _ := json.Marshal(domain.StepFields{Step: "deliver", Changes: &domain.StepChanges{Step: "review", Round: 2}})
+	s1, _ := json.Marshal(domain.StepFields{Step: "review", Index: 1, ReviewRounds: 2})
 	var buf bytes.Buffer
 	require.NoError(t, printRun(&buf, rpc.RunResult{
-		Run:   store.Ticket{ID: "js-r", Fields: rf},
-		Steps: []store.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
+		Run:   domain.Ticket{ID: "js-r", Fields: rf},
+		Steps: []domain.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
 	}))
 	assert.Contains(t, buf.String(), "changes requested by review (round 2)")
 	assert.Contains(t, buf.String(), "review rounds 2/3")

@@ -17,8 +17,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestCommandStepFindsJobshop: a command step runs `jobshop version` and
@@ -68,7 +68,7 @@ func TestCommandStepFindsJobshop(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "ver", Vars: map[string]string{"issue": "1"}})
 	passUntilWall(t, root, func() bool {
-		return showRun(t, admin, r.Run.ID).Steps[0].Status == store.StatusClosed
+		return showRun(t, admin, r.Run.ID).Steps[0].Status == domain.StatusClosed
 	}, "step done")
 	f := stepFields(t, showRun(t, admin, r.Run.ID).Steps[0])
 	require.Equal(t, "ok", f.Result, f.Output)

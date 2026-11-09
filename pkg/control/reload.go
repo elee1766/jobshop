@@ -12,10 +12,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -125,7 +125,7 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 		if lc, err = newLiveConfig(cfg, c.root); err == nil {
 			// Caps first: a failed write keeps the old config and caps.
 			resCtx, resSpan := telemetry.StartSpan(ctx, "set resources")
-			err = c.store.SetResources(resCtx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
+			err = c.store.SetResources(resCtx, domain.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
 			telemetry.End(resSpan, err)
 		}
 		if err == nil {

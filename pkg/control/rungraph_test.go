@@ -6,16 +6,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // stepByName maps workflow step ids to their tickets in r.
-func stepByName(t *testing.T, r rpc.RunResult) map[string]store.Ticket {
+func stepByName(t *testing.T, r rpc.RunResult) map[string]domain.Ticket {
 	t.Helper()
-	out := map[string]store.Ticket{}
+	out := map[string]domain.Ticket{}
 	for _, s := range r.Steps {
-		f, err := store.DecodeFields[store.StepFields](s)
+		f, err := domain.DecodeFields[domain.StepFields](s)
 		require.NoError(t, err)
 		out[f.Step] = s
 	}
@@ -49,8 +49,8 @@ func TestRunGraphApprove(t *testing.T) {
 	closeStep(t, admin, s["accept"].ID, "done")
 
 	got := showRun(t, admin, r.Run.ID)
-	assert.Equal(t, store.RunDone, runState(t, got))
-	rf, err := store.DecodeFields[store.StepFields](stepByName(t, got)["review"])
+	assert.Equal(t, domain.RunDone, runState(t, got))
+	rf, err := domain.DecodeFields[domain.StepFields](stepByName(t, got)["review"])
 	require.NoError(t, err)
 	assert.Equal(t, "approve", rf.Outcome)
 }
@@ -68,11 +68,11 @@ func TestRunGraphReject(t *testing.T) {
 	got := showRun(t, admin, r.Run.ID)
 	gs := stepByName(t, got)
 	for _, name := range []string{"rollout", "accept"} {
-		assert.Equal(t, store.StatusClosed, gs[name].Status, name)
-		assert.Equal(t, store.StepSkipped, gs[name].Resolution, name)
+		assert.Equal(t, domain.StatusClosed, gs[name].Status, name)
+		assert.Equal(t, domain.StepSkipped, gs[name].Resolution, name)
 	}
 	assert.Empty(t, readyIDs(t, admin))
-	assert.Equal(t, store.RunDone, runState(t, got), "skipped steps finish the run")
+	assert.Equal(t, domain.RunDone, runState(t, got), "skipped steps finish the run")
 }
 
 // TestRunGraphOutcomeErrors: --outcome is for steps and must be a word.
@@ -80,8 +80,8 @@ func TestRunGraphOutcomeErrors(t *testing.T) {
 	admin := runRoot(t)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "graph", Vars: map[string]string{"issue": "9"}})
 	err := admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: r.Steps[0].ID, Outcome: "Not A Word"}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	err = admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: r.Run.ID, Outcome: "ok"}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid)
-	assert.Equal(t, store.StatusOpen, showRun(t, admin, r.Run.ID).Steps[0].Status, "failed close leaves the step open")
+	require.ErrorIs(t, err, domain.ErrInvalid)
+	assert.Equal(t, domain.StatusOpen, showRun(t, admin, r.Run.ID).Steps[0].Status, "failed close leaves the step open")
 }

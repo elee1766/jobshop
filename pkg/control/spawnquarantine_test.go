@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestSpawnQuarantine points the pool at a missing repo, as on gasserver
@@ -26,8 +26,8 @@ func TestSpawnQuarantine(t *testing.T) {
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	list := func(p rpc.ListParams) []store.Ticket {
-		var out []store.Ticket
+	list := func(p rpc.ListParams) []domain.Ticket {
+		var out []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, p, &out))
 		return out
 	}
@@ -37,12 +37,12 @@ func TestSpawnQuarantine(t *testing.T) {
 		return st
 	}
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	passEventually(t, root.Dir, func() bool { return status().Quarantined["dev"] != "" }, "pool quarantined")
 	assert.Contains(t, status().Quarantined["dev"], "no-such-repo")
 	pass(t, root.Dir, 3)
-	sessions := list(rpc.ListParams{Kind: store.KindSession})
+	sessions := list(rpc.ListParams{Kind: domain.KindSession})
 	require.Len(t, sessions, 1, "one spawn, no retries")
 	assert.Equal(t, "crashed", sessions[0].Resolution)
 
@@ -53,7 +53,7 @@ func TestSpawnQuarantine(t *testing.T) {
 
 	// A second quarantine while the first escalation is open files none.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolUnquarantine, rpc.PoolParams{Pool: "dev"}, nil))
-	passEventually(t, root.Dir, func() bool { return len(list(rpc.ListParams{Kind: store.KindSession})) == 2 }, "second spawn")
+	passEventually(t, root.Dir, func() bool { return len(list(rpc.ListParams{Kind: domain.KindSession})) == 2 }, "second spawn")
 	passEventually(t, root.Dir, func() bool { return status().Quarantined["dev"] != "" }, "pool quarantined")
 	assert.Len(t, list(rpc.ListParams{Label: "needs-human"}), 1, "escalation deduped per pool")
 
@@ -64,10 +64,10 @@ func TestSpawnQuarantine(t *testing.T) {
 	assert.Empty(t, status().Quarantined)
 	passEventually(t, root.Dir, func() bool {
 		var got struct {
-			Ticket store.Ticket `json:"ticket"`
+			Ticket domain.Ticket `json:"ticket"`
 		}
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &got))
-		return got.Ticket.Status == store.StatusClosed
+		return got.Ticket.Status == domain.StatusClosed
 	}, "fixed pool does the work")
 }
 

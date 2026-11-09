@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -114,9 +115,9 @@ hooks:
 	}
 	for _, target := range []string{"master", "origin/master", "HEAD:master", "refs/heads/main", ""} {
 		r := guard(target)
-		assert.Equal(t, rpc.GuardDeny, r.Decision, "push %q", target)
+		assert.Equal(t, domain.GuardDeny, r.Decision, "push %q", target)
 		assert.NotEmpty(t, r.Reason)
 	}
-	assert.Equal(t, rpc.GuardAllow, guard("issue-249").Decision)
-	assert.Equal(t, rpc.GuardAllow, guard("fix-master-red").Decision, "a branch merely naming master")
+	assert.Equal(t, domain.GuardAllow, guard("issue-249").Decision)
+	assert.Equal(t, domain.GuardAllow, guard("fix-master-red").Decision, "a branch merely naming master")
 }

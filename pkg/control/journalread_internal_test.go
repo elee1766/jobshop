@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -66,7 +67,7 @@ func TestJournalSearchAccess(t *testing.T) {
 	require.ErrorIs(t, err, rpc.ErrForbidden)
 
 	_, err = c.journalSearch(ctx, scope{admin: true}, rpc.JournalSearchParams{Query: " "})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -82,8 +83,8 @@ func TestRecallJournalScope(t *testing.T) {
 	t.Parallel()
 	c, _, _ := scanControllerYAML(t, searchYAML(""))
 	ctx := t.Context()
-	mk := func(project, pool string) store.Ticket {
-		s := mkTicket(t, c, store.NewTicket{Project: project, Kind: store.KindSession, Pool: pool, Fields: json.RawMessage(`{"agent":"fake"}`)})
+	mk := func(project, pool string) domain.Ticket {
+		s := mkTicket(t, c, store.NewTicket{Project: project, Kind: domain.KindSession, Pool: pool, Fields: json.RawMessage(`{"agent":"fake"}`)})
 		writeJournal(t, c, s.ID, 5)
 		r := &runner{c: c, id: s.ID, pool: pool, ctx: ctx, dir: c.root.SessionDir(s.ID), log: c.log}
 		r.indexJournal(ctx, s.ID)

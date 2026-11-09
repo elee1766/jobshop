@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // Fake keys: the AWS one is gitleaks' own true-positive sample
@@ -28,7 +28,7 @@ func TestGHSecretRefused(t *testing.T) {
 	gh, marker := tokenGH(t, dir)
 	t.Setenv("JOBSHOP_GH", gh)
 	t.Setenv("GH_TOKEN", "")
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	body := filepath.Join(dir, "body.md")
 	require.NoError(t, os.WriteFile(body, []byte("ok\nkey "+fakeGHPAT+"\n"), 0o600))
@@ -60,7 +60,7 @@ func TestGHSecretAllow(t *testing.T) {
 	gh, marker := tokenGH(t, dir)
 	t.Setenv("JOBSHOP_GH", gh)
 	t.Setenv("GH_TOKEN", "x")
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	var out, errb bytes.Buffer
 	code := runGH(g, []string{"pr", "comment", "1", "-R", "o/n", "--body", fakeAWSKey, allowSecretsFlag}, nil, &out, &errb)

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Linear issue communication (#293). For a run with meta.linear.issue,
@@ -44,7 +44,7 @@ type Ask struct {
 }
 
 // AskOf is the posted ask recorded on t.
-func AskOf(t store.Ticket) (Ask, bool) {
+func AskOf(t domain.Ticket) (Ask, bool) {
 	var m map[string]json.RawMessage
 	var a Ask
 	if json.Unmarshal(t.Meta, &m) != nil || json.Unmarshal(m[AskPack], &a) != nil || a.Comment == "" {
@@ -54,7 +54,7 @@ func AskOf(t store.Ticket) (Ask, bool) {
 }
 
 // issueOf is meta.linear.issue and meta.linear.human of t.
-func issueOf(t store.Ticket) (issue, human string) {
+func issueOf(t domain.Ticket) (issue, human string) {
 	var m struct {
 		Linear struct {
 			Issue string `json:"issue"`
@@ -75,7 +75,7 @@ func (s *Service) SweepAsks(ctx context.Context, cfg *config.Config) {
 	if !cfg.Linear.AsksOnIssue() {
 		return
 	}
-	for _, kind := range []store.Kind{store.KindMessage, store.KindTask} {
+	for _, kind := range []domain.Kind{domain.KindMessage, domain.KindTask} {
 		ts, err := s.host.OpenNeedsHuman(ctx, kind)
 		if err != nil {
 			s.log().WarnContext(ctx, "linear ask: list", "err", err)
@@ -93,7 +93,7 @@ func (s *Service) SweepAsks(ctx context.Context, cfg *config.Config) {
 				// Read again: a post that ended after this pass listed
 				// the ticket has set meta.linear_ask.
 				cur, err := s.host.Get(ctx, t.ID)
-				if err != nil || cur.Status != store.StatusOpen {
+				if err != nil || cur.Status != domain.StatusOpen {
 					return
 				}
 				if err := s.post(ctx, cfg, cur); err != nil && s.host.Context().Err() == nil {
@@ -106,7 +106,7 @@ func (s *Service) SweepAsks(ctx context.Context, cfg *config.Config) {
 
 // post posts t when it is a question or escalation on a Linear issue and
 // not posted yet.
-func (s *Service) post(ctx context.Context, cfg *config.Config, t store.Ticket) error {
+func (s *Service) post(ctx context.Context, cfg *config.Config, t domain.Ticket) error {
 	key, human := issueOf(t)
 	if key == "" {
 		return nil
@@ -151,7 +151,7 @@ func (s *Service) post(ctx context.Context, cfg *config.Config, t store.Ticket) 
 	return s.host.Comment(ctx, t.ID, fmt.Sprintf("asked on Linear %s: %s", key, res.URL))
 }
 
-func askBody(t store.Ticket, question bool) string {
+func askBody(t domain.Ticket, question bool) string {
 	if question {
 		return t.Body + "\nReply to this comment to answer; the reply is delivered to the session that asked.\n"
 	}
@@ -168,12 +168,12 @@ type Reply struct {
 }
 
 // openQuestions is the open questions with a posted ask.
-func (s *Service) openQuestions(ctx context.Context) ([]store.Ticket, error) {
-	qs, err := s.host.OpenNeedsHuman(ctx, store.KindMessage)
+func (s *Service) openQuestions(ctx context.Context) ([]domain.Ticket, error) {
+	qs, err := s.host.OpenNeedsHuman(ctx, domain.KindMessage)
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(qs, func(q store.Ticket) bool {
+	return slices.DeleteFunc(qs, func(q domain.Ticket) bool {
 		_, ok := AskOf(q)
 		return !ok || !s.host.IsQuestion(q)
 	}), nil
@@ -191,7 +191,7 @@ func (s *Service) Answers(ctx context.Context, issue string, replies []Reply) []
 	if err != nil {
 		return taken
 	}
-	byComment := map[string]store.Ticket{}
+	byComment := map[string]domain.Ticket{}
 	for _, q := range qs {
 		if a, _ := AskOf(q); a.Issue == issue {
 			byComment[a.Comment] = q
@@ -215,7 +215,7 @@ func (s *Service) Answers(ctx context.Context, issue string, replies []Reply) []
 // Unblock removes the Blocked label once no other open question on the
 // issue is waiting. It runs with ask_on_issue off too: a label posted
 // before the switch was turned off is still cleared.
-func (s *Service) Unblock(ctx context.Context, qt store.Ticket) {
+func (s *Service) Unblock(ctx context.Context, qt domain.Ticket) {
 	a, ok := AskOf(qt)
 	if !ok {
 		return
@@ -224,7 +224,7 @@ func (s *Service) Unblock(ctx context.Context, qt store.Ticket) {
 	if err != nil {
 		return
 	}
-	if slices.ContainsFunc(qs, func(o store.Ticket) bool {
+	if slices.ContainsFunc(qs, func(o domain.Ticket) bool {
 		oa, _ := AskOf(o)
 		return o.ID != qt.ID && oa.Issue == a.Issue
 	}) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -44,7 +45,7 @@ func (c *Controller) trace(ctx context.Context, sc scope, p rpc.TraceParams) (an
 func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (string, error) {
 	if _, err := c.store.Get(ctx, ref); err == nil {
 		return ref, nil
-	} else if !errors.Is(err, store.ErrNotFound) {
+	} else if !errors.Is(err, domain.ErrNotFound) {
 		return "", err
 	}
 	filter := store.Filter{Limit: 10001}
@@ -68,7 +69,7 @@ func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (
 		return "", err
 	}
 	if len(tickets) > 10000 {
-		return "", fmt.Errorf("%w: reference search is too broad, use a ticket id", store.ErrInvalid)
+		return "", fmt.Errorf("%w: reference search is too broad, use a ticket id", domain.ErrInvalid)
 	}
 	roots := map[string]bool{}
 	for _, t := range tickets {
@@ -86,7 +87,7 @@ func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (
 			}
 		}
 		root := t.ID
-		if t.Kind == store.KindStep && t.ParentID != "" {
+		if t.Kind == domain.KindStep && t.ParentID != "" {
 			root = t.ParentID
 		}
 		if run := metaString(t.Meta, runMetaPack, "id"); run != "" {
@@ -95,15 +96,15 @@ func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (
 		roots[root] = true
 	}
 	if len(roots) == 0 {
-		return "", fmt.Errorf("%w: no ticket records reference %q", store.ErrNotFound, ref)
+		return "", fmt.Errorf("%w: no ticket records reference %q", domain.ErrNotFound, ref)
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("%w: multiple roots reference %q, use a ticket id", store.ErrConflict, ref)
+		return "", fmt.Errorf("%w: multiple roots reference %q, use a ticket id", domain.ErrConflict, ref)
 	}
 	for root := range roots {
 		return root, nil
 	}
-	return "", store.ErrNotFound
+	return "", domain.ErrNotFound
 }
 
 func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen map[string]bool) (rpc.TraceNode, error) {
@@ -117,7 +118,7 @@ func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen m
 		ID: t.ID, Title: t.Title, Pool: t.Pool, Status: t.Status,
 		Resolution: t.Resolution, CreatedBy: t.CreatedBy, Trigger: triggerName(t.Meta),
 	}
-	if t.Status == store.StatusInProgress {
+	if t.Status == domain.StatusInProgress {
 		n.Holder = t.Holder
 	}
 	th, err := c.store.Thread(ctx, id, store.AllParts)
@@ -199,7 +200,7 @@ func (c *Controller) childIDs(ctx context.Context, id string, windows []holdWind
 			return nil, err
 		}
 		for _, k := range made {
-			if k.Kind == store.KindSession || k.ID == id || slices.Contains(out, k.ID) {
+			if k.Kind == domain.KindSession || k.ID == id || slices.Contains(out, k.ID) {
 				continue
 			}
 			if !k.CreatedAt.Before(w.start) && !k.CreatedAt.After(w.end) {
@@ -222,7 +223,7 @@ func triggerName(meta json.RawMessage) string {
 	return m.Trigger.Name
 }
 
-func links(body string, comments []store.Comment) []string {
+func links(body string, comments []domain.Comment) []string {
 	var out []string
 	add := func(s string) {
 		for _, l := range ghLink.FindAllString(s, -1) {

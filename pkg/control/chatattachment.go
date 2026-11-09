@@ -14,33 +14,34 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func validateAttachments(files []rpc.AttachmentContent) error {
 	if len(files) > 8 {
-		return fmt.Errorf("%w: at most 8 attachments", store.ErrInvalid)
+		return fmt.Errorf("%w: at most 8 attachments", domain.ErrInvalid)
 	}
 	total := 0
 	for _, f := range files {
 		total += len(f.Data)
 		if len(f.Data) == 0 || total > rpc.MaxAttachmentBytes {
-			return fmt.Errorf("%w: attachments must be nonempty and total at most 8 MiB", store.ErrInvalid)
+			return fmt.Errorf("%w: attachments must be nonempty and total at most 8 MiB", domain.ErrInvalid)
 		}
 		if f.Name == "" || len(f.Name) > 255 || !utf8.ValidString(f.Name) || strings.ContainsAny(f.Name, "/\\") || strings.ContainsFunc(f.Name, unicode.IsControl) {
-			return fmt.Errorf("%w: invalid attachment name", store.ErrInvalid)
+			return fmt.Errorf("%w: invalid attachment name", domain.ErrInvalid)
 		}
 		if f.MimeType == "text/plain" {
 			if len(f.Data) > 2<<20 || !utf8.Valid(f.Data) || bytes.IndexByte(f.Data, 0) >= 0 {
-				return fmt.Errorf("%w: documents must be UTF-8 text, at most 2 MiB", store.ErrInvalid)
+				return fmt.Errorf("%w: documents must be UTF-8 text, at most 2 MiB", domain.ErrInvalid)
 			}
 			continue
 		}
 		if f.MimeType != "image/png" && f.MimeType != "image/jpeg" && f.MimeType != "image/gif" {
-			return fmt.Errorf("%w: use a PNG, JPEG, GIF or UTF-8 text document", store.ErrInvalid)
+			return fmt.Errorf("%w: use a PNG, JPEG, GIF or UTF-8 text document", domain.ErrInvalid)
 		}
 		if !rpc.ValidImage(f.Data, f.MimeType) {
-			return fmt.Errorf("%w: invalid image or image exceeds 64 megapixels", store.ErrInvalid)
+			return fmt.Errorf("%w: invalid image or image exceeds 64 megapixels", domain.ErrInvalid)
 		}
 	}
 	return nil
@@ -51,7 +52,7 @@ func (c *Controller) attachmentDir(session string) string {
 	return filepath.Join(c.root.Dir, "chat-attachments", session)
 }
 
-func (c *Controller) saveAttachments(sc scope, session, message string, files []rpc.AttachmentContent) ([]store.MessageAttachment, error) {
+func (c *Controller) saveAttachments(sc scope, session, message string, files []rpc.AttachmentContent) ([]domain.MessageAttachment, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
@@ -59,7 +60,7 @@ func (c *Controller) saveAttachments(sc scope, session, message string, files []
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	var out []store.MessageAttachment
+	var out []domain.MessageAttachment
 	for i, f := range files {
 		data := f.Data
 		if f.MimeType == "text/plain" {
@@ -71,12 +72,12 @@ func (c *Controller) saveAttachments(sc scope, session, message string, files []
 			_ = os.RemoveAll(dir)
 			return nil, err
 		}
-		out = append(out, store.MessageAttachment{Name: f.Name, MimeType: f.MimeType, Size: len(data)})
+		out = append(out, domain.MessageAttachment{Name: f.Name, MimeType: f.MimeType, Size: len(data)})
 	}
 	return out, nil
 }
 
-func (r *runner) messageAttachments(t store.Ticket, f store.MessageFields) (string, []acp.ContentBlock, error) {
+func (r *runner) messageAttachments(t domain.Ticket, f domain.MessageFields) (string, []acp.ContentBlock, error) {
 	var text strings.Builder
 	var content []acp.ContentBlock
 	for i, a := range f.Attachments {

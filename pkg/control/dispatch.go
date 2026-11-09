@@ -11,6 +11,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -68,10 +69,10 @@ func (c *Controller) ingestPass(ctx context.Context) {
 func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, error) {
 	c.dispatchMu.Lock()
 	defer c.dispatchMu.Unlock()
-	var rows []store.InboxItem
+	var rows []domain.InboxItem
 	for range dispatchBatch {
-		it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxAdmitted}, holder, dispatchLease)
-		if errors.Is(err, store.ErrNotFound) {
+		it, err := ingest.InboxClaim(ctx, c.store, []string{domain.InboxAdmitted}, holder, dispatchLease)
+		if errors.Is(err, domain.ErrNotFound) {
 			break
 		}
 		if err != nil {
@@ -82,7 +83,7 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 	if len(rows) == 0 {
 		return 0, nil
 	}
-	var comments, activity, other []store.InboxItem
+	var comments, activity, other []domain.InboxItem
 	for _, it := range rows {
 		switch {
 		case strings.HasPrefix(it.DeliveryID, activityPrefix):
@@ -107,9 +108,9 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 
 // done marks rows dispatched. A lost lease is logged: the row is then
 // claimed again, and the consumers are idempotent.
-func (c *Controller) done(ctx context.Context, holder string, rows []store.InboxItem) {
+func (c *Controller) done(ctx context.Context, holder string, rows []domain.InboxItem) {
 	for _, it := range rows {
-		if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
+		if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, store.InboxUpdate{State: domain.InboxDispatched}); err != nil {
 			c.log.WarnContext(ctx, "dispatch: mark dispatched", "delivery", it.DeliveryID, "err", err)
 		}
 	}
@@ -117,7 +118,7 @@ func (c *Controller) done(ctx context.Context, holder string, rows []store.Inbox
 
 // dispatchComments delivers admitted poller comments, grouped by thread
 // so a thread's news arrives as one message, as the poller used to send.
-func (c *Controller) dispatchComments(ctx context.Context, holder string, rows []store.InboxItem) {
+func (c *Controller) dispatchComments(ctx context.Context, holder string, rows []domain.InboxItem) {
 	if len(rows) == 0 {
 		return
 	}
@@ -137,11 +138,11 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 		th   threads.Thread
 		cs   []threads.Comment
 		keys []string
-		rows []store.InboxItem
+		rows []domain.InboxItem
 	}
 	groups := map[string]*group{}
 	var order []string
-	var skip []store.InboxItem
+	var skip []domain.InboxItem
 	for _, it := range rows {
 		var p pollComment
 		if json.Unmarshal(it.Admitted, &p) != nil || (p.Thread.Linear == "" && p.Thread.Repo == "") {
@@ -193,7 +194,7 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 
 // dispatchActivity adds admitted activity items to the feed and checks
 // merges for reverts.
-func (c *Controller) dispatchActivity(ctx context.Context, holder string, rows []store.InboxItem) {
+func (c *Controller) dispatchActivity(ctx context.Context, holder string, rows []domain.InboxItem) {
 	if len(rows) == 0 {
 		return
 	}
@@ -232,7 +233,7 @@ func (c *Controller) ingestDispatchMethod(ctx context.Context, sc scope, p rpc.I
 		return nil, err
 	}
 	if p.Worker == "" {
-		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: worker is required", domain.ErrInvalid)
 	}
 	c.queue().Beat(p, false, false)
 	n, err := c.dispatchAll(ctx, ingestqueue.WorkerPrefix+p.Worker)

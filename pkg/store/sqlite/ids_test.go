@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -28,10 +29,10 @@ func TestIDGenerators(t *testing.T) {
 	}
 	s := open()
 	seen := map[string]bool{}
-	mk := func(kind store.Kind) string {
+	mk := func(kind domain.Kind) string {
 		t.Helper()
 		nt := store.NewTicket{Project: "js", Kind: kind, Title: "x"}
-		if kind == store.KindSession {
+		if kind == domain.KindSession {
 			nt.Fields = json.RawMessage(`{"agent":"a"}`)
 		}
 		tk, err := store.Create(ctx, s, "t", nt)
@@ -42,7 +43,7 @@ func TestIDGenerators(t *testing.T) {
 	}
 
 	// An explicit numeric id, as if created earlier: seq must skip it.
-	_, err := store.Create(ctx, s, "t", store.NewTicket{ID: "js-7", Project: "js", Kind: store.KindTask, Title: "old"})
+	_, err := store.Create(ctx, s, "t", store.NewTicket{ID: "js-7", Project: "js", Kind: domain.KindTask, Title: "old"})
 	require.NoError(t, err)
 	seen["js-7"] = true
 
@@ -58,9 +59,9 @@ func TestIDGenerators(t *testing.T) {
 	for _, name := range ids.Names {
 		spec = ids.Spec{Generator: name}
 		for range 5 {
-			assert.Regexp(t, shapes[name], mk(store.KindTask), name)
+			assert.Regexp(t, shapes[name], mk(domain.KindTask), name)
 		}
-		sess := mk(store.KindSession)
+		sess := mk(domain.KindSession)
 		assert.True(t, ids.IsSession(sess), "%s session id %s", name, sess)
 	}
 	assert.True(t, seen["js-8"], "seq starts past js-7")
@@ -71,7 +72,7 @@ func TestIDGenerators(t *testing.T) {
 	s = open()
 	t.Cleanup(func() { _ = s.Close() })
 	spec = ids.Spec{Generator: ids.Seq}
-	id := mk(store.KindTask)
+	id := mk(domain.KindTask)
 	assert.Regexp(t, `^js-1[0-9]$`, id)
 
 	// Every id still reads back.

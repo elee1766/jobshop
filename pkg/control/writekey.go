@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
@@ -26,7 +26,7 @@ func writeKeyName(sc scope, key string) string {
 
 func (c *Controller) writeKeyClaim(ctx context.Context, sc scope, p rpc.WriteKeyParams) (any, error) {
 	if strings.TrimSpace(p.Key) == "" {
-		return nil, fmt.Errorf("%w: writekey.claim needs a key", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: writekey.claim needs a key", domain.ErrInvalid)
 	}
 	k, err := writekey.Claim(ctx, c.store, writeKeyName(sc, p.Key), p.Op, sc.actor)
 	if err != nil {
@@ -39,7 +39,7 @@ func (c *Controller) writeKeyClaim(ctx context.Context, sc scope, p rpc.WriteKey
 
 func (c *Controller) writeKeyFinish(ctx context.Context, sc scope, p rpc.WriteKeyParams) (any, error) {
 	if strings.TrimSpace(p.Key) == "" || p.Result == "" {
-		return nil, fmt.Errorf("%w: writekey.finish needs a key and a result", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: writekey.finish needs a key and a result", domain.ErrInvalid)
 	}
 	k, err := writekey.Finish(ctx, c.store, writeKeyName(sc, p.Key), p.Result)
 	if err != nil {

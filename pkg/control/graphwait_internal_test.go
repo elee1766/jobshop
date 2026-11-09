@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -36,16 +37,16 @@ func TestGraphWaitEdges(t *testing.T) {
 	c, _, prs, threads := waitController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: []byte(`{"workflow":"w","state":"running"}`)})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: []byte(`{"workflow":"w","state":"running"}`)})
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
 	prs.set(recPR, `[[]]`, recChecks)
 	_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
 		ID: a.ID, Reason: "CI and run", Any: true,
-		Conds: []store.WaitCond{
-			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci"},
-			{Type: store.WaitRun, Run: run.ID, State: "done"},
-			{Type: store.WaitLinearState, Thread: "JOB-150", State: "completed"},
-			{Type: store.WaitTime, At: c.now().Add(1)},
+		Conds: []domain.WaitCond{
+			{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci"},
+			{Type: domain.WaitRun, Run: run.ID, State: "done"},
+			{Type: domain.WaitLinearState, Thread: "JOB-150", State: "completed"},
+			{Type: domain.WaitTime, At: c.now().Add(1)},
 		},
 	})
 	require.NoError(t, err)
@@ -57,7 +58,7 @@ func TestGraphWaitEdges(t *testing.T) {
 	}
 	require.Len(t, got, 3, "a time condition has nothing to point at")
 	runRel := got[run.ID]
-	assert.Equal(t, rpc.GraphRelation{From: a.ID, To: run.ID, Kind: "wait", Type: store.WaitRun, Reason: "CI and run", State: "waiting", Since: runRel.Since}, runRel)
+	assert.Equal(t, rpc.GraphRelation{From: a.ID, To: run.ID, Kind: "wait", Type: domain.WaitRun, Reason: "CI and run", State: "waiting", Since: runRel.Since}, runRel)
 	assert.False(t, runRel.Since.IsZero())
 	ext := map[string]rpc.GraphExternal{}
 	for _, e := range g.External {
@@ -87,7 +88,7 @@ func TestGraphWaitEdges(t *testing.T) {
 	// moving invalidates it.
 	_, err = c.waitAdd(ctx, admin, rpc.WaitAddParams{
 		ID: a.ID, Reason: "approval",
-		Conds: []store.WaitCond{{Type: store.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Head: "aaaa1111bbbb"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Head: "aaaa1111bbbb"}},
 	})
 	require.NoError(t, err)
 	prs.set(`{"state":"open","merged":false,"head":{"sha":"cccc2222"}}`, `[[]]`, `[]`)
@@ -104,7 +105,7 @@ func TestGraphWaitEdges(t *testing.T) {
 	b := mkTicket(t, c, store.NewTicket{Title: "b", Pool: "dev"})
 	_, err = c.waitAdd(ctx, admin, rpc.WaitAddParams{
 		ID: b.ID, Reason: "merge",
-		Conds: []store.WaitCond{{Type: store.WaitPR, Repo: "acme/widget", PR: 5, State: "merged"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitPR, Repo: "acme/widget", PR: 5, State: "merged"}},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "waiting", waitRelations(graphOf(t, c, b.ID))[0].State)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -20,7 +21,7 @@ func TestRecallDuringCollectionDDL(t *testing.T) {
 	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
-	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "a", tk.ID, "vendorHash mismatch fixed")
 	require.NoError(t, err)

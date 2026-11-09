@@ -1,18 +1,22 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/elee1766/jobshop/pkg/domain"
+)
 
 // Helpers over Thread and Changes (#579: helpers wrap the interface in
 // package store; they are not Store methods).
 
 // Edges returns the edges in either direction touching id.
-func Edges(ctx context.Context, s Store, id string) ([]Edge, error) {
+func Edges(ctx context.Context, s Store, id string) ([]domain.Edge, error) {
 	th, err := s.Thread(ctx, id, Parts{Edges: true})
 	return th.Edges, err
 }
 
 // Comments returns id's comments oldest first.
-func Comments(ctx context.Context, s Store, id string) ([]Comment, error) {
+func Comments(ctx context.Context, s Store, id string) ([]domain.Comment, error) {
 	th, err := s.Thread(ctx, id, Parts{Comments: true})
 	return th.Comments, err
 }

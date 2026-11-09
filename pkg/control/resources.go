@@ -7,13 +7,13 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // resourceWaitSince is when t started waiting: its last activity, or
 // when its last blocker closed, whichever is later (#408).
-func (c *Controller) resourceWaitSince(ctx context.Context, t store.Ticket) (time.Time, error) {
+func (c *Controller) resourceWaitSince(ctx context.Context, t domain.Ticket) (time.Time, error) {
 	last, err := triggers.LastActivity(ctx, c.store, t)
 	if err != nil {
 		return last, err
@@ -22,7 +22,7 @@ func (c *Controller) resourceWaitSince(ctx context.Context, t store.Ticket) (tim
 }
 
 // waitText is how run show and findings describe a wait.
-func waitText(w store.ResourceWait) string {
+func waitText(w domain.ResourceWait) string {
 	return fmt.Sprintf("waiting on %s, %d ahead (%d/%d held)", w.Key, w.Ahead, w.Held, w.Capacity)
 }
 
@@ -85,10 +85,10 @@ func (c *Controller) resourceAttention(ctx context.Context, cfg *config.Config) 
 }
 
 // runWaits are the resource waits of a run's steps.
-func (c *Controller) runWaits(ctx context.Context, steps []store.Ticket) ([]store.ResourceWait, error) {
+func (c *Controller) runWaits(ctx context.Context, steps []domain.Ticket) ([]domain.ResourceWait, error) {
 	mine := map[string]bool{}
 	for _, s := range steps {
-		if s.Status == store.StatusOpen {
+		if s.Status == domain.StatusOpen {
 			mine[s.ID] = true
 		}
 	}
@@ -99,7 +99,7 @@ func (c *Controller) runWaits(ctx context.Context, steps []store.Ticket) ([]stor
 	if err != nil {
 		return nil, err
 	}
-	var out []store.ResourceWait
+	var out []domain.ResourceWait
 	for _, w := range rep.Waits {
 		if mine[w.Ticket] {
 			out = append(out, w)

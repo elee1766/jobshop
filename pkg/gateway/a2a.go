@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/clock"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -129,7 +129,7 @@ func (a *A2A) event(ctx context.Context, ev rpc.Event) {
 			}
 		}
 	default:
-		if ev.Status == store.StatusClosed {
+		if ev.Status == domain.StatusClosed {
 			return
 		}
 		r, err := a.ctl.Show(ctx, ev.ID)
@@ -144,7 +144,7 @@ func (a *A2A) event(ctx context.Context, ev rpc.Event) {
 // Resync starts a conversation for every open escalation this gateway
 // routes, resuming from meta.gateway after a restart.
 func (a *A2A) Resync(ctx context.Context) {
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
 		ts, err := a.ctl.List(ctx, rpc.ListParams{Label: EscalationLabel, Status: st})
 		if err != nil {
 			a.log.WarnContext(ctx, "a2a: list escalations", "err", err)
@@ -162,8 +162,8 @@ func (a *A2A) Routes(cause string) bool {
 }
 
 // start begins one ticket's conversation, once.
-func (a *A2A) start(ctx context.Context, t store.Ticket) {
-	if t.Status == store.StatusClosed || !slices.Contains(t.Labels, EscalationLabel) {
+func (a *A2A) start(ctx context.Context, t domain.Ticket) {
+	if t.Status == domain.StatusClosed || !slices.Contains(t.Labels, EscalationLabel) {
 		return
 	}
 	chat, ok := metaChat(t)
@@ -193,7 +193,7 @@ func (a *A2A) start(ctx context.Context, t store.Ticket) {
 }
 
 // chatCause is meta.escalation.cause, the escalation kind.
-func chatCause(t store.Ticket) string {
+func chatCause(t domain.Ticket) string {
 	var c struct {
 		Cause string `json:"cause"`
 	}
@@ -204,7 +204,7 @@ func chatCause(t store.Ticket) string {
 }
 
 // metaEscalationAny is meta.gateway even without a chat thread.
-func metaEscalationAny(t store.Ticket) (Escalation, bool) {
+func metaEscalationAny(t domain.Ticket) (Escalation, bool) {
 	var e Escalation
 	raw, ok := ticketMeta(t)[MetaPack]
 	if !ok || json.Unmarshal(raw, &e) != nil {
@@ -216,7 +216,7 @@ func metaEscalationAny(t store.Ticket) (Escalation, bool) {
 // a2aConv is one escalation's conversation with the peer.
 type a2aConv struct {
 	a      *A2A
-	ticket store.Ticket
+	ticket domain.Ticket
 	chat   chatMeta
 	closed chan string
 	st     A2AState
@@ -479,7 +479,7 @@ func (c *a2aConv) comment(ctx context.Context, body string) {
 // save writes st to meta.gateway.a2a.<name>.
 func (c *a2aConv) save(ctx context.Context) {
 	st := c.st
-	_, err := updateGatewayMeta(ctx, c.a.ctl, c.ticket.ID, func(_ store.Ticket, e *Escalation, _ bool) error {
+	_, err := updateGatewayMeta(ctx, c.a.ctl, c.ticket.ID, func(_ domain.Ticket, e *Escalation, _ bool) error {
 		if e.A2A == nil {
 			e.A2A = map[string]*A2AState{}
 		}

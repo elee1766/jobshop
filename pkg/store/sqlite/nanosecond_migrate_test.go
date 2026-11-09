@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -74,7 +75,7 @@ func TestBatchCreateOrder(t *testing.T) {
 	ids := []string{"p-c", "p-a", "p-b"}
 	var g store.Graph
 	for _, id := range ids {
-		g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: "p", Kind: store.KindTask})
+		g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: "p", Kind: domain.KindTask})
 	}
 	out, err := s.Apply(ctx, "test", g)
 	require.NoError(t, err)

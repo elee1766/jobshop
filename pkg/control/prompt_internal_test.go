@@ -7,20 +7,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func TestTicketPromptComments(t *testing.T) {
 	t.Parallel()
-	tk := store.Ticket{ID: "js-1", Title: "Resolve #70", Body: "the body"}
+	tk := domain.Ticket{ID: "js-1", Title: "Resolve #70", Body: "the body"}
 	plain := ticketPromptText("pool prompt", tk, nil)
 	assert.NotContains(t, plain, "# Recent comments", "no comments: no section")
-	assert.Equal(t, plain, ticketPromptText("pool prompt", tk, []store.Comment{}))
+	assert.Equal(t, plain, ticketPromptText("pool prompt", tk, []domain.Comment{}))
 
 	at := time.Date(2026, 11, 1, 20, 0, 0, 0, time.UTC)
-	var cs []store.Comment
+	var cs []domain.Comment
 	for i, b := range []string{"first", "second", "third", "fourth", strings.Repeat("x", 3000)} {
-		cs = append(cs, store.Comment{Author: "js-s", Body: b, CreatedAt: at.Add(time.Duration(i) * time.Minute)})
+		cs = append(cs, domain.Comment{Author: "js-s", Body: b, CreatedAt: at.Add(time.Duration(i) * time.Minute)})
 	}
 	p := ticketPromptText("pool prompt", tk, cs)
 	head, _, ok := strings.Cut(plain, "The jobshop CLI")

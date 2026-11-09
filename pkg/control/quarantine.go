@@ -13,6 +13,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 const (
@@ -30,7 +32,7 @@ const (
 // crashRelease releases what a crashed session held with crashReleaseReason
 // and quarantines tickets that have now crashed quarantineCrashes sessions.
 func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
-	held, err := c.store.List(ctx, store.Filter{Holder: sessionID, Status: store.StatusInProgress})
+	held, err := c.store.List(ctx, store.Filter{Holder: sessionID, Status: domain.StatusInProgress})
 	if err != nil {
 		return
 	}
@@ -217,7 +219,7 @@ func (c *Controller) setQuarantine(pool, reason string) bool {
 // ensurePoolEscalation files "Pool <name> quarantined: <error>" unless an
 // open one for the pool exists.
 func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason string) {
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
 		seen, err := c.store.List(ctx, store.Filter{MetaPack: poolMetaPack, MetaKey: "name", MetaValue: pool, Status: st, Limit: 1})
 		if err != nil || len(seen) > 0 {
 			return
@@ -248,7 +250,7 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		"or `jobshop pool unquarantine %s`, and close this ticket.", pool, reason, pool)
 	prio := 1
 	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: proj, Kind: store.KindTask, Title: clipTitle(fmt.Sprintf("Pool %s quarantined: %s", pool, reason)),
+		Project: proj, Kind: domain.KindTask, Title: clipTitle(fmt.Sprintf("Pool %s quarantined: %s", pool, reason)),
 		Body: body, Priority: &prio, Pool: dest, Labels: []string{"needs-human"}, Meta: meta,
 	})
 	if err != nil {
@@ -296,7 +298,7 @@ func (c *Controller) poolUnquarantine(ctx context.Context, sc scope, p rpc.PoolP
 		return nil, err
 	}
 	if _, ok := c.config().Pools[p.Pool]; !ok {
-		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+		return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Pool)
 	}
 	c.unquarantinePools(p.Pool)
 	c.log.InfoContext(ctx, "pool unquarantined", "pool", p.Pool)
@@ -326,7 +328,7 @@ func (c *Controller) poolShow(_ context.Context, sc scope, p rpc.PoolShowParams)
 	cfg := c.config()
 	pool, ok := cfg.Pools[p.Pool]
 	if !ok {
-		return nil, fmt.Errorf("%w: pool %q", store.ErrNotFound, p.Pool)
+		return nil, fmt.Errorf("%w: pool %q", domain.ErrNotFound, p.Pool)
 	}
 	return rpc.PoolShowResult{
 		Pool: p.Pool, Agent: pool.Agent, Project: pool.Project, Labels: pool.Labels,

@@ -12,6 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -31,7 +32,7 @@ import (
 
 const (
 	attentionKeyPrefix = chatlife.AttentionPrefix
-	deskMetaPack       = store.MetaDesk
+	deskMetaPack       = domain.MetaDesk
 )
 
 var attentionTicketKinds = attention.TicketKinds
@@ -45,7 +46,7 @@ func (c *Controller) attentionChat(ctx context.Context, sc scope, p rpc.Attentio
 		return nil, err
 	}
 	if p.Kind == "" || p.ID == "" || strings.ContainsAny(p.Kind+p.ID, " \n:") {
-		return nil, fmt.Errorf("%w: kind and id are required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: kind and id are required", domain.ErrInvalid)
 	}
 	res, err := c.ensureAttentionChat(ctx, c.config(), rpc.AttentionItem{Kind: p.Kind, ID: p.ID, Title: p.Title}, p.Why, false)
 	if err != nil {
@@ -64,7 +65,7 @@ func (c *Controller) attentionChat(ctx context.Context, sc scope, p rpc.Attentio
 // closed when the item leaves attention.
 func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config, it rpc.AttentionItem, why string, prestart bool) (rpc.AttentionChatResult, error) {
 	res := rpc.AttentionChatResult{Kind: it.Kind, ID: it.ID, Key: attentionKey(it.Kind, it.ID), Pool: cfg.AttentionChatPool()}
-	var t store.Ticket
+	var t domain.Ticket
 	isTicket := slices.Contains(attentionTicketKinds, it.Kind)
 	if isTicket {
 		var err error
@@ -75,7 +76,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 		if e, ok := escalationMeta(t); ok && it.Kind != rpc.AttentionQuestion {
 			res.Key, res.Session, res.Pool = e.Key, e.Session, e.Pool
 			if e.Session == "" {
-				return res, fmt.Errorf("%w: escalation chat for %s is still starting", store.ErrConflict, t.ID)
+				return res, fmt.Errorf("%w: escalation chat for %s is still starting", domain.ErrConflict, t.ID)
 			}
 			return res, nil
 		}
@@ -84,7 +85,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 		}
 	}
 	if res.Pool == "" {
-		return res, fmt.Errorf("%w: no chat pool for attention chats (attention.prestart_pool, or an operator chat pool)", store.ErrInvalid)
+		return res, fmt.Errorf("%w: no chat pool for attention chats (attention.prestart_pool, or an operator chat pool)", domain.ErrInvalid)
 	}
 	sess, ok, err := c.openKeyed(ctx, res.Key)
 	if err != nil {
@@ -96,12 +97,12 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 	}
 	if prestart {
 		// Explicitly archived chats stay closed until the operator discusses the item again.
-		closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Key: res.Key, Order: store.OrderNewest, Limit: 1})
+		closed, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed, Key: res.Key, Order: store.OrderNewest, Limit: 1})
 		if err != nil {
 			return res, err
 		}
 		if len(closed) > 0 {
-			f, _ := store.DecodeFields[store.SessionFields](closed[0])
+			f, _ := domain.DecodeFields[domain.SessionFields](closed[0])
 			if f.Archived != nil {
 				return res, nil
 			}
@@ -120,7 +121,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 	// Read-only until a human writes: the first turn reads the item and
 	// proposes, it does not act (#606).
 	c.setReadOnly(sess.ID, true)
-	if err := c.updateSessionFields(ctx, sess.ID, func(f *store.SessionFields) {
+	if err := c.updateSessionFields(ctx, sess.ID, func(f *domain.SessionFields) {
 		f.ReadOnly, f.Prestart = true, prestart
 	}); err != nil {
 		c.log.WarnContext(ctx, "attention chat fields", "session", sess.ID, "err", err)
@@ -140,17 +141,17 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 }
 
 // openKeyed is the open session for key.
-func (c *Controller) openKeyed(ctx context.Context, key string) (store.Ticket, bool, error) {
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+func (c *Controller) openKeyed(ctx context.Context, key string) (domain.Ticket, bool, error) {
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
-		return store.Ticket{}, false, err
+		return domain.Ticket{}, false, err
 	}
 	for _, t := range open {
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Key == key {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Key == key {
 			return t, true, nil
 		}
 	}
-	return store.Ticket{}, false, nil
+	return domain.Ticket{}, false, nil
 }
 
 // recordAttentionChat keeps key in meta.desk.attention_chat.
@@ -165,7 +166,7 @@ func (c *Controller) recordAttentionSummary(ctx context.Context, session, said s
 	if err != nil {
 		return
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return
 	}
@@ -205,7 +206,7 @@ func (c *Controller) updateDeskMeta(ctx context.Context, id, field, value string
 			return err
 		}
 		_, err = c.store.Update(ctx, "controller", id, store.Update{Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return err
@@ -213,9 +214,9 @@ func (c *Controller) updateDeskMeta(ctx context.Context, id, field, value string
 }
 
 // attentionPrompt is the context of a resolving chat's first turn.
-func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, why string, t store.Ticket) string {
+func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, why string, t domain.Ticket) string {
 	p := chatlife.AttentionPrompt{Item: it, Why: why, Ticket: t, Actions: c.attentionActions(ctx, it)}
-	if it.Kind == rpc.AttentionRun && t.Kind == store.KindRun {
+	if it.Kind == rpc.AttentionRun && t.Kind == domain.KindRun {
 		if run, err := c.runResult(ctx, t); err == nil {
 			p.Run = &run
 		}
@@ -239,12 +240,12 @@ func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return
 	}
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return
 	}
 	// Answered is not settled: a question's chat follows the asker (JOB-52).
-	left, prestarted := chatlife.Sweep(items, open, func(s store.Ticket, f store.SessionFields) bool { return c.questionChatOpen(ctx, s, f) })
+	left, prestarted := chatlife.Sweep(items, open, func(s domain.Ticket, f domain.SessionFields) bool { return c.questionChatOpen(ctx, s, f) })
 	for _, l := range left {
 		c.closeAttentionChat(ctx, cfg, l.Session, l.Item)
 	}
@@ -259,7 +260,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config
 		}
 		if p.MaxSessions > 0 {
 			// Pre-started chats take pool slots, never the human one.
-			n, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: pool})
+			n, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 			if err != nil || len(n) >= p.MaxSessions {
 				return
 			}
@@ -303,10 +304,10 @@ func (c *Controller) prestartable(ctx context.Context, cfg *config.Config, it rp
 }
 
 // closeAttentionChat ends the chat of an item that left attention.
-func (c *Controller) closeAttentionChat(ctx context.Context, cfg *config.Config, s store.Ticket, item string) {
+func (c *Controller) closeAttentionChat(ctx context.Context, cfg *config.Config, s domain.Ticket, item string) {
 	c.log.InfoContext(ctx, "attention item left, closing its chat", "item", item, "session", s.ID)
 	_, err := c.closeTicketIn(ctx, cfg, scope{admin: true, actor: "controller"}, rpc.CloseParams{ID: s.ID, Resolution: "resolved"})
-	if err != nil && !errors.Is(err, store.ErrClosed) {
+	if err != nil && !errors.Is(err, domain.ErrClosed) {
 		c.log.WarnContext(ctx, "close attention chat", "session", s.ID, "err", err)
 	}
 }
@@ -343,7 +344,7 @@ func (c *Controller) humanWrote(ctx context.Context, id string) {
 		return
 	}
 	c.setReadOnly(id, false)
-	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.ReadOnly = false }); err != nil {
+	if err := c.updateSessionFields(ctx, id, func(f *domain.SessionFields) { f.ReadOnly = false }); err != nil {
 		c.log.WarnContext(ctx, "clear read-only", "session", id, "err", err)
 	}
 }
@@ -355,10 +356,10 @@ func (c *Controller) resumeSession(ctx context.Context, id string) {
 	if err != nil {
 		return
 	}
-	if f, err := store.DecodeFields[store.SessionFields](t); err != nil || !f.Suspended {
+	if f, err := domain.DecodeFields[domain.SessionFields](t); err != nil || !f.Suspended {
 		return
 	}
-	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.Suspended = false }); err != nil {
+	if err := c.updateSessionFields(ctx, id, func(f *domain.SessionFields) { f.Suspended = false }); err != nil {
 		c.log.WarnContext(ctx, "resume session", "session", id, "err", err)
 	}
 	c.wakeRunner(id)
@@ -374,7 +375,7 @@ func (r *runner) prestarted() bool {
 	if err != nil {
 		return false
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	return err == nil && f.Prestart
 }
 
@@ -383,7 +384,7 @@ func (r *runner) prestarted() bool {
 // session() resumes the conversation with session/load and the journal
 // keeps the transcript Desk replays.
 func (r *runner) suspend(nc net.Conn) error {
-	if err := r.c.updateSessionFields(r.ctx, r.id, func(f *store.SessionFields) { f.Suspended = true }); err != nil {
+	if err := r.c.updateSessionFields(r.ctx, r.id, func(f *domain.SessionFields) { f.Suspended = true }); err != nil {
 		return err
 	}
 	r.log.InfoContext(r.ctx, "suspending idle attention chat")
@@ -400,12 +401,12 @@ func (r *runner) suspended() bool {
 	for {
 		t, err := r.c.store.Get(r.ctx, r.id)
 		if err == nil {
-			f, _ := store.DecodeFields[store.SessionFields](t)
-			if t.Status == store.StatusClosed || !f.Suspended {
+			f, _ := domain.DecodeFields[domain.SessionFields](t)
+			if t.Status == domain.StatusClosed || !f.Suspended {
 				return true
 			}
 			if len(r.inbox(r.ctx, false)) > 0 {
-				if err := r.c.updateSessionFields(r.ctx, r.id, func(f *store.SessionFields) { f.Suspended = false }); err == nil {
+				if err := r.c.updateSessionFields(r.ctx, r.id, func(f *domain.SessionFields) { f.Suspended = false }); err == nil {
 					return true
 				}
 			}

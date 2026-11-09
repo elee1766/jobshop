@@ -14,6 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -71,11 +72,11 @@ func (c *Controller) linearWaitSrc() linearWaitSource {
 }
 
 // waitOf returns fields.wait of a task or step, nil for none.
-func waitOf(t store.Ticket) *store.Wait { return store.WaitOf(t) }
+func waitOf(t domain.Ticket) *domain.Wait { return domain.WaitOf(t) }
 
 // withWait returns t's fields with wait set (nil removes it), keeping
 // the other fields.
-func withWait(t store.Ticket, w *store.Wait) (json.RawMessage, error) {
+func withWait(t domain.Ticket, w *domain.Wait) (json.RawMessage, error) {
 	m := map[string]json.RawMessage{}
 	if len(t.Fields) > 0 {
 		if err := json.Unmarshal(t.Fields, &m); err != nil {
@@ -105,17 +106,17 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindTask && t.Kind != store.KindStep {
-		return nil, fmt.Errorf("%w: only tasks and steps wait (%s is a %s)", store.ErrInvalid, id, t.Kind)
+	if t.Kind != domain.KindTask && t.Kind != domain.KindStep {
+		return nil, fmt.Errorf("%w: only tasks and steps wait (%s is a %s)", domain.ErrInvalid, id, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: %s", domain.ErrClosed, id)
 	}
 	if !sc.admin && t.Project != sc.project {
 		return nil, forbidden("%s is in another project", id)
 	}
 	var held *store.Claim
-	if t.Status == store.StatusInProgress {
+	if t.Status == domain.StatusInProgress {
 		cl, err := c.heldClaim(ctx, sc, id)
 		if err != nil {
 			return nil, err
@@ -123,13 +124,13 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 		held = &cl
 	}
 	now := c.now().UTC()
-	w := &store.Wait{Conds: p.Conds, Reason: strings.TrimSpace(p.Reason), Owner: p.Owner, Resume: p.Resume, Since: now, By: sc.actor}
+	w := &domain.Wait{Conds: p.Conds, Reason: strings.TrimSpace(p.Reason), Owner: p.Owner, Resume: p.Resume, Since: now, By: sc.actor}
 	if p.Any {
-		w.Mode = store.WaitAny
+		w.Mode = domain.WaitAny
 	}
 	if p.Timeout != nil {
 		if !p.Timeout.After(now) {
-			return nil, fmt.Errorf("%w: timeout must be in the future", store.ErrInvalid)
+			return nil, fmt.Errorf("%w: timeout must be in the future", domain.ErrInvalid)
 		}
 		w.Timeout = p.Timeout.UTC()
 	}
@@ -143,8 +144,8 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 		return nil, err
 	}
 	for _, cd := range w.Conds {
-		if cd.Type == store.WaitDeploy && c.opt.Commit == "" {
-			return nil, fmt.Errorf("%w: deploy wait: this controller reports no build commit, so it cannot tell what is deployed", store.ErrInvalid)
+		if cd.Type == domain.WaitDeploy && c.opt.Commit == "" {
+			return nil, fmt.Errorf("%w: deploy wait: this controller reports no build commit, so it cannot tell what is deployed", domain.ErrInvalid)
 		}
 	}
 	fields, err := withWait(t, w)
@@ -185,7 +186,7 @@ func (c *Controller) waitList(ctx context.Context, sc scope, p rpc.WaitListParam
 // waitClear removes a wait by hand.
 func (c *Controller) waitClear(ctx context.Context, sc scope, p rpc.WaitClearParams) (any, error) {
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: ticket id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: ticket id is required", domain.ErrInvalid)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
@@ -206,10 +207,10 @@ func (c *Controller) waitClear(ctx context.Context, sc scope, p rpc.WaitClearPar
 }
 
 // waiting is every open task or step with a wait, in project (empty: all).
-func (c *Controller) waiting(ctx context.Context, project string) ([]store.Ticket, error) {
-	var out []store.Ticket
-	for _, k := range []store.Kind{store.KindTask, store.KindStep} {
-		ts, err := c.store.List(ctx, store.Filter{Project: project, Kind: k, Status: store.StatusOpen, Limit: math.MaxInt32})
+func (c *Controller) waiting(ctx context.Context, project string) ([]domain.Ticket, error) {
+	var out []domain.Ticket
+	for _, k := range []domain.Kind{domain.KindTask, domain.KindStep} {
+		ts, err := c.store.List(ctx, store.Filter{Project: project, Kind: k, Status: domain.StatusOpen, Limit: math.MaxInt32})
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +226,7 @@ func (c *Controller) waiting(ctx context.Context, project string) ([]store.Ticke
 // clearWait removes the wait, notes why on the ticket and, with resume,
 // pre-assigns it to the session that parked it while that is open and
 // idle. A busy one leaves the ticket in its pool (JOB-120).
-func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wait, why string) (store.Ticket, error) {
+func (c *Controller) clearWait(ctx context.Context, t domain.Ticket, w *domain.Wait, why string) (domain.Ticket, error) {
 	fields, err := withWait(t, nil)
 	if err != nil {
 		return t, err
@@ -264,10 +265,10 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 // the context to whichever session claims it.
 func (c *Controller) resumeHolder(ctx context.Context, id string) (holder, busy string) {
 	s, err := c.store.Get(ctx, id)
-	if err != nil || s.Kind != store.KindSession || s.Status == store.StatusClosed {
+	if err != nil || s.Kind != domain.KindSession || s.Status == domain.StatusClosed {
 		return "", ""
 	}
-	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress, Limit: 1})
+	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: domain.StatusInProgress, Limit: 1})
 	if err != nil {
 		return "", "" // unknown: the pool is never wrong, only slower
 	}
@@ -304,7 +305,7 @@ func (c *Controller) pollWaits(ctx context.Context, src waitengine.Source, ths t
 // re-parked since the snapshot (by a person, a release, an agent) makes
 // the write fail with store.ErrConflict instead of acting on a stale
 // observation. The next pass or wake evaluates the current wait.
-func (c *Controller) evalWait(ctx context.Context, pass *waitengine.Pass, t store.Ticket) error {
+func (c *Controller) evalWait(ctx context.Context, pass *waitengine.Pass, t domain.Ticket) error {
 	w := waitOf(t)
 	if w == nil {
 		return nil
@@ -371,9 +372,9 @@ func (r runWaitSource) Run(ctx context.Context, id string) (waitengine.RunState,
 	if err != nil {
 		return waitengine.RunState{}, err
 	}
-	f, err := store.DecodeFields[store.RunFields](t)
+	f, err := domain.DecodeFields[domain.RunFields](t)
 	if err != nil {
 		return waitengine.RunState{}, err
 	}
-	return waitengine.RunState{Closed: t.Status == store.StatusClosed, State: f.State}, nil
+	return waitengine.RunState{Closed: t.Status == domain.StatusClosed, State: f.State}, nil
 }

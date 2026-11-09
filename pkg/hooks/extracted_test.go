@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func TestCheckStepOutput(t *testing.T) {
@@ -40,21 +40,21 @@ func TestCheckSchemaCompileOnly(t *testing.T) {
 	require.NoError(t, CheckSchema(map[string]any{"type": "object"}, map[string]any{"x": 1}, false))
 }
 
-func step(id, status, resolution string, rev int64, fields store.StepFields) store.Ticket {
+func step(id, status, resolution string, rev int64, fields domain.StepFields) domain.Ticket {
 	f, _ := json.Marshal(fields)
-	return store.Ticket{ID: id, Kind: store.KindStep, Pool: "dev", Status: store.Status(status), Resolution: resolution, Revision: rev, Fields: f}
+	return domain.Ticket{ID: id, Kind: domain.KindStep, Pool: "dev", Status: domain.Status(status), Resolution: resolution, Revision: rev, Fields: f}
 }
 
-func runTicket(t *testing.T, rf store.RunFields) (store.Ticket, store.RunFields) {
+func runTicket(t *testing.T, rf domain.RunFields) (domain.Ticket, domain.RunFields) {
 	t.Helper()
 	f, err := json.Marshal(rf)
 	require.NoError(t, err)
-	return store.Ticket{ID: "run1", Kind: store.KindRun, Project: "js", Revision: 3, Fields: f}, rf
+	return domain.Ticket{ID: "run1", Kind: domain.KindRun, Project: "js", Revision: 3, Fields: f}, rf
 }
 
 func TestStepInput(t *testing.T) {
 	t.Parallel()
-	tk := step("s1", "closed", "done", 2, store.StepFields{Step: "a", Outcome: "ok", Failures: 1, Retries: 2, StructuredOutput: map[string]any{"k": "v"}})
+	tk := step("s1", "closed", "done", 2, domain.StepFields{Step: "a", Outcome: "ok", Failures: 1, Retries: 2, StructuredOutput: map[string]any{"k": "v"}})
 	got, err := StepInput(tk)
 	require.NoError(t, err)
 	assert.Equal(t, Step{ID: "a", TicketID: "s1", Pool: "dev", Status: "closed", Resolution: "done", Outcome: "ok", Output: map[string]any{"k": "v"}, Failures: 1, Retries: 2}, got)
@@ -65,11 +65,11 @@ func TestStepInput(t *testing.T) {
 // step revision and the automation version.
 func TestRunDue(t *testing.T) {
 	t.Parallel()
-	auto := &store.RunAutomation{OnStart: "start", OnStepCompleted: "done", Digest: "d"}
-	run, rf := runTicket(t, store.RunFields{Workflow: "w", Key: "k", State: store.RunRunning, Automation: auto})
-	a := step("sa", "closed", "done", 5, store.StepFields{Step: "a"})
-	b := step("sb", "open", "", 1, store.StepFields{Step: "b"})
-	children := []store.Ticket{a, b, {ID: "note", Kind: store.KindTask, Revision: 9}}
+	auto := &domain.RunAutomation{OnStart: "start", OnStepCompleted: "done", Digest: "d"}
+	run, rf := runTicket(t, domain.RunFields{Workflow: "w", Key: "k", State: domain.RunRunning, Automation: auto})
+	a := step("sa", "closed", "done", 5, domain.StepFields{Step: "a"})
+	b := step("sb", "open", "", 1, domain.StepFields{Step: "b"})
+	children := []domain.Ticket{a, b, {ID: "note", Kind: domain.KindTask, Revision: 9}}
 
 	key, in, ok, err := RunDue(run, rf, children, "parent")
 	require.NoError(t, err)
@@ -106,10 +106,10 @@ func TestRunDue(t *testing.T) {
 	assert.Equal(t, "run1/step/sa/6/1", key)
 
 	// A skipped step counts as finished; an open one never does.
-	children[0] = step("sa", "closed", store.StepSkipped, 7, store.StepFields{Step: "a"})
+	children[0] = step("sa", "closed", domain.StepSkipped, 7, domain.StepFields{Step: "a"})
 	_, _, ok, _ = RunDue(run, rf, children, "")
 	assert.True(t, ok)
-	children[0] = step("sa", "open", "", 7, store.StepFields{Step: "a"})
+	children[0] = step("sa", "open", "", 7, domain.StepFields{Step: "a"})
 	_, _, ok, _ = RunDue(run, rf, children, "")
 	assert.False(t, ok)
 

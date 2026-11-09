@@ -13,8 +13,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type eventLog struct {
@@ -82,7 +82,7 @@ func TestEventsSubscribe(t *testing.T) {
 	labeled, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{Labels: []string{"needs-human"}})
 	sessions, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{Kinds: []string{rpc.EventKindSession}})
 
-	var a, b store.Ticket
+	var a, b domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "b"}, &b))
 	require.NoError(t, admin.Call(ctx, rpc.MethodLabelAdd, rpc.LabelParams{ID: a.ID, Label: "needs-human"}, nil))

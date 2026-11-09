@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -103,12 +104,12 @@ func TestLinearIntake(t *testing.T) {
 	assert.Equal(t, int32(1), reads.Load())
 
 	c.runTriggers(t.Context(), c.config())
-	scanRuns := func() []store.Ticket {
-		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+	scanRuns := func() []domain.Ticket {
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
-		var out []store.Ticket
+		var out []domain.Ticket
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
+			if f, _ := domain.DecodeFields[domain.RunFields](r); f.Workflow == "triage" {
 				out = append(out, r)
 			}
 		}
@@ -116,7 +117,7 @@ func TestLinearIntake(t *testing.T) {
 	}
 	rs := scanRuns()
 	require.Len(t, rs, 1)
-	f, err := store.DecodeFields[store.RunFields](rs[0])
+	f, err := domain.DecodeFields[domain.RunFields](rs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "scan:linear_issue_no_run:ENG-1", f.Key)
 	assert.Equal(t, "ENG-1", f.Vars["subject"])
@@ -219,7 +220,7 @@ func TestLinearPlannerIntakeKey(t *testing.T) {
 	require.Equal(t, []string{"scan:linear_issue_no_run:ENG-1"}, findingKeys(t, c))
 
 	admin := scope{admin: true, actor: "admin"}
-	start := func() store.Ticket {
+	start := func() domain.Ticket {
 		res, err := c.startRun(t.Context(), c.config(), admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
 		require.NoError(t, err)
 		return res.(rpc.RunResult).Run
@@ -258,11 +259,11 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 
 	scanRuns := func() []string {
-		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun})
 		require.NoError(t, err)
 		var out []string
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
+			if f, _ := domain.DecodeFields[domain.RunFields](r); f.Workflow == "triage" {
 				out = append(out, f.Key)
 			}
 		}
@@ -307,7 +308,7 @@ func TestLinearIntakeRPC(t *testing.T) {
 	assert.Equal(t, rpc.LinearIntakeResult{}, res)
 
 	_, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	c, _, _ = scanControllerYAML(t, strings.Replace(linearIntakeYAML, `states: "Todo, Backlog", `, "", 1))
 	res, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "ENG"})

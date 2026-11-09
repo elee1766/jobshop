@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -31,17 +32,17 @@ func (c *Controller) pumpAdmission() {
 // any other resolution denies. Held is not pruned, so without this an
 // answered item would stay held forever.
 func (c *Controller) releaseAnswered(ctx context.Context) error {
-	held, err := ingest.InboxList(ctx, c.store, store.InboxFilter{State: store.InboxHeld, Limit: 200})
+	held, err := ingest.InboxList(ctx, c.store, store.InboxFilter{State: domain.InboxHeld, Limit: 200})
 	if err != nil {
 		return err
 	}
 	for _, it := range held {
 		a, ok := c.askedHuman(ctx, "admission/"+it.DeliveryID)
-		if !ok || a.Decision == rpc.GuardAskHuman {
+		if !ok || a.Decision == domain.GuardAskHuman {
 			continue
 		}
-		if _, err := ingest.InboxRequeue(ctx, c.store, it.ID, store.InboxHeld, store.InboxPending); err != nil {
-			if errors.Is(err, store.ErrConflict) {
+		if _, err := ingest.InboxRequeue(ctx, c.store, it.ID, domain.InboxHeld, domain.InboxPending); err != nil {
+			if errors.Is(err, domain.ErrConflict) {
 				continue // moved or leased meanwhile
 			}
 			return err
@@ -55,8 +56,8 @@ func (c *Controller) releaseAnswered(ctx context.Context) error {
 func (c *Controller) admitNext(ctx context.Context) (bool, error) {
 	cfg := c.config()
 	hooks := ingestqueue.Hooks(cfg)
-	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestqueue.Holder, ingestqueue.Lease(hooks))
-	if errors.Is(err, store.ErrNotFound) {
+	it, err := ingest.InboxClaim(ctx, c.store, []string{domain.InboxPending}, ingestqueue.Holder, ingestqueue.Lease(hooks))
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -70,7 +71,7 @@ func (c *Controller) admitNext(ctx context.Context) (bool, error) {
 // humanAnswer is a human's closed answer to an earlier hold of delivery.
 func (c *Controller) humanAnswer(ctx context.Context, delivery string) (rpc.GuardResult, bool) {
 	a, ok := c.askedHuman(ctx, "admission/"+delivery)
-	if !ok || a.Decision == rpc.GuardAskHuman {
+	if !ok || a.Decision == domain.GuardAskHuman {
 		return rpc.GuardResult{}, false
 	}
 	return a, true
@@ -84,10 +85,10 @@ func (c *Controller) admissionRunner() ingestqueue.Runner {
 // finishAdmission stores a run's outcome for an item holder leases,
 // filing the needs-human ticket for a hold. A human's closed answer to
 // an earlier hold overrides the validating hooks.
-func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, holder string, run ingestqueue.Run) error {
+func (c *Controller) finishAdmission(ctx context.Context, it domain.InboxItem, holder string, run ingestqueue.Run) error {
 	a, answered := c.humanAnswer(ctx, it.DeliveryID)
 	state, admitted, results := ingestqueue.Settle(run, a, answered)
-	if state == store.InboxHeld {
+	if state == domain.InboxHeld {
 		c.holdForHuman(ctx, "admission/"+it.DeliveryID, run.Event, strings.Join(run.Asks, "\n"))
 	}
 	raw, err := json.Marshal(results)
@@ -95,13 +96,13 @@ func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, ho
 		return err
 	}
 	u := store.InboxUpdate{State: state, HookResults: raw}
-	if state == store.InboxAdmitted {
+	if state == domain.InboxAdmitted {
 		u.Admitted = admitted
 	}
 	if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, u); err != nil {
 		return err
 	}
-	if state == store.InboxAdmitted {
+	if state == domain.InboxAdmitted {
 		// Dispatch-only workers long-poll for admitted items (#679).
 		c.queue().Advance()
 	}
@@ -114,7 +115,7 @@ func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, ho
 // next claimed; any other resolution denies it.
 func (c *Controller) holdForHuman(ctx context.Context, key string, ev ingestqueue.Event, reason string) {
 	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
-	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
+	if err == nil && len(open) > 0 && open[0].Status != domain.StatusClosed {
 		return
 	}
 	meta, err := json.Marshal(map[string]map[string]string{hookMetaPack: {"key": key}})
@@ -140,7 +141,7 @@ func (c *Controller) holdForHuman(ctx context.Context, key string, ev ingestqueu
 	}
 	prio := 1
 	if _, err := store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: project, Kind: store.KindTask, Title: "Admission held " + ev.Source + " delivery " + ev.DeliveryID,
+		Project: project, Kind: domain.KindTask, Title: "Admission held " + ev.Source + " delivery " + ev.DeliveryID,
 		Body: b.String(), Priority: &prio, Labels: []string{needsHumanLabel, questionLabel}, Meta: meta,
 	}); err != nil {
 		c.log.WarnContext(ctx, "admission: file ticket", "delivery", ev.DeliveryID, "err", err)

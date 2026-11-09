@@ -6,13 +6,14 @@ import (
 	"sync"
 
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // reapOrphans stops hosts whose session is not open: leftovers from a crash
 // between spawn and record, or from a session closed while the controller
 // was down.
-func (c *Controller) reapOrphans(open []store.Ticket) {
+func (c *Controller) reapOrphans(open []domain.Ticket) {
 	for _, id := range c.orphans(open) {
 		c.log.Warn("stopping orphaned host", "session", id)
 		c.stopHost(c.root.SessionDir(id))
@@ -21,7 +22,7 @@ func (c *Controller) reapOrphans(open []store.Ticket) {
 
 // orphans lists session directories with a live host whose session is not
 // in open.
-func (c *Controller) orphans(open []store.Ticket) []string {
+func (c *Controller) orphans(open []domain.Ticket) []string {
 	keep := map[string]bool{}
 	for _, t := range open {
 		keep[t.ID] = true
@@ -46,7 +47,7 @@ func (c *Controller) stopAll() {
 	c.mu.Unlock()
 	ctx := context.WithoutCancel(c.ctx)
 	cfg := c.config()
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		c.log.Error("shutdown: list sessions", "err", err)
 	}

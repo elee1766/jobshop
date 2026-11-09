@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Chat (#203): Desk sends to sessions with session.send, the same call
@@ -82,9 +82,9 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 		if err := s.ctl.Call(r.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &shown); err != nil {
 			return nil, err
 		}
-		fields, err := store.DecodeFields[store.SessionFields](shown.Ticket)
+		fields, err := domain.DecodeFields[domain.SessionFields](shown.Ticket)
 		managed := strings.HasPrefix(b.Key, "desk:") || strings.HasPrefix(b.Key, escalationKeyPrefix) || strings.HasPrefix(b.Key, "attention:")
-		if err != nil || shown.Ticket.Kind != store.KindSession || fields.Key != b.Key || !managed {
+		if err != nil || shown.Ticket.Kind != domain.KindSession || fields.Key != b.Key || !managed {
 			return nil, fmt.Errorf("%w: session is not the selected managed chat", errBadRequest)
 		}
 		p.ID = b.Session
@@ -131,7 +131,7 @@ func (s *Server) referenceContext(r *http.Request, refs []string) (string, error
 		}
 		t := shown.Ticket
 		resource := "ticket"
-		if t.Kind == store.KindSession {
+		if t.Kind == domain.KindSession {
 			resource = "session"
 		}
 		records = append(records, map[string]string{"ref": ref, "id": t.ID, "title": t.Title, "state": string(t.Status), "resolution": t.Resolution, "link": "jobshop://" + resource + "/" + url.PathEscape(t.ID)})
@@ -181,8 +181,8 @@ func (s *Server) keyPool(r *http.Request, key string) (string, error) {
 		if session.Ticket == nil {
 			continue
 		}
-		fields, _ := store.DecodeFields[store.SessionFields](*session.Ticket)
-		if fields.Key == key && session.Ticket.Status != store.StatusClosed {
+		fields, _ := domain.DecodeFields[domain.SessionFields](*session.Ticket)
+		if fields.Key == key && session.Ticket.Status != domain.StatusClosed {
 			return session.Ticket.Pool, nil
 		}
 	}
@@ -239,7 +239,7 @@ func (s *Server) chatAccess(r *http.Request) (any, error) {
 	p := rpc.SessionSendParams{ID: r.PathValue("id"), Attach: true}
 	var res rpc.SessionSendResult
 	if err := s.ctl.Call(r.Context(), rpc.MethodSessionSend, p, &res); err != nil {
-		if errors.Is(err, store.ErrInvalid) || errors.Is(err, store.ErrClosed) || errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, domain.ErrInvalid) || errors.Is(err, domain.ErrClosed) || errors.Is(err, domain.ErrNotFound) {
 			return ChatAccess{Reason: err.Error()}, nil
 		}
 		return nil, err
@@ -268,7 +268,7 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 		if si.Ticket == nil {
 			continue
 		}
-		f, _ := store.DecodeFields[store.SessionFields](*si.Ticket)
+		f, _ := domain.DecodeFields[domain.SessionFields](*si.Ticket)
 		if !strings.HasPrefix(f.Key, "desk:") && !strings.HasPrefix(f.Key, escalationKeyPrefix) && !strings.HasPrefix(f.Key, "attention:") {
 			continue
 		}
@@ -279,7 +279,7 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 		if si.Busy {
 			state = "working"
 		}
-		if si.Ticket.Status == store.StatusClosed {
+		if si.Ticket.Status == domain.StatusClosed {
 			state = "archived"
 		}
 		title := f.DisplayName

@@ -6,15 +6,15 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // grantJournalSearch lets a pool search its own project's journals.
 const grantJournalSearch = "journal-search"
 
 // errNoVictoriaLogs is journal.search and backfill without config.
-var errNoVictoriaLogs = fmt.Errorf("%w: journal search needs journal.victorialogs", store.ErrInvalid)
+var errNoVictoriaLogs = fmt.Errorf("%w: journal search needs journal.victorialogs", domain.ErrInvalid)
 
 // journalSearch runs a LogsQL query on VictoriaLogs (#530). Admin sees
 // every project; a pool with the journal-search grant only its own,

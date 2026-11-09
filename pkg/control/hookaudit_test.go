@@ -17,6 +17,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -131,7 +132,7 @@ def handle(event, args):
 		// Without an applied marker, the rotated manifest must reject this prepared graph.
 		ticket, err := db.Get(t.Context(), run.Run.ID)
 		require.NoError(t, err)
-		fields, err := store.DecodeFields[store.RunFields](ticket)
+		fields, err := domain.DecodeFields[domain.RunFields](ticket)
 		require.NoError(t, err)
 		fields.Automation.Applied = nil
 		encoded, err := json.Marshal(fields)
@@ -198,7 +199,7 @@ def handle(event, args):
 	var run rpc.RunResult
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Key: "0"}, &run)
 	c.PassUntil(func() bool {
-		fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		fields, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
 		return fields.Automation.Version == 1
 	}, "workflow callbacks did not finish")

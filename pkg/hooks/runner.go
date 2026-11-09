@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // GuardEvent is the JSON a guardrail hook receives on stdin.
@@ -22,7 +21,7 @@ type GuardEvent struct {
 	Session string          `json:"session,omitempty"`
 	Pool    string          `json:"pool,omitempty"`
 	Project string          `json:"project,omitempty"`
-	Ticket  *store.Ticket   `json:"ticket,omitempty"`
+	Ticket  *domain.Ticket  `json:"ticket,omitempty"`
 	Extra   json.RawMessage `json:"extra,omitempty"`
 }
 
@@ -67,14 +66,14 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, h config.Hook, ev GuardEvent) Answer {
 	in, err := json.Marshal(ev)
 	if err != nil {
-		return Answer{rpc.GuardDeny, "hook event: " + err.Error()}
+		return Answer{domain.GuardDeny, "hook event: " + err.Error()}
 	}
 	timeout := config.Duration(h.Timeout, 30*time.Second)
 	if h.URL != "" {
 		p := hookPost{url: h.URL, secret: h.SecretFile.In(r.Dir), timeout: timeout, retry: h.Retry, after: r.After}
 		out, err := p.do(ctx, in)
 		if err != nil {
-			return Answer{rpc.GuardDeny, "hook " + h.URL + ": " + err.Error()}
+			return Answer{domain.GuardDeny, "hook " + h.URL + ": " + err.Error()}
 		}
 		return parseHookAnswer(out)
 	}
@@ -82,13 +81,13 @@ func (r Runner) Run(ctx context.Context, h config.Hook, ev GuardEvent) Answer {
 	defer cancel()
 	result, err := r.Executor.ExecuteHook(ctx, h.Command, ev.Pool, in)
 	if ctx.Err() != nil {
-		return Answer{rpc.GuardDeny, "hook timed out: " + h.Command}
+		return Answer{domain.GuardDeny, "hook timed out: " + h.Command}
 	}
 	if err != nil {
-		return Answer{rpc.GuardDeny, "hook: " + err.Error()}
+		return Answer{domain.GuardDeny, "hook: " + err.Error()}
 	}
 	if err := result.failure(); err != nil {
-		return Answer{rpc.GuardDeny, "hook " + err.Error()}
+		return Answer{domain.GuardDeny, "hook " + err.Error()}
 	}
 	return parseHookAnswer(result.Output)
 }
@@ -119,15 +118,15 @@ func (r Runner) Admission(ctx context.Context, h config.AdmissionHook, body []by
 func parseHookAnswer(out []byte) Answer {
 	out = bytes.TrimSpace(out)
 	if len(out) == 0 {
-		return Answer{Decision: rpc.GuardAllow}
+		return Answer{Decision: domain.GuardAllow}
 	}
 	var a Answer
 	if err := json.Unmarshal(out, &a); err != nil {
-		return Answer{rpc.GuardDeny, "hook answer is not JSON: " + err.Error()}
+		return Answer{domain.GuardDeny, "hook answer is not JSON: " + err.Error()}
 	}
 	switch a.Decision {
-	case rpc.GuardAllow, rpc.GuardDeny, rpc.GuardAskHuman:
+	case domain.GuardAllow, domain.GuardDeny, domain.GuardAskHuman:
 		return a
 	}
-	return Answer{rpc.GuardDeny, fmt.Sprintf("hook decision %q is not allow, deny or ask_human", a.Decision)}
+	return Answer{domain.GuardDeny, fmt.Sprintf("hook decision %q is not allow, deny or ask_human", a.Decision)}
 }

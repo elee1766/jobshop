@@ -3,82 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
-
-// Status is a ticket's lifecycle state. "Blocked" is derived from edges and
-// never stored.
-type Status string
-
-// Ticket statuses.
-const (
-	StatusOpen       Status = "open"
-	StatusInProgress Status = "in_progress"
-	StatusClosed     Status = "closed"
-)
-
-// EdgeKind is an engine-defined relation. Blocks and WaitsFor gate readiness.
-type EdgeKind string
-
-// Edge kinds.
-const (
-	EdgeBlocks   EdgeKind = "blocks"
-	EdgeWaitsFor EdgeKind = "waits_for"
-	EdgeTracks   EdgeKind = "tracks"
-)
-
-// Blocking reports whether the edge kind gates readiness.
-func (k EdgeKind) Blocking() bool { return k == EdgeBlocks || k == EdgeWaitsFor }
-
-// Valid reports whether k is an engine edge kind.
-func (k EdgeKind) Valid() bool { return k == EdgeBlocks || k == EdgeWaitsFor || k == EdgeTracks }
-
-// Ticket is one row of any kind. Fields holds engine data typed per kind;
-// Meta holds pack data grouped by pack name and is never read by the engine.
-type Ticket struct {
-	ID         string          `json:"id"`
-	Project    string          `json:"project"`
-	Kind       Kind            `json:"kind"`
-	Title      string          `json:"title,omitempty"`
-	Body       string          `json:"body,omitempty"`
-	Status     Status          `json:"status"`
-	Resolution string          `json:"resolution,omitempty"`
-	Priority   int             `json:"priority"`
-	Pool       string          `json:"pool,omitempty"`
-	Holder     string          `json:"holder,omitempty"`
-	LeaseUntil time.Time       `json:"lease_until,omitzero"`
-	Fence      int64           `json:"fence"`
-	ParentID   string          `json:"parent_id,omitempty"`
-	DeferUntil time.Time       `json:"defer_until,omitzero"`
-	Ephemeral  bool            `json:"ephemeral,omitempty"`
-	Fields     json.RawMessage `json:"fields,omitempty"`
-	Meta       json.RawMessage `json:"meta,omitempty"`
-	Labels     []string        `json:"labels,omitempty"`
-	Revision   int64           `json:"revision"`
-	CreatedBy  string          `json:"created_by,omitempty"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	ClosedAt   time.Time       `json:"closed_at,omitzero"`
-}
-
-// Edge is a typed relation. From is the dependent: (A, B, blocks) means A is
-// blocked until B closes.
-type Edge struct {
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Kind      EdgeKind  `json:"kind"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// Comment is a note on a ticket.
-type Comment struct {
-	ID        int64     `json:"id"`
-	TicketID  string    `json:"ticket_id"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
-}
 
 // Recall source kinds (#265).
 const (
@@ -129,8 +57,8 @@ var AllParts = Parts{Edges: true, Comments: true, History: true}
 // Thread is a ticket's edges, comments and history. A part not asked
 // for is nil.
 type Thread struct {
-	Edges    []Edge
-	Comments []Comment
+	Edges    []domain.Edge
+	Comments []domain.Comment
 	History  []HistoryEntry
 }
 
@@ -181,7 +109,7 @@ type StepResult struct {
 type NewTicket struct {
 	ID         string
 	Project    string
-	Kind       Kind
+	Kind       domain.Kind
 	Title      string
 	Body       string
 	Priority   *int // nil means DefaultPriority
@@ -210,8 +138,8 @@ type Graph struct {
 	Close       map[string]string
 	Tickets     []NewTicket
 	Reparent    map[string]string // existing ticket id -> new parent id
-	Edges       []Edge
-	RemoveEdges []Edge
+	Edges       []domain.Edge
+	RemoveEdges []domain.Edge
 	Unclaimed   []string
 	// Comments are appended after the rest, so a comment may name a ticket
 	// created in the same graph.
@@ -260,11 +188,11 @@ type Filter struct {
 	Query   string
 	Project string
 	// Kind and Kinds match any of the kinds named.
-	Kind  Kind
-	Kinds []Kind
+	Kind  domain.Kind
+	Kinds []domain.Kind
 	// Status and Statuses match any of the statuses named.
-	Status   Status
-	Statuses []Status
+	Status   domain.Status
+	Statuses []domain.Status
 	Pool     string
 	// PoolNotIn keeps tickets with no pool or a pool not in the list.
 	PoolNotIn []string
@@ -333,51 +261,39 @@ type ClaimNext struct {
 	Project string
 	Pool    string
 	Holder  string
-	Kinds   []Kind // empty means ClaimableKinds
+	Kinds   []domain.Kind // empty means ClaimableKinds
 	Lease   time.Duration
 }
-
-// Errors returned by every backend. Callers match with errors.Is.
-var (
-	ErrNotFound     = errors.New("store: not found")
-	ErrConflict     = errors.New("store: revision conflict")
-	ErrNotHolder    = errors.New("store: caller does not hold the claim")
-	ErrNoWork       = errors.New("store: no claimable ticket")
-	ErrInvalid      = errors.New("store: invalid input")
-	ErrCycle        = errors.New("store: edge would create a blocking cycle")
-	ErrClosed       = errors.New("store: ticket is closed")
-	ErrAlreadyExist = errors.New("store: already exists")
-)
 
 // Store is the only persistence interface. Every write records history
 // (except heartbeats) and bumps the ticket revision.
 type Store interface {
-	Get(ctx context.Context, id string) (Ticket, error)
+	Get(ctx context.Context, id string) (domain.Ticket, error)
 	// List returns tickets matching f. It replaces the per-shape reads:
 	// ready, orphaned, children, runs, by key, by creation time (#579).
-	List(ctx context.Context, f Filter) ([]Ticket, error)
-	Update(ctx context.Context, actor, id string, u Update) (Ticket, error)
+	List(ctx context.Context, f Filter) ([]domain.Ticket, error)
+	Update(ctx context.Context, actor, id string, u Update) (domain.Ticket, error)
 
 	// SetResources replaces the resource capacities that gate
 	// List(Filter{Ready: true}) and ClaimNext (#400) and the provider
 	// resource names (#407), in one transaction.
-	SetResources(ctx context.Context, r ResourceConfig) error
+	SetResources(ctx context.Context, r domain.ResourceConfig) error
 	// Slot applies one provider slot event (add, remove, unhealthy,
 	// reset) and returns the slot. Unhealthy on a held slot reopens its
 	// claim without counting a step failure and returns the ticket id.
-	Slot(ctx context.Context, actor string, e SlotEvent) (Slot, string, error)
+	Slot(ctx context.Context, actor string, e domain.SlotEvent) (domain.Slot, string, error)
 	// ReleaseSlots moves held slots whose claim ended to releasing, then
 	// returns every releasing slot.
-	ReleaseSlots(ctx context.Context) ([]Slot, error)
+	ReleaseSlots(ctx context.Context) ([]domain.Slot, error)
 	// Resources reports key use, resource waits and slots; with a pool,
 	// only that pool's slots, plus its demand.
-	Resources(ctx context.Context, pool string) (ResourceReport, error)
+	Resources(ctx context.Context, pool string) (domain.ResourceReport, error)
 
 	// ClaimNext atomically claims the next ticket: the holder's in-progress
 	// work, then tickets pre-assigned to it, then the pool queue.
-	ClaimNext(ctx context.Context, req ClaimNext) (Ticket, Claim, error)
+	ClaimNext(ctx context.Context, req ClaimNext) (domain.Ticket, Claim, error)
 	// Claim claims one specific open ticket.
-	Claim(ctx context.Context, id, holder string, lease time.Duration) (Ticket, Claim, error)
+	Claim(ctx context.Context, id, holder string, lease time.Duration) (domain.Ticket, Claim, error)
 	// Heartbeat extends a lease. It never bumps the revision or writes history.
 	Heartbeat(ctx context.Context, c Claim, lease time.Duration) (Claim, error)
 	// Release lets go of ticket id as o says: close, hand off (pool,
@@ -385,7 +301,7 @@ type Store interface {
 	// open, deferred when o.Until is set (#139). A non-nil claim must
 	// still hold the ticket; a nil claim is administrative and allowed
 	// only for close and handoff. An empty actor is the claim's holder.
-	Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (Ticket, error)
+	Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (domain.Ticket, error)
 
 	// Expire reopens what a dead holder held or was assigned, or, with
 	// holder "", every ticket whose lease expired, and returns the ids.
@@ -409,7 +325,7 @@ type Store interface {
 	// and RemoveEdge). Each Unclaimed id must be open and unheld inside
 	// that transaction, or nothing is written and the error wraps
 	// ErrNotHolder (#169: an edge added to a claimed step has no effect).
-	Apply(ctx context.Context, actor string, g Graph) ([]Ticket, error)
+	Apply(ctx context.Context, actor string, g Graph) ([]domain.Ticket, error)
 	// NewID mints a ticket id for project, so a caller can wire parent ids
 	// and edges before Apply.
 	NewID(project string) (string, error)
@@ -425,46 +341,6 @@ type Store interface {
 
 	// Close releases backend resources.
 	Close() error
-}
-
-// Learning kinds, sources and statuses (#264).
-const (
-	LearningCorrection = "correction"
-	LearningFailure    = "failure"
-	LearningWorkaround = "workaround"
-
-	LearningSourceAgent      = "agent"
-	LearningSourceController = "controller"
-
-	LearningOpen     = "open"
-	LearningApplied  = "applied"
-	LearningRejected = "rejected"
-)
-
-// LearningKinds are the default learning kinds, used when the config
-// sets no learnings.kinds (#524). The controller's own learnings use
-// correction and failure and are always allowed.
-var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkaround}
-
-// Learning is a correction, failure or workaround recorded for the curator.
-// Scope is "global", "repo:<owner/name>" or "pool:<name>".
-type Learning struct {
-	ID      int64  `json:"id"`
-	Kind    string `json:"kind"`
-	Summary string `json:"summary"`
-	Fix     string `json:"fix,omitempty"`
-	Scope   string `json:"scope"`
-	Ticket  string `json:"ticket,omitempty"`
-	Session string `json:"session,omitempty"`
-	Source  string `json:"source"`
-	Status  string `json:"status"`
-	// PR is the curator's PR that addresses it (#273): pending while
-	// open, kept when applied or rejected.
-	PR string `json:"pr,omitempty"`
-	// Gate is the curator gate's result on the edit that cited it
-	// (#274): "helped: ..." or "not_helped: ...".
-	Gate      string    `json:"gate,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 // LearningFilter selects learnings. Zero values match everything.

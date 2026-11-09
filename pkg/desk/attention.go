@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Attention opens the chat that resolves it (#535). A click on an item
@@ -131,11 +131,11 @@ func (s *Server) closeAttentionChat(r *http.Request, key string) {
 		return
 	}
 	for _, si := range list {
-		if si.Ticket == nil || si.Ticket.Status == store.StatusClosed {
+		if si.Ticket == nil || si.Ticket.Status == domain.StatusClosed {
 			continue
 		}
-		if f, _ := store.DecodeFields[store.SessionFields](*si.Ticket); f.Key == key {
-			var out store.Ticket
+		if f, _ := domain.DecodeFields[domain.SessionFields](*si.Ticket); f.Key == key {
+			var out domain.Ticket
 			if err := s.ctl.Call(r.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: si.ID, Resolution: "acknowledged"}, &out); err != nil {
 				s.log.WarnContext(r.Context(), "desk: close acknowledged chat", "session", si.ID, "err", err)
 			}

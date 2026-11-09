@@ -12,9 +12,9 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Ingest admission (#348): the hook half. A Runner takes one claimed
@@ -129,7 +129,7 @@ type Runner struct {
 
 // Run runs the mutating hooks, then, unless a human already answered,
 // the validating hooks.
-func (ar Runner) Run(ctx context.Context, project string, hs []config.AdmissionHook, it store.InboxItem, answered bool) Run {
+func (ar Runner) Run(ctx context.Context, project string, hs []config.AdmissionHook, it domain.InboxItem, answered bool) Run {
 	ev := Event{
 		On: On, DeliveryID: it.DeliveryID, Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
 		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, Project: project,
@@ -158,9 +158,9 @@ func (ar Runner) Run(ctx context.Context, project string, hs []config.AdmissionH
 		r := ar.validate(ctx, h, ev)
 		out.Results = append(out.Results, r)
 		switch r.Decision {
-		case rpc.GuardDeny:
+		case domain.GuardDeny:
 			out.Denied = true
-		case rpc.GuardAskHuman:
+		case domain.GuardAskHuman:
 			out.Asks = append(out.Asks, h.Name+": "+r.Reason)
 		}
 	}
@@ -173,18 +173,18 @@ func Settle(run Run, a rpc.GuardResult, answered bool) (string, json.RawMessage,
 	results := run.Results
 	if answered {
 		results = append(results, Result{Name: "human", Type: config.AdmissionValidating, Decision: a.Decision, Reason: a.Reason})
-		if a.Decision == rpc.GuardAllow {
-			return store.InboxAdmitted, run.Event.Payload, results
+		if a.Decision == domain.GuardAllow {
+			return domain.InboxAdmitted, run.Event.Payload, results
 		}
-		return store.InboxDenied, nil, results
+		return domain.InboxDenied, nil, results
 	}
 	switch {
 	case run.Denied:
-		return store.InboxDenied, nil, results
+		return domain.InboxDenied, nil, results
 	case len(run.Asks) > 0:
-		return store.InboxHeld, nil, results
+		return domain.InboxHeld, nil, results
 	}
-	return store.InboxAdmitted, run.Event.Payload, results
+	return domain.InboxAdmitted, run.Event.Payload, results
 }
 
 // mutate runs a mutating hook. Any failure leaves ev unchanged.
@@ -262,7 +262,7 @@ func (ar Runner) validate(ctx context.Context, h config.AdmissionHook, ev Event)
 	if err == nil && len(out) > 0 {
 		if jerr := json.Unmarshal(out, &a); jerr != nil {
 			err = fmt.Errorf("answer is not JSON: %w", jerr)
-		} else if a.Decision != rpc.GuardAllow && a.Decision != rpc.GuardDeny && a.Decision != rpc.GuardAskHuman {
+		} else if a.Decision != domain.GuardAllow && a.Decision != domain.GuardDeny && a.Decision != domain.GuardAskHuman {
 			err = fmt.Errorf("decision %q is not allow, deny or ask_human", a.Decision)
 		}
 	}
@@ -271,12 +271,12 @@ func (ar Runner) validate(ctx context.Context, h config.AdmissionHook, ev Event)
 		if h.Policy() == config.FailurePolicyIgnore {
 			r.Decision = Ignored
 		} else {
-			r.Decision, r.Reason = rpc.GuardDeny, "hook failed: "+err.Error()
+			r.Decision, r.Reason = domain.GuardDeny, "hook failed: "+err.Error()
 		}
 		return r
 	}
 	if len(out) == 0 {
-		a.Decision = rpc.GuardAllow
+		a.Decision = domain.GuardAllow
 	}
 	r.Decision, r.Reason = a.Decision, a.Reason
 	return r

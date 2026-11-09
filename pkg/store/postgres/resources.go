@@ -6,13 +6,13 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 	sqldb "github.com/elee1766/jobshop/pkg/store/postgres/pgdb"
 )
 
 // SetResources replaces the resource capacities and provider names in
 // one transaction.
-func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error {
+func (s *Store) SetResources(ctx context.Context, r domain.ResourceConfig) error {
 	caps := r.Caps
 	return s.tx(ctx, func(q sqldb.Querier) error {
 		if err := setProviders(ctx, q, r.Providers); err != nil {
@@ -24,7 +24,7 @@ func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error 
 		for _, name := range slices.Sorted(maps.Keys(caps)) {
 			n := caps[name]
 			if n <= 0 {
-				return fmt.Errorf("%w: resource %s: capacity must be > 0", store.ErrInvalid, name)
+				return fmt.Errorf("%w: resource %s: capacity must be > 0", domain.ErrInvalid, name)
 			}
 			if err := q.InsertResourceCap(ctx, sqldb.InsertResourceCapParams{Name: name, Capacity: int64(n)}); err != nil {
 				return err
@@ -36,8 +36,8 @@ func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error 
 
 // Resources reports key use, resource waits and slots (pool's only when
 // pool is set, with its demand).
-func (s *Store) Resources(ctx context.Context, pool string) (store.ResourceReport, error) {
-	var r store.ResourceReport
+func (s *Store) Resources(ctx context.Context, pool string) (domain.ResourceReport, error) {
+	var r domain.ResourceReport
 	use, err := s.resourceUse(ctx)
 	if err != nil {
 		return r, err
@@ -58,7 +58,7 @@ func (s *Store) Resources(ctx context.Context, pool string) (store.ResourceRepor
 }
 
 // resourceUse reports every key held or waited on, with its capacity.
-func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
+func (s *Store) resourceUse(ctx context.Context) ([]domain.ResourceUse, error) {
 	caps, err := s.rq.ResourceCaps(ctx)
 	if err != nil {
 		return nil, err
@@ -75,15 +75,15 @@ func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
 	if err != nil {
 		return nil, err
 	}
-	by := map[string]*store.ResourceUse{}
-	get := func(k string) *store.ResourceUse {
+	by := map[string]*domain.ResourceUse{}
+	get := func(k string) *domain.ResourceUse {
 		u, ok := by[k]
 		if !ok {
 			c, exact := capOf[k]
 			if !exact {
-				c = capOf[store.ResourceName(k)]
+				c = capOf[domain.ResourceName(k)]
 			}
-			u = &store.ResourceUse{Key: k, Capacity: c}
+			u = &domain.ResourceUse{Key: k, Capacity: c}
 			by[k] = u
 		}
 		return u
@@ -94,7 +94,7 @@ func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
 	for _, r := range wait {
 		get(r.Rkey).Waiting = int(r.Waiting)
 	}
-	out := make([]store.ResourceUse, 0, len(by))
+	out := make([]domain.ResourceUse, 0, len(by))
 	for _, k := range slices.Sorted(maps.Keys(by)) {
 		out = append(out, *by[k])
 	}
@@ -104,8 +104,8 @@ func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
 // resourceWaits lists tickets waiting on a full resource key, in claim
 // order per key (#408). A ticket naming several full keys is listed under
 // the first.
-func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]store.ResourceWait, error) {
-	full := map[string]store.ResourceUse{}
+func (s *Store) resourceWaits(ctx context.Context, use []domain.ResourceUse) ([]domain.ResourceWait, error) {
+	full := map[string]domain.ResourceUse{}
 	for _, u := range use {
 		if u.Capacity > 0 && u.Held >= u.Capacity {
 			full[u.Key] = u
@@ -118,7 +118,7 @@ func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]s
 	if err != nil {
 		return nil, err
 	}
-	var out []store.ResourceWait
+	var out []domain.ResourceWait
 	seen := map[string]bool{}
 	ahead := map[string]int{}
 	for _, r := range rows {
@@ -127,7 +127,7 @@ func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]s
 			continue
 		}
 		seen[r.ID] = true
-		out = append(out, store.ResourceWait{Ticket: r.ID, Key: r.Rkey, Ahead: ahead[r.Rkey], Held: u.Held, Capacity: u.Capacity})
+		out = append(out, domain.ResourceWait{Ticket: r.ID, Key: r.Rkey, Ahead: ahead[r.Rkey], Held: u.Held, Capacity: u.Capacity})
 		ahead[r.Rkey]++
 	}
 	return out, nil

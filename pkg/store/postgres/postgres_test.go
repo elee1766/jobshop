@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver "pgx"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
 	"github.com/elee1766/jobshop/pkg/store/storetest"
@@ -115,7 +116,7 @@ func TestRecall(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	s := openTest(t, postgres.Options{})
-	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "a", tk.ID, "CI failed: golangci-lint gofumpt formatting in pkg/cli")
 	require.NoError(t, err)

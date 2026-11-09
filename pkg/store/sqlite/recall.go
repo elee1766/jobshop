@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -16,7 +17,7 @@ const defaultRecallLimit = 10
 func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.RecallHit, error) {
 	words := strings.Fields(rq.Text)
 	if len(words) == 0 {
-		return nil, fmt.Errorf("%w: empty recall query", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: empty recall query", domain.ErrInvalid)
 	}
 	lim := rq.Limit
 	if lim <= 0 {

@@ -30,8 +30,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/control/question"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Key prefixes of managed chats.
@@ -64,12 +64,12 @@ func Managed(key string) bool {
 
 // Named reports whether f is a chat Desk lists by name: started from
 // Desk, or converted from an escalation chat.
-func Named(f store.SessionFields) bool {
+func Named(f domain.SessionFields) bool {
 	return f.Named || strings.HasPrefix(f.Key, DeskPrefix)
 }
 
 // EscalationTicket is the ticket an escalation chat answers for.
-func EscalationTicket(f store.SessionFields) (string, bool) {
+func EscalationTicket(f domain.SessionFields) (string, bool) {
 	return strings.CutPrefix(f.Key, EscalationPrefix)
 }
 
@@ -82,7 +82,7 @@ func NeedsName(action string) bool {
 func NormalizeName(name string) (string, error) {
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" || utf8.RuneCountInString(name) > MaxDisplayName {
-		return "", fmt.Errorf("%w: give a chat name of 1 to %d characters", store.ErrInvalid, MaxDisplayName)
+		return "", fmt.Errorf("%w: give a chat name of 1 to %d characters", domain.ErrInvalid, MaxDisplayName)
 	}
 	return name, nil
 }
@@ -90,11 +90,11 @@ func NormalizeName(name string) (string, error) {
 // CheckNameFree fails when another named chat in sessions (every session
 // ticket) already uses name, ignoring case. self is the chat being
 // renamed or converted.
-func CheckNameFree(sessions []store.Ticket, self, name string) error {
+func CheckNameFree(sessions []domain.Ticket, self, name string) error {
 	for _, t := range sessions {
-		f, _ := store.DecodeFields[store.SessionFields](t)
+		f, _ := domain.DecodeFields[domain.SessionFields](t)
 		if t.ID != self && Named(f) && strings.EqualFold(f.DisplayName, name) {
-			return fmt.Errorf("%w: chat name %q is already used", store.ErrConflict, name)
+			return fmt.Errorf("%w: chat name %q is already used", domain.ErrConflict, name)
 		}
 	}
 	return nil
@@ -104,28 +104,28 @@ func CheckNameFree(sessions []store.Ticket, self, name string) error {
 // checked by the caller, which owns their storage.
 func CheckNew(p rpc.ChatManageParams) error {
 	if len(p.Context) > MaxText {
-		return fmt.Errorf("%w: context is too long", store.ErrInvalid)
+		return fmt.Errorf("%w: context is too long", domain.ErrInvalid)
 	}
 	if (strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0) || len(p.Text) > MaxText {
-		return fmt.Errorf("%w: first message must be 1 to %d bytes", store.ErrInvalid, MaxText)
+		return fmt.Errorf("%w: first message must be 1 to %d bytes", domain.ErrInvalid, MaxText)
 	}
 	return nil
 }
 
 // Target decodes the session t that action targets and checks that it is
 // a managed chat.
-func Target(t store.Ticket) (store.SessionFields, error) {
-	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || t.Kind != store.KindSession || !Managed(f.Key) {
-		return f, fmt.Errorf("%w: not a managed chat", store.ErrInvalid)
+func Target(t domain.Ticket) (domain.SessionFields, error) {
+	f, err := domain.DecodeFields[domain.SessionFields](t)
+	if err != nil || t.Kind != domain.KindSession || !Managed(f.Key) {
+		return f, fmt.Errorf("%w: not a managed chat", domain.ErrInvalid)
 	}
 	return f, nil
 }
 
 // CheckConvert fails unless t is an open escalation chat, the only kind that converts to a named chat.
-func CheckConvert(t store.Ticket, f store.SessionFields) error {
-	if !strings.HasPrefix(f.Key, EscalationPrefix) || t.Status == store.StatusClosed {
-		return fmt.Errorf("%w: convert requires an escalation chat", store.ErrInvalid)
+func CheckConvert(t domain.Ticket, f domain.SessionFields) error {
+	if !strings.HasPrefix(f.Key, EscalationPrefix) || t.Status == domain.StatusClosed {
+		return fmt.Errorf("%w: convert requires an escalation chat", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -133,32 +133,32 @@ func CheckConvert(t store.Ticket, f store.SessionFields) error {
 // Convert makes the escalation chat a named chat with an independent
 // lifecycle. The key stays, so pending messages and source references
 // remain valid.
-func Convert(f *store.SessionFields, name string) {
+func Convert(f *domain.SessionFields, name string) {
 	f.Named, f.DisplayName, f.Prestart, f.ReadOnly = true, name, false, false
 }
 
 // ResolveTarget is the ticket that resolving the escalation chat f
 // closes. Only an unconverted escalation chat resolves.
-func ResolveTarget(f store.SessionFields) (string, error) {
+func ResolveTarget(f domain.SessionFields) (string, error) {
 	id, ok := EscalationTicket(f)
 	if !ok || f.Named {
-		return "", fmt.Errorf("%w: resolve requires an escalation chat", store.ErrInvalid)
+		return "", fmt.Errorf("%w: resolve requires an escalation chat", domain.ErrInvalid)
 	}
 	return id, nil
 }
 
 // CheckCurrent fails when chat is no longer the session of target's
 // escalation, so resolving it would close work another chat answers for.
-func CheckCurrent(target store.Ticket, chat string) error {
+func CheckCurrent(target domain.Ticket, chat string) error {
 	if e, ok := EscalationOf(target); !ok || e.Session != chat {
-		return fmt.Errorf("%w: this chat is no longer the escalation's current session", store.ErrConflict)
+		return fmt.Errorf("%w: this chat is no longer the escalation's current session", domain.ErrConflict)
 	}
 	return nil
 }
 
 // Restore reopens f for a send: the ACP conversation id and journal are
 // kept and the session loads on the next message.
-func Restore(f *store.SessionFields) {
+func Restore(f *domain.SessionFields) {
 	f.Archived, f.Ended, f.Suspended = nil, nil, true
 }
 
@@ -173,32 +173,32 @@ var viewArgs = map[string][]string{
 func CheckView(p rpc.DeskCommandParams) error {
 	keys, ok := viewArgs[p.Action]
 	if !ok {
-		return fmt.Errorf("%w: unknown view action %q", store.ErrInvalid, p.Action)
+		return fmt.Errorf("%w: unknown view action %q", domain.ErrInvalid, p.Action)
 	}
 	for k, v := range p.Args {
 		if !slices.Contains(keys, k) || len(v) > 2048 {
-			return fmt.Errorf("%w: invalid %s argument %q", store.ErrInvalid, p.Action, k)
+			return fmt.Errorf("%w: invalid %s argument %q", domain.ErrInvalid, p.Action, k)
 		}
 	}
 	if p.Action == "navigate" && !slices.Contains([]string{"home", "trace", "improvements", "system"}, p.Args["view"]) {
-		return fmt.Errorf("%w: unknown view", store.ErrInvalid)
+		return fmt.Errorf("%w: unknown view", domain.ErrInvalid)
 	}
 	if slices.Contains([]string{"filter", "expand", "collapse"}, p.Action) && !slices.Contains([]string{"waiting", "not-moving", "inflight"}, strings.TrimPrefix(p.Args["window"], "/")) {
-		return fmt.Errorf("%w: unknown window", store.ErrInvalid)
+		return fmt.Errorf("%w: unknown window", domain.ErrInvalid)
 	}
 	if p.Action == "filter" && strings.TrimPrefix(p.Args["window"], "/") != "inflight" {
-		return fmt.Errorf("%w: filters currently apply to inflight only", store.ErrInvalid)
+		return fmt.Errorf("%w: filters currently apply to inflight only", domain.ErrInvalid)
 	}
 	if slices.Contains([]string{"select", "attach"}, p.Action) && strings.TrimSpace(p.Args["refs"]) == "" {
-		return fmt.Errorf("%w: refs are required", store.ErrInvalid)
+		return fmt.Errorf("%w: refs are required", domain.ErrInvalid)
 	}
 	return nil
 }
 
 // CheckViewTarget fails unless f is a named chat, the only target of a view command.
-func CheckViewTarget(f store.SessionFields) error {
+func CheckViewTarget(f domain.SessionFields) error {
 	if !Named(f) {
-		return fmt.Errorf("%w: desk commands require a named chat", store.ErrInvalid)
+		return fmt.Errorf("%w: desk commands require a named chat", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -236,7 +236,7 @@ const QuestionChatPrefix = AttentionPrefix + rpc.AttentionQuestion + ":"
 type AttentionPrompt struct {
 	Item    rpc.AttentionItem
 	Why     string
-	Ticket  store.Ticket
+	Ticket  domain.Ticket
 	Run     *rpc.RunResult
 	Actions []attention.Action
 }
@@ -275,7 +275,7 @@ func (p AttentionPrompt) Text() string {
 			fmt.Fprintf(&b, "PR: https://github.com/%s/pull/%v\n", m.GitHub.Repo, m.GitHub.PR)
 		}
 	}
-	if it.Kind == rpc.AttentionRun && t.Kind == store.KindRun && p.Run != nil {
+	if it.Kind == rpc.AttentionRun && t.Kind == domain.KindRun && p.Run != nil {
 		out, _ := json.MarshalIndent(p.Run, "", "  ")
 		if len(out) > maxRunJSON {
 			out = append(out[:maxRunJSON], "\n[cut]"...)
@@ -327,7 +327,7 @@ func Summarize(key, said string) (id string, s Summary, ok bool) {
 
 // Left is an attention chat whose item left attention.
 type Left struct {
-	Session store.Ticket
+	Session domain.Ticket
 	// Item is kind:id, for the log.
 	Item string
 }
@@ -338,7 +338,7 @@ type Left struct {
 // another kind (a question that became a wait) still counts as in
 // attention. followed says an answered question's chat is not settled yet:
 // it follows the asker (JOB-52).
-func Sweep(items []rpc.AttentionItem, open []store.Ticket, followed func(store.Ticket, store.SessionFields) bool) (left []Left, prestarted int) {
+func Sweep(items []rpc.AttentionItem, open []domain.Ticket, followed func(domain.Ticket, domain.SessionFields) bool) (left []Left, prestarted int) {
 	listed := map[string]bool{}
 	for _, it := range items {
 		listed[it.Kind+":"+it.ID] = true
@@ -347,7 +347,7 @@ func Sweep(items []rpc.AttentionItem, open []store.Ticket, followed func(store.T
 		}
 	}
 	for _, s := range open {
-		f, err := store.DecodeFields[store.SessionFields](s)
+		f, err := domain.DecodeFields[domain.SessionFields](s)
 		if err != nil {
 			continue
 		}

@@ -9,8 +9,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Script steps (JOB-124): a Starlark step function the controller runs
@@ -19,8 +19,8 @@ import (
 // runs in the step's pool sandbox and worktree.
 
 // ScriptConfig is a script step's static settings, from its fields.
-func ScriptConfig(sf store.StepFields) config.Step {
-	s := config.Step{ID: sf.Step, Type: store.StepScript, Pool: sf.ScriptPool, Worktree: sf.Worktree, Timeout: sf.Timeout}
+func ScriptConfig(sf domain.StepFields) config.Step {
+	s := config.Step{ID: sf.Step, Type: domain.StepScript, Pool: sf.ScriptPool, Worktree: sf.Worktree, Timeout: sf.Timeout}
 	// The script owns its retries through start_step; a restart reruns it.
 	s.OnRestart = config.OnRestartRetry
 	return s
@@ -36,7 +36,7 @@ type ScriptInputs struct {
 
 // script runs one attempt of a script step. inputs is called before the
 // worktree is made, so a run whose code changed does not leave one.
-func (e Executor) script(ctx context.Context, cfg *config.Config, t store.Ticket, s config.Step, sf store.StepFields, tpl Templates, attemptKey string, engine *hooks.Engine, inputs func(context.Context) (ScriptInputs, error)) Result {
+func (e Executor) script(ctx context.Context, cfg *config.Config, t domain.Ticket, s config.Step, sf domain.StepFields, tpl Templates, attemptKey string, engine *hooks.Engine, inputs func(context.Context) (ScriptInputs, error)) Result {
 	res := Result{Command: sf.Script}
 	in, err := inputs(ctx)
 	if err != nil {
@@ -74,7 +74,7 @@ func (e Executor) script(ctx context.Context, cfg *config.Config, t store.Ticket
 // scriptExec runs a step function's shell calls: in the pool's sandbox
 // when it has one, with the step worktree (or pool dir) as the default
 // cwd, and the same environment as a command step.
-func (e Executor) scriptExec(cfg *config.Config, t store.Ticket, pl Place, attemptKey string) api.Exec {
+func (e Executor) scriptExec(cfg *config.Config, t domain.Ticket, pl Place, attemptKey string) api.Exec {
 	return func(ctx context.Context, req api.ExecRequest) (int, error) {
 		dir := pl.Dir
 		if req.Dir != "" {
@@ -100,8 +100,8 @@ func (e Executor) scriptExec(cfg *config.Config, t store.Ticket, pl Place, attem
 }
 
 // ApplyScript records the structured output of a finished attempt.
-func ApplyScript(sf store.StepFields, res Result) store.StepFields {
-	if sf.Type != store.StepScript {
+func ApplyScript(sf domain.StepFields, res Result) domain.StepFields {
+	if sf.Type != domain.StepScript {
 		return sf
 	}
 	sf.StructuredOutput = nil

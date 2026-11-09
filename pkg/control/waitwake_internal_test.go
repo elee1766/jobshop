@@ -15,6 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -36,9 +37,9 @@ func TestWaitWebhookResume(t *testing.T) {
 	require.NoError(t, err)
 	prs.set(recPR, `[[]]`, recChecks)
 	_, err = c.waitAdd(ctx, sessScope(sess), rpc.WaitAddParams{
-		Conds: []store.WaitCond{
-			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
-			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
+		Conds: []domain.WaitCond{
+			{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
+			{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
 		},
 		Any: true, Resume: true, Reason: "CI on PR #5",
 	})
@@ -133,33 +134,33 @@ func TestWaitWakeTargeted(t *testing.T) {
 	prs.mu.Lock()
 	prs.pr["acme/widget#6"], prs.checks["acme/widget#6"] = recPR, green
 	prs.mu.Unlock()
-	park := func(n int) store.Ticket {
+	park := func(n int) domain.Ticket {
 		tk := mkTicket(t, c, store.NewTicket{Title: "t", Pool: "dev"})
-		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: "ci", Conds: []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: n, State: "success"}}})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: "ci", Conds: []domain.WaitCond{{Type: domain.WaitChecks, Repo: "acme/widget", PR: n, State: "success"}}})
 		require.NoError(t, err)
 		return tk
 	}
 	five, six := park(5), park(6)
 	c.waitWakes.Take()
 
-	c.wakeWaitsFor([]store.InboxItem{{Source: "github", RepoOrTeam: "Acme/Widget", Number: 5}})
+	c.wakeWaitsFor([]domain.InboxItem{{Source: "github", RepoOrTeam: "Acme/Widget", Number: 5}})
 	w := c.waitWakes.Take()
 	assert.False(t, w.All)
 	c.pollWaitsOn(ctx, prs, threads, w.Subjects)
 	assert.Nil(t, waitOf(mustGet(t, c, five.ID)), "PR 5's wait evaluated and cleared")
 	assert.NotNil(t, waitOf(mustGet(t, c, six.ID)), "PR 6's wait not evaluated")
 
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
-	f, err := store.DecodeFields[store.RunFields](run)
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
+	f, err := domain.DecodeFields[domain.RunFields](run)
 	require.NoError(t, err)
-	_, err = c.setRunState(ctx, "controller", run, f, store.RunDone, "")
+	_, err = c.setRunState(ctx, "controller", run, f, domain.RunDone, "")
 	require.NoError(t, err)
 	assert.True(t, c.waitWakes.Take().Subjects[waitengine.RunSubject(run.ID)], "run state change wakes its waits")
 
-	c.wakeWaitsFor([]store.InboxItem{{Source: "github", RepoOrTeam: "acme/widget"}})
+	c.wakeWaitsFor([]domain.InboxItem{{Source: "github", RepoOrTeam: "acme/widget"}})
 	assert.True(t, c.waitWakes.Take().Subjects[waitengine.RepoSubject("acme/widget")], "an event with no number names the repo")
 
-	c.wakeWaitsFor([]store.InboxItem{{Source: "generic"}})
+	c.wakeWaitsFor([]domain.InboxItem{{Source: "generic"}})
 	assert.True(t, c.waitWakes.Take().All, "an item with no subject wakes a full pass")
 }
 
@@ -170,7 +171,7 @@ func TestWaitNextTime(t *testing.T) {
 	c, clk, _, _ := waitController(t)
 	at := clk.now().Add(30 * time.Second)
 	tk := mkTicket(t, c, store.NewTicket{Title: "t", Pool: "dev"})
-	_, err := c.waitAdd(t.Context(), scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "later", Conds: []store.WaitCond{{Type: store.WaitTime, At: at}}})
+	_, err := c.waitAdd(t.Context(), scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "later", Conds: []domain.WaitCond{{Type: domain.WaitTime, At: at}}})
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Second, c.untilNextTime(t.Context()))
 }

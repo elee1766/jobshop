@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/memedit"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
 )
 
@@ -43,7 +43,7 @@ func TestMemoryEditsMigrate(t *testing.T) {
 		assert.Equal(t, "https://x/pull/1", e.PR)
 		assert.Equal(t, []int64{7, 8}, e.Learnings)
 		assert.Equal(t, 5, e.After.Runs)
-		assert.Equal(t, store.EditHelped, e.State)
+		assert.Equal(t, domain.EditHelped, e.State)
 		assert.Equal(t, time.UnixMilli(5000).UTC(), e.EvaluatedAt)
 		w, err := memedit.Get(ctx, s, 5)
 		require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestMemoryEditsMigrate(t *testing.T) {
 	require.NoError(t, postgres.Migrate(ctx, db))
 	check()
 
-	again, err := memedit.AddPR(ctx, s, store.MemoryEdit{PR: "https://x/pull/1", MergedAt: time.UnixMilli(3000)})
+	again, err := memedit.AddPR(ctx, s, domain.MemoryEdit{PR: "https://x/pull/1", MergedAt: time.UnixMilli(3000)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), again.ID)
 }

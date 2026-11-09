@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -33,8 +34,8 @@ type tlDiff struct {
 	Labels     []string  `json:"labels"`
 	Failures   *int      `json:"failures"` // set when the event counted a failed attempt
 	Fields     *struct {
-		State string      `json:"state"`
-		Wait  *store.Wait `json:"wait"`
+		State string       `json:"state"`
+		Wait  *domain.Wait `json:"wait"`
 	} `json:"fields"`
 }
 
@@ -53,10 +54,10 @@ func (c *Controller) ticketTimeline(ctx context.Context, sc scope, p rpc.GraphPa
 
 func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]store.Thread, now time.Time) rpc.TimelineResult {
 	out := rpc.TimelineResult{Root: g.Root, Rows: []rpc.TimelineRow{}, Arrows: []rpc.TimelineArrow{}, Truncated: g.Truncated}
-	tickets := map[string]store.Ticket{}
+	tickets := map[string]domain.Ticket{}
 	rows := map[string]*rpc.TimelineRow{}
 	for _, n := range g.Nodes {
-		if n.Kind == store.KindSession || n.Kind == store.KindMessage {
+		if n.Kind == domain.KindSession || n.Kind == domain.KindMessage {
 			continue
 		}
 		tickets[n.ID] = n.Ticket
@@ -154,8 +155,8 @@ func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]sto
 // arrowState is how a blocking edge stands. The blocked ticket started
 // at start (zero: not yet). A blocker step that closed without finishing
 // still blocks.
-func arrowState(blocker store.Ticket, start time.Time) string {
-	open := blocker.Status != store.StatusClosed || blocker.Kind == store.KindStep && !store.StepFinished(blocker)
+func arrowState(blocker domain.Ticket, start time.Time) string {
+	open := blocker.Status != domain.StatusClosed || blocker.Kind == domain.KindStep && !domain.StepFinished(blocker)
 	switch {
 	case open && start.IsZero():
 		return rpc.ArrowBlocking
@@ -170,7 +171,7 @@ type tlState struct {
 	closed     bool
 	held       bool
 	holder     string
-	wait       *store.Wait
+	wait       *domain.Wait
 	labels     []string
 	deferUntil time.Time
 	runState   string
@@ -179,29 +180,29 @@ type tlState struct {
 // tlBuilder turns state changes into segments.
 type tlBuilder struct {
 	cfg      *config.Config
-	t        store.Ticket
-	comments []store.Comment
+	t        domain.Ticket
+	comments []domain.Comment
 	st       tlState
 	segs     []rpc.TimelineSegment
 	open     bool
-	key      string      // identifies the open segment
-	segWait  *store.Wait // the wait the open segment shows
+	key      string       // identifies the open segment
+	segWait  *domain.Wait // the wait the open segment shows
 	marks    []rpc.TimelineMarker
 }
 
-func timelineRow(cfg *config.Config, t store.Ticket, th store.Thread, now time.Time) rpc.TimelineRow {
+func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.Time) rpc.TimelineRow {
 	row := rpc.TimelineRow{
 		ID: t.ID, Kind: t.Kind, Title: t.Title, Pool: t.Pool, Status: t.Status, Resolution: t.Resolution,
 		CreatedAt: t.CreatedAt, ClosedAt: t.ClosedAt, Segments: []rpc.TimelineSegment{}, Markers: []rpc.TimelineMarker{},
 	}
 	hist := th.History
-	closed := t.Status == store.StatusClosed
+	closed := t.Status == domain.StatusClosed
 	end := now
 	if closed && !t.ClosedAt.IsZero() {
 		end = t.ClosedAt
 	}
 	b := &tlBuilder{cfg: cfg, t: t, comments: th.Comments}
-	b.st.runState = store.RunRunning
+	b.st.runState = domain.RunRunning
 	if len(hist) == 0 || hist[0].Op != "create" {
 		row.Partial = true
 		first := end
@@ -252,7 +253,7 @@ func timelineRow(cfg *config.Config, t store.Ticket, th store.Thread, now time.T
 			fail, why = d.Failures != nil, "closed failed"
 			// A failed, rebase or request_changes close of a step reopens
 			// it unless it is the last close and the step stayed closed.
-			reopens := t.Kind == store.KindStep && slices.Contains([]string{"failed", store.ResolutionRebase, store.ResolutionRequestChanges}, d.Resolution)
+			reopens := t.Kind == domain.KindStep && slices.Contains([]string{"failed", domain.ResolutionRebase, domain.ResolutionRequestChanges}, d.Resolution)
 			b.st.closed = !reopens || i == lastClose && closed
 		case "reopen":
 			b.st.closed = false
@@ -291,7 +292,7 @@ func timelineRow(cfg *config.Config, t store.Ticket, th store.Thread, now time.T
 
 // commentMarkers are the ticks for comments (the newest maxCommentMarkers)
 // and for the PR a step announced.
-func commentMarkers(comments []store.Comment) []rpc.TimelineMarker {
+func commentMarkers(comments []domain.Comment) []rpc.TimelineMarker {
 	var out []rpc.TimelineMarker
 	for _, cm := range comments {
 		if m := stepPRComment.FindStringSubmatch(cm.Body); m != nil {
@@ -325,16 +326,16 @@ func (b *tlBuilder) tick(to time.Time) {
 }
 
 // current is the segment the state calls for at at, nil for none (closed).
-func (b *tlBuilder) current(at time.Time) (*rpc.TimelineSegment, *store.Wait) {
+func (b *tlBuilder) current(at time.Time) (*rpc.TimelineSegment, *domain.Wait) {
 	s := &b.st
 	switch {
 	case s.closed:
 		return nil, nil
 	case s.held:
 		return &rpc.TimelineSegment{State: rpc.TimelineWorking, Actor: s.holder}, nil
-	case b.t.Kind == store.KindRun && s.runState == store.RunNeedsHuman:
+	case b.t.Kind == domain.KindRun && s.runState == domain.RunNeedsHuman:
 		return &rpc.TimelineSegment{State: rpc.TimelineHuman, Detail: "run needs a human"}, nil
-	case b.t.Kind == store.KindRun || b.t.Kind == store.KindBatch:
+	case b.t.Kind == domain.KindRun || b.t.Kind == domain.KindBatch:
 		return &rpc.TimelineSegment{State: rpc.TimelineWorking}, nil
 	}
 	for _, l := range humanLabels {
@@ -347,12 +348,12 @@ func (b *tlBuilder) current(at time.Time) (*rpc.TimelineSegment, *store.Wait) {
 		// A wait on a time alone is a deferral until that time.
 		timed := len(w.Conds) > 0
 		for _, cd := range w.Conds {
-			timed = timed && cd.Type == store.WaitTime
-			if cd.Type != store.WaitTime {
+			timed = timed && cd.Type == domain.WaitTime
+			if cd.Type != domain.WaitTime {
 				continue
 			}
 			// The wait ends at the earliest time with mode any, else the latest.
-			if earlier := cd.At.Before(seg.Until); seg.Until.IsZero() || earlier == (w.Mode == store.WaitAny) {
+			if earlier := cd.At.Before(seg.Until); seg.Until.IsZero() || earlier == (w.Mode == domain.WaitAny) {
 				seg.Until = cd.At
 			}
 		}
@@ -410,7 +411,7 @@ func (b *tlBuilder) close(at time.Time, fail bool, why string) {
 		// The wait is over (a different cause, such as a human label, leaves
 		// it set and the span without an end reason).
 		reason := endReason(waitEpisode{wait: *b.segWait, end: at}, b.comments)
-		seg.Ended = endedState(*b.segWait, store.WaitCond{Met: true}, reason)
+		seg.Ended = endedState(*b.segWait, domain.WaitCond{Met: true}, reason)
 		seg.Wait = b.waitConds(*b.segWait, reason)
 		b.merged(*b.segWait, seg, at)
 	}
@@ -422,7 +423,7 @@ func (b *tlBuilder) close(at time.Time, fail bool, why string) {
 
 // waitConds lists a wait's conditions with their state: waiting or met
 // while live, and once over, how it ended (see endedState).
-func (b *tlBuilder) waitConds(w store.Wait, why string) []rpc.TimelineWait {
+func (b *tlBuilder) waitConds(w domain.Wait, why string) []rpc.TimelineWait {
 	out := make([]rpc.TimelineWait, 0, len(w.Conds))
 	for _, cd := range w.Conds {
 		tw := rpc.TimelineWait{Type: cd.Type, State: waitStateWaiting}
@@ -438,7 +439,7 @@ func (b *tlBuilder) waitConds(w store.Wait, why string) []rpc.TimelineWait {
 			tw.Label, tw.URL = ext.Label, ext.URL
 		case target != "":
 			tw.Label, tw.Target = cd.Type+" "+target, target
-		case cd.Type == store.WaitTime:
+		case cd.Type == domain.WaitTime:
 			tw.Label = "time " + cd.At.UTC().Format(time.RFC3339)
 		default:
 			tw.Label = cd.Type
@@ -449,12 +450,12 @@ func (b *tlBuilder) waitConds(w store.Wait, why string) []rpc.TimelineWait {
 }
 
 // merged marks the merge of a PR a finished wait was waiting for.
-func (b *tlBuilder) merged(w store.Wait, seg *rpc.TimelineSegment, at time.Time) {
+func (b *tlBuilder) merged(w domain.Wait, seg *rpc.TimelineSegment, at time.Time) {
 	if seg.Ended != waitStateMet {
 		return
 	}
 	for i, cd := range w.Conds {
-		if cd.Type == store.WaitPR && cd.State == "merged" && seg.Wait[i].State == waitStateMet {
+		if cd.Type == domain.WaitPR && cd.State == "merged" && seg.Wait[i].State == waitStateMet {
 			pr := strconv.Itoa(cd.PR)
 			b.marks = append(b.marks, rpc.TimelineMarker{At: at, Kind: rpc.MarkerMerged, Label: cd.Repo + " PR #" + pr + " merged", URL: "https://github.com/" + cd.Repo + "/pull/" + pr})
 		}

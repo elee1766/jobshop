@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -22,14 +23,14 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	runID, err := s.NewID(proj)
 	require.NoError(t, err)
 	nts := []store.NewTicket{{
-		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		ID: runID, Project: proj, Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
 	}}
 	step := func(id string, res ...string) {
 		b, err := json.Marshal(res)
 		require.NoError(t, err)
 		nts = append(nts, store.NewTicket{
-			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: runID,
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":%s}`, runID, id, b)),
 		})
 	}
@@ -60,20 +61,20 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	assert.ElementsMatch(t, []string{"js-e", "js-f", "js-g"}, ready(), "emu and pr:x#1 full; pr:x#2 and uncapped free")
 
 	_, _, err = s.Claim(ctx, "js-b", "s3", lease)
-	require.ErrorIs(t, err, store.ErrNoWork, "claim by id respects the cap")
+	require.ErrorIs(t, err, domain.ErrNoWork, "claim by id respects the cap")
 	_, _, err = s.Claim(ctx, "js-a", "s1", lease)
 	require.NoError(t, err, "the holder re-claims its own ticket")
 
 	use, err := resourceUse(ctx, s)
 	require.NoError(t, err)
-	assert.Contains(t, use, store.ResourceUse{Key: "emu", Capacity: 1, Held: 1, Waiting: 1})
-	assert.Contains(t, use, store.ResourceUse{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1})
-	assert.Contains(t, use, store.ResourceUse{Key: "other", Held: 0, Waiting: 2})
+	assert.Contains(t, use, domain.ResourceUse{Key: "emu", Capacity: 1, Held: 1, Waiting: 1})
+	assert.Contains(t, use, domain.ResourceUse{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1})
+	assert.Contains(t, use, domain.ResourceUse{Key: "other", Held: 0, Waiting: 2})
 
 	// Waits (#408): only the full keys, in claim order.
 	waits, err := resourceWaits(ctx, s)
 	require.NoError(t, err)
-	assert.Equal(t, []store.ResourceWait{
+	assert.Equal(t, []domain.ResourceWait{
 		{Ticket: "js-b", Key: "emu", Ahead: 0, Held: 1, Capacity: 1},
 		{Ticket: "js-d", Key: "pr:x#1", Ahead: 0, Held: 1, Capacity: 1},
 	}, waits)
@@ -97,7 +98,7 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-b")
 	_, err = s.Heartbeat(ctx, cb, lease)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 
 	// Lease expiry frees it.
 	assert.NotContains(t, ready(), "js-d")
@@ -106,7 +107,7 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-d", "the expired pr:x#1 claim frees the key")
 	_, err = s.Heartbeat(ctx, cc, lease)
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 
 	// No cap: unlimited.
 	require.NoError(t, setCaps(ctx, s, nil))
@@ -114,5 +115,5 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-d", "caps removed: no limit")
 
-	require.ErrorIs(t, setCaps(ctx, s, map[string]int{"x": 0}), store.ErrInvalid)
+	require.ErrorIs(t, setCaps(ctx, s, map[string]int{"x": 0}), domain.ErrInvalid)
 }

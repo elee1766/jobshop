@@ -13,9 +13,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -34,17 +34,17 @@ func (c *Controller) ingestClaim(ctx context.Context, sc scope, p rpc.IngestClai
 		return nil, err
 	}
 	if p.Worker == "" {
-		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: worker is required", domain.ErrInvalid)
 	}
 	cfg := c.config()
 	if !cfg.Ingest.External() {
 		c.queue().Beat(p, false, false)
-		return nil, fmt.Errorf("%w: ingest.workers is not external; the controller admits", store.ErrConflict)
+		return nil, fmt.Errorf("%w: ingest.workers is not external; the controller admits", domain.ErrConflict)
 	}
 	hooks := ingestqueue.Hooks(cfg)
 	lease := ingestqueue.Lease(hooks)
-	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestqueue.WorkerPrefix+p.Worker, lease)
-	if errors.Is(err, store.ErrNotFound) {
+	it, err := ingest.InboxClaim(ctx, c.store, []string{domain.InboxPending}, ingestqueue.WorkerPrefix+p.Worker, lease)
+	if errors.Is(err, domain.ErrNotFound) {
 		c.queue().Beat(p, false, false)
 		return rpc.IngestClaimResult{}, nil
 	}
@@ -62,11 +62,11 @@ func (c *Controller) ingestAdmit(ctx context.Context, sc scope, p rpc.IngestAdmi
 		return nil, err
 	}
 	if p.Worker == "" {
-		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: worker is required", domain.ErrInvalid)
 	}
 	var run ingestqueue.Run
 	if err := json.Unmarshal(p.Run, &run); err != nil {
-		return nil, fmt.Errorf("%w: run: %w", store.ErrInvalid, err)
+		return nil, fmt.Errorf("%w: run: %w", domain.ErrInvalid, err)
 	}
 	it, err := ingest.InboxGet(ctx, c.store, p.ID)
 	if err != nil {
@@ -144,7 +144,7 @@ func (c *Controller) missingWorker(cfg *config.Config) (triggers.Finding, bool) 
 // ingest.backlog_after.
 func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (triggers.Finding, bool, error) {
 	in := cfg.Ingest
-	n, err := ingest.InboxCountOlder(ctx, c.store, store.InboxPending, c.now().Add(-in.BacklogAge()))
+	n, err := ingest.InboxCountOlder(ctx, c.store, domain.InboxPending, c.now().Add(-in.BacklogAge()))
 	if err != nil || n <= int64(in.BacklogMax) {
 		return triggers.Finding{}, false, err
 	}

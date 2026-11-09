@@ -23,8 +23,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/flaky"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // stdout is swapped by tests.
@@ -79,13 +80,13 @@ func printJSON(raw json.RawMessage) error {
 // exitCode maps errors to stable exit codes so agents can branch on them.
 func exitCode(err error) int {
 	switch {
-	case errors.Is(err, store.ErrNoWork):
+	case errors.Is(err, domain.ErrNoWork):
 		return 3
-	case errors.Is(err, store.ErrNotHolder):
+	case errors.Is(err, domain.ErrNotHolder):
 		return 4
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, domain.ErrNotFound):
 		return 5
-	case errors.Is(err, store.ErrConflict):
+	case errors.Is(err, domain.ErrConflict):
 		return 6
 	}
 	return 1
@@ -229,13 +230,13 @@ func (c sendCmd) Run(g *Globals) error {
 		fmt.Println(res.Session)
 		return nil
 	}
-	fields, err := json.Marshal(store.MessageFields{To: c.To, Interrupt: c.Interrupt})
+	fields, err := json.Marshal(domain.MessageFields{To: c.To, Interrupt: c.Interrupt})
 	if err != nil {
 		return err
 	}
 	title, body, _ := strings.Cut(text, "\n")
 	return g.call(rpc.MethodTicketCreate, rpc.CreateParams{
-		Project: c.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
+		Project: c.Project, Kind: domain.KindMessage, Title: title, Body: body, Fields: fields,
 	}, nil)
 }
 
@@ -501,7 +502,7 @@ func (c ticketCreateCmd) Run(g *Globals) error {
 		return err
 	}
 	return g.call(rpc.MethodTicketCreate, rpc.CreateParams{
-		Project: c.Project, Kind: store.Kind(c.Kind), Title: c.Title, Body: body,
+		Project: c.Project, Kind: domain.Kind(c.Kind), Title: c.Title, Body: body,
 		Priority: c.Priority, Pool: c.Pool, Holder: c.Assign, ParentID: c.Parent,
 		Labels: c.Label, Fields: rawJSON(c.Fields), Meta: rawJSON(c.Meta),
 	}, nil)
@@ -540,7 +541,7 @@ type ticketListCmd struct {
 
 func (c ticketListCmd) params() rpc.ListParams {
 	return rpc.ListParams{
-		Project: c.Project, Kind: store.Kind(c.Kind), Status: store.Status(c.Status), Pool: c.Pool,
+		Project: c.Project, Kind: domain.Kind(c.Kind), Status: domain.Status(c.Status), Pool: c.Pool,
 		Holder: c.Holder, ParentID: c.Parent, Label: c.Label, Report: c.Report, Limit: c.Limit, Orphaned: c.Orphaned,
 	}
 }
@@ -760,13 +761,13 @@ type edgeArgs struct {
 }
 
 func (c edgeArgs) Run(g *Globals) error {
-	return g.call(rpc.MethodEdgeAdd, rpc.EdgeParams{From: c.From, To: c.To, Kind: store.EdgeKind(c.Kind)}, nil)
+	return g.call(rpc.MethodEdgeAdd, rpc.EdgeParams{From: c.From, To: c.To, Kind: domain.EdgeKind(c.Kind)}, nil)
 }
 
 type edgeRm struct{ edgeArgs }
 
 func (c edgeRm) Run(g *Globals) error {
-	return g.call(rpc.MethodEdgeRemove, rpc.EdgeParams{From: c.From, To: c.To, Kind: store.EdgeKind(c.Kind)}, nil)
+	return g.call(rpc.MethodEdgeRemove, rpc.EdgeParams{From: c.From, To: c.To, Kind: domain.EdgeKind(c.Kind)}, nil)
 }
 
 type labelCmd struct {
@@ -1121,7 +1122,7 @@ func (c guardCmd) Run(g *Globals) error {
 	if err := printJSON(b); err != nil {
 		return err
 	}
-	if r.Decision != rpc.GuardAllow {
+	if r.Decision != domain.GuardAllow {
 		return fmt.Errorf("guard %s: %s: %s", c.Action, r.Decision, r.Reason)
 	}
 	return nil

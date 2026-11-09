@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -96,7 +97,7 @@ func TestLinearIntakeOffTick(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 	runs := func() int {
-		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun})
 		require.NoError(t, err)
 		return len(rs)
 	}
@@ -137,11 +138,11 @@ triggers:
 func TestTriggerCommandOffTick(t *testing.T) {
 	t.Parallel()
 	c, _, dir := offTickController(t, offTickCommandYAML, io.Discard)
-	records := func() []store.Ticket { return triggerTickets(t, c, "cmd") }
+	records := func() []domain.Ticket { return triggerTickets(t, c, "cmd") }
 	c.testTriggerPass(t)
 	rs := records()
 	require.Len(t, rs, 1, "the pass files the record without waiting")
-	assert.Equal(t, store.StatusOpen, rs[0].Status)
+	assert.Equal(t, domain.StatusOpen, rs[0].Status)
 	c.testTriggerPass(t)
 	assert.Len(t, records(), 1, "the open record holds the trigger")
 
@@ -149,7 +150,7 @@ func TestTriggerCommandOffTick(t *testing.T) {
 	c.wg.Wait()
 	rs = records()
 	require.Len(t, rs, 1)
-	assert.Equal(t, store.StatusClosed, rs[0].Status)
+	assert.Equal(t, domain.StatusClosed, rs[0].Status)
 }
 
 // TestOffTickTimeout (JOB-103): a check that runs out its timeout is

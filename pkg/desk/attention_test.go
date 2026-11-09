@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func calls(ctl *fakeCtl, method string) []string {
@@ -55,10 +55,10 @@ func TestAttentionChatAttaches(t *testing.T) {
 // 0600 desk/attention.json, and closes the item's chat.
 func TestAttentionAck(t *testing.T) {
 	root := t.TempDir()
-	sess := store.Ticket{ID: "s3", Kind: store.KindSession, Status: store.StatusOpen, Fields: json.RawMessage(`{"key":"attention:config:config"}`)}
+	sess := domain.Ticket{ID: "s3", Kind: domain.KindSession, Status: domain.StatusOpen, Fields: json.RawMessage(`{"key":"attention:config:config"}`)}
 	ctl := &fakeCtl{results: map[string]any{
 		rpc.MethodSessionList: []rpc.SessionInfo{{ID: "s3", Ticket: &sess}},
-		rpc.MethodTicketClose: store.Ticket{ID: "s3"},
+		rpc.MethodTicketClose: domain.Ticket{ID: "s3"},
 		rpc.MethodAttention: rpc.AttentionResult{Items: []rpc.AttentionItem{
 			{Kind: rpc.AttentionConfig, ID: "config", Title: "pack failed", Since: time.Now()},
 			{Kind: rpc.AttentionQuestion, ID: "js-q", Title: "which branch?", Ref: "#4", Since: time.Now()},

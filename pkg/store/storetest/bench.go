@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -41,17 +42,17 @@ func Bench(b *testing.B, s store.Store, size BenchSize) {
 
 	b.Run("ListSessions", func(b *testing.B) {
 		for b.Loop() {
-			must(b, list(ctx, s, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Limit: store.NoLimit}))
+			must(b, list(ctx, s, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Limit: store.NoLimit}))
 		}
 	})
 	b.Run("ListLabeledOpen", func(b *testing.B) {
 		for b.Loop() {
-			must(b, list(ctx, s, store.Filter{Label: "bug", Status: store.StatusOpen, Limit: store.NoLimit}))
+			must(b, list(ctx, s, store.Filter{Label: "bug", Status: domain.StatusOpen, Limit: store.NoLimit}))
 		}
 	})
 	b.Run("ListRunState", func(b *testing.B) {
 		for b.Loop() {
-			must(b, list(ctx, s, store.Filter{Kind: store.KindRun, State: "running", Limit: store.NoLimit}))
+			must(b, list(ctx, s, store.Filter{Kind: domain.KindRun, State: "running", Limit: store.NoLimit}))
 		}
 	})
 	b.Run("ListReady", func(b *testing.B) {
@@ -147,8 +148,8 @@ func benchMixed(b *testing.B, s store.Store, ids []string) {
 	for w := range 4 {
 		wg.Go(func() {
 			for i := w; ctx.Err() == nil; i++ {
-				_ = list(ctx, s, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Limit: store.NoLimit})
-				_ = list(ctx, s, store.Filter{Label: "bug", Status: store.StatusOpen})
+				_ = list(ctx, s, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Limit: store.NoLimit})
+				_ = list(ctx, s, store.Filter{Label: "bug", Status: domain.StatusOpen})
 				_, _ = s.Get(ctx, ids[i%len(ids)])
 				polls.Add(1)
 			}
@@ -157,8 +158,8 @@ func benchMixed(b *testing.B, s store.Store, ids []string) {
 	i := 0
 	for b.Loop() {
 		must(b, list(ctx, s, store.Filter{Ready: true, Pool: benchPool}))
-		must(b, list(ctx, s, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Limit: store.NoLimit}))
-		must(b, list(ctx, s, store.Filter{Kind: store.KindRun, State: "running", Limit: store.NoLimit}))
+		must(b, list(ctx, s, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Limit: store.NoLimit}))
+		must(b, list(ctx, s, store.Filter{Kind: domain.KindRun, State: "running", Limit: store.NoLimit}))
 		must(b, claimRelease(ctx, s, "bench-supervisor"))
 		_, err := store.AddComment(ctx, s, "bench", ids[i%len(ids)], "supervisor pass note")
 		must(b, err)
@@ -195,7 +196,7 @@ func seed(b *testing.B, s store.Store, size BenchSize) []string {
 	}
 	for i := range size.Sessions {
 		g.Tickets = append(g.Tickets, store.NewTicket{
-			ID: newID(), Project: proj, Kind: store.KindSession, Pool: benchPool, Title: "session",
+			ID: newID(), Project: proj, Kind: domain.KindSession, Pool: benchPool, Title: "session",
 			Fields: json.RawMessage(fmt.Sprintf(`{"agent":"jcode","key":"bench:%d"}`, i)),
 		})
 		if len(g.Tickets) >= 200 {
@@ -210,13 +211,13 @@ func seed(b *testing.B, s store.Store, size BenchSize) []string {
 		}
 		run := newID()
 		g.Tickets = append(g.Tickets, store.NewTicket{
-			ID: run, Project: proj, Kind: store.KindRun, Title: "run",
+			ID: run, Project: proj, Kind: domain.KindRun, Title: "run",
 			Fields: json.RawMessage(fmt.Sprintf(`{"workflow":"pr-work","state":%q,"key":"issue-%d"}`, state, i)),
 			Meta:   json.RawMessage(fmt.Sprintf(`{"github":{"issue":"%d"}}`, i)),
 		})
 		for j, step := range []string{"implement", "review-merge", "post-merge"} {
 			g.Tickets = append(g.Tickets, store.NewTicket{
-				ID: newID(), Project: proj, Kind: store.KindStep, Pool: benchPool, ParentID: run, Title: step,
+				ID: newID(), Project: proj, Kind: domain.KindStep, Pool: benchPool, ParentID: run, Title: step,
 				Body:   "Step body with the workflow prompt, a few hundred bytes long in practice.",
 				Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"index":%d,"retries":3}`, run, step, j)),
 			})
@@ -227,7 +228,7 @@ func seed(b *testing.B, s store.Store, size BenchSize) []string {
 	}
 	flush()
 	for i := range size.Tasks {
-		nt := store.NewTicket{ID: newID(), Project: proj, Kind: store.KindTask, Pool: benchPool, Title: fmt.Sprintf("task %d", i), Body: "task body"}
+		nt := store.NewTicket{ID: newID(), Project: proj, Kind: domain.KindTask, Pool: benchPool, Title: fmt.Sprintf("task %d", i), Body: "task body"}
 		if i%3 == 0 {
 			nt.Labels = []string{"bug"}
 		}

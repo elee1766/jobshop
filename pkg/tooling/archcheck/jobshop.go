@@ -21,29 +21,32 @@ func families() []Family {
 	return []Family{
 		{Name: "support"},
 		{Name: "ids"},
+		// domain is the shared business types and invariants (JOB-166). It
+		// imports nothing of the module and no third-party package, so any
+		// family can take a type from it without taking an implementation.
+		{Name: "domain", StdOnly: true},
 		{Name: "pack"},
-		{Name: "store", May: []string{"support", "ids"}},
-		{Name: "knowledge", May: []string{"store", "support"}},
-		// config reads the store's types (scope refs, kinds) until JOB-166
-		// moves the shared ones to domain, and compiles hook programs to
-		// reject a bad script at load (config/hookcheck.go).
-		{Name: "config", May: []string{"support", "ids", "pack", "store", "automation"}},
-		{Name: "integrations", May: []string{"support", "config"}},
-		{Name: "automation", May: []string{"integrations"}},
-		{Name: "wire", May: []string{"support", "config", "store"}},
-		{Name: "session", May: []string{"support", "config", "wire"}},
-		{Name: "journal", May: []string{"support", "store", "wire", "config"}},
-		{Name: "conversation", May: []string{"support", "config", "store", "wire"}},
+		{Name: "store", May: []string{"support", "ids", "domain"}},
+		{Name: "knowledge", May: []string{"store", "support", "domain"}},
+		// config reads store types it has not moved yet and compiles hook
+		// programs to reject a bad script at load (config/hookcheck.go).
+		{Name: "config", May: []string{"support", "ids", "pack", "store", "automation", "domain"}},
+		{Name: "integrations", May: []string{"support", "config", "domain"}},
+		{Name: "automation", May: []string{"integrations", "domain"}},
+		{Name: "wire", May: []string{"support", "config", "store", "domain"}},
+		{Name: "session", May: []string{"support", "config", "wire", "domain"}},
+		{Name: "journal", May: []string{"support", "store", "wire", "config", "domain"}},
+		{Name: "conversation", May: []string{"support", "config", "store", "wire", "domain"}},
 		{Name: "orchestration", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
-			"automation", "wire", "session", "journal", "conversation", "pack",
+			"automation", "wire", "session", "journal", "conversation", "pack", "domain",
 		}},
 		{Name: "transport", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
-			"wire", "session", "journal", "orchestration", "tooling",
+			"wire", "session", "journal", "orchestration", "tooling", "domain",
 		}},
 		{Name: "tooling", May: []string{"wire"}},
-		{Name: "content", May: []string{"config", "store", "wire", "orchestration"}},
+		{Name: "content", May: []string{"config", "store", "wire", "orchestration", "domain"}},
 	}
 }
 
@@ -55,9 +58,13 @@ func owners() []Owner {
 		{Pkg: "./pkg/logctx", Target: "support/logctx", Family: "support", Child: "JOB-174"},
 		{Pkg: "./pkg/telemetry", Target: "support/telemetry", Family: "support", Child: "JOB-174"},
 
-		// ids: the generator stays a leaf (sonyflake); JOB-166 moves only
-		// identifier kinds and checks that domain needs into domain.
-		{Pkg: "./pkg/ids", Target: "stay (leaf generator)", Family: "ids", Child: "JOB-166"},
+		// ids: the generator and its id shape checks stay a leaf. Only the two
+		// store backends and a store test use it besides config and control, and
+		// none needs it for a type, so domain holds no identifier kinds (JOB-166).
+		{Pkg: "./pkg/ids", Target: "stay (leaf generator)", Family: "ids", Child: "-"},
+
+		// domain: shared business types and invariants (JOB-166).
+		{Pkg: "./pkg/domain", Target: "stay", Family: "domain", Child: "-"},
 
 		{Pkg: "./pkg/packcue", Target: "pack/cue", Family: "pack", Child: "JOB-172"},
 

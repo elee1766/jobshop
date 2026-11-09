@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Decision is the outcome of evaluating one wait against a Pass. It is
@@ -28,7 +28,7 @@ type Decision struct {
 	// Wait is the snapshot with the evaluation applied: met flags and
 	// notes, PR heads bound on first sight, TimedOut set. Unset when
 	// Clear.
-	Wait store.Wait
+	Wait domain.Wait
 	// Save: Wait differs from the snapshot and must be persisted.
 	Save bool
 	// TimedOut: the timeout passed in this evaluation and had not been
@@ -46,7 +46,7 @@ func (e invalidated) Error() string { return e.why }
 
 // Evaluate evaluates every unmet condition of w at now. It does not
 // modify w.
-func Evaluate(ctx context.Context, pass *Pass, w store.Wait, now time.Time) Decision {
+func Evaluate(ctx context.Context, pass *Pass, w domain.Wait, now time.Time) Decision {
 	before, _ := json.Marshal(w)
 	w.Conds = slices.Clone(w.Conds)
 	var errs []error
@@ -91,22 +91,22 @@ func Evaluate(ctx context.Context, pass *Pass, w store.Wait, now time.Time) Deci
 
 // evalCond reports whether cd holds now. It records cd.Head the first
 // time a PR condition is evaluated without one.
-func evalCond(ctx context.Context, pass *Pass, w *store.Wait, cd *store.WaitCond, now time.Time) (bool, string, error) {
+func evalCond(ctx context.Context, pass *Pass, w *domain.Wait, cd *domain.WaitCond, now time.Time) (bool, string, error) {
 	switch cd.Type {
-	case store.WaitTime:
+	case domain.WaitTime:
 		return !now.Before(cd.At), "time " + cd.At.Format(time.RFC3339), nil
-	case store.WaitReply:
+	case domain.WaitReply:
 		return pass.src.Replies.Reply(ctx, *cd, w.Since)
-	case store.WaitLabel:
+	case domain.WaitLabel:
 		return evalLabel(ctx, pass, cd)
-	case store.WaitTag:
+	case domain.WaitTag:
 		ok, err := pass.src.GitHub.Tag(ctx, cd.Repo, cd.Tag)
 		// The note is stored on every pass, met or not (#716).
 		if !ok {
 			return false, fmt.Sprintf("tag %s not pushed to %s yet", cd.Tag, cd.Repo), err
 		}
 		return true, fmt.Sprintf("tag %s pushed to %s", cd.Tag, cd.Repo), err
-	case store.WaitDeploy:
+	case domain.WaitDeploy:
 		if pass.src.Commit == "" {
 			return false, "", invalidated{"this controller reports no build commit"}
 		}
@@ -115,11 +115,11 @@ func evalCond(ctx context.Context, pass *Pass, w *store.Wait, cd *store.WaitCond
 			return false, fmt.Sprintf("deployed %s does not contain %s yet", short(pass.src.Commit), short(cd.SHA)), err
 		}
 		return true, fmt.Sprintf("deployed %s contains %s", short(pass.src.Commit), short(cd.SHA)), err
-	case store.WaitRun:
+	case domain.WaitRun:
 		return evalRun(ctx, pass, cd)
-	case store.WaitLinearState, store.WaitLinearLabel:
+	case domain.WaitLinearState, domain.WaitLinearLabel:
 		return evalLinear(ctx, pass, cd)
-	case store.WaitChecks:
+	case domain.WaitChecks:
 		if cd.PR == 0 {
 			return evalChecks(ctx, pass, cd, cd.SHA)
 		}
@@ -132,7 +132,7 @@ func evalCond(ctx context.Context, pass *Pass, w *store.Wait, cd *store.WaitCond
 	if cd.Head == "" {
 		cd.Head = pr.Head
 	}
-	if cd.Type == store.WaitPR {
+	if cd.Type == domain.WaitPR {
 		switch cd.State {
 		case "merged":
 			if pr.State == "closed" && !pr.Merged {
@@ -153,7 +153,7 @@ func evalCond(ctx context.Context, pass *Pass, w *store.Wait, cd *store.WaitCond
 	if pr.Head != cd.Head {
 		return false, "", invalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
 	}
-	if cd.Type == store.WaitChecks {
+	if cd.Type == domain.WaitChecks {
 		if pr.Conflicting {
 			return false, "", invalidated{ref + " conflicts with its base; CI will not run until it is rebased"}
 		}
@@ -187,7 +187,7 @@ func evalCond(ctx context.Context, pass *Pass, w *store.Wait, cd *store.WaitCond
 
 // evalRun: the run is done (state done) or ended any way (closed). A
 // done wait on a run that was cancelled can never hold.
-func evalRun(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, string, error) {
+func evalRun(ctx context.Context, pass *Pass, cd *domain.WaitCond) (bool, string, error) {
 	r, err := pass.src.Runs.Run(ctx, cd.Run)
 	if err != nil {
 		return false, "", err
@@ -195,20 +195,20 @@ func evalRun(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, string,
 	if cd.State == "closed" {
 		return r.Ended(), fmt.Sprintf("run %s ended (%s)", cd.Run, r.State), nil
 	}
-	if r.State == store.RunCancelled {
+	if r.State == domain.RunCancelled {
 		return false, "", invalidated{"run " + cd.Run + " was cancelled"}
 	}
-	return r.State == store.RunDone, "run " + cd.Run + " done", nil
+	return r.State == domain.RunDone, "run " + cd.Run + " done", nil
 }
 
 // evalLinear: linear.state matches the state name or type
 // (case-insensitive); linear.label has the label, or lacks it with Absent.
-func evalLinear(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, string, error) {
+func evalLinear(ctx context.Context, pass *Pass, cd *domain.WaitCond) (bool, string, error) {
 	is, err := pass.linearIssue(ctx, cd.Thread)
 	if err != nil {
 		return false, "", err
 	}
-	if cd.Type == store.WaitLinearState {
+	if cd.Type == domain.WaitLinearState {
 		ok := strings.EqualFold(is.State.Name, cd.State) || strings.EqualFold(is.State.Type, cd.State)
 		return ok, fmt.Sprintf("%s is %s", cd.Thread, is.State.Name), nil
 	}
@@ -221,7 +221,7 @@ func evalLinear(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, stri
 
 // evalLabel: the issue carries the label, or is closed (a rejected
 // proposal also ends the wait).
-func evalLabel(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, string, error) {
+func evalLabel(ctx context.Context, pass *Pass, cd *domain.WaitCond) (bool, string, error) {
 	is, err := pass.src.GitHub.Issue(ctx, cd.Repo, cd.Issue)
 	if err != nil {
 		return false, "", err
@@ -246,7 +246,7 @@ func evalLabel(ctx context.Context, pass *Pass, cd *store.WaitCond) (bool, strin
 //
 // With cd.Workflow set only that workflow's newest run on the commit
 // counts (evalWorkflow).
-func evalChecks(ctx context.Context, pass *Pass, cd *store.WaitCond, head string) (bool, string, error) {
+func evalChecks(ctx context.Context, pass *Pass, cd *domain.WaitCond, head string) (bool, string, error) {
 	if cd.Workflow != "" {
 		return evalWorkflow(ctx, pass, cd, head)
 	}
@@ -291,7 +291,7 @@ func evalChecks(ctx context.Context, pass *Pass, cd *store.WaitCond, head string
 // none yet or in progress is not met, success meets state=success,
 // failure meets state=failure, and a cancelled or skipped run can never
 // become green, so the wait is invalidated and the agent resumes now.
-func evalWorkflow(ctx context.Context, pass *Pass, cd *store.WaitCond, head string) (bool, string, error) {
+func evalWorkflow(ctx context.Context, pass *Pass, cd *domain.WaitCond, head string) (bool, string, error) {
 	rs, err := pass.runsOf(ctx, cd.Repo, head)
 	if err != nil {
 		return false, "", err

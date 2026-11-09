@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
@@ -130,7 +131,7 @@ func (s *Store) sqlTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	// A lost write race means the caller's read is stale, as with a
 	// revision mismatch, and retrying is safe.
 	if s.isBusy(err) {
-		return fmt.Errorf("%w: %w", store.ErrConflict, err)
+		return fmt.Errorf("%w: %w", domain.ErrConflict, err)
 	}
 	return err
 }
@@ -171,14 +172,14 @@ func (s *Store) txOnce(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	return nil
 }
 
-func toTicket(r sqldb.Ticket) store.Ticket {
-	return store.Ticket{
+func toTicket(r sqldb.Ticket) domain.Ticket {
+	return domain.Ticket{
 		ID:         r.ID,
 		Project:    r.Project,
-		Kind:       store.Kind(r.Kind),
+		Kind:       domain.Kind(r.Kind),
 		Title:      r.Title,
 		Body:       r.Body,
-		Status:     store.Status(r.Status),
+		Status:     domain.Status(r.Status),
 		Resolution: r.Resolution,
 		Priority:   int(r.Priority),
 		Pool:       r.Pool,
@@ -200,12 +201,12 @@ func toTicket(r sqldb.Ticket) store.Ticket {
 
 func notFound(err error, id string) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %s", store.ErrNotFound, id)
+		return fmt.Errorf("%w: %s", domain.ErrNotFound, id)
 	}
 	return err
 }
 
-func (s *Store) withLabels(ctx context.Context, q sqldb.Querier, ts []store.Ticket) ([]store.Ticket, error) {
+func (s *Store) withLabels(ctx context.Context, q sqldb.Querier, ts []domain.Ticket) ([]domain.Ticket, error) {
 	if len(ts) == 0 {
 		return ts, nil
 	}
@@ -226,24 +227,24 @@ func (s *Store) withLabels(ctx context.Context, q sqldb.Querier, ts []store.Tick
 	return ts, nil
 }
 
-func (s *Store) get(ctx context.Context, q sqldb.Querier, id string) (store.Ticket, error) {
+func (s *Store) get(ctx context.Context, q sqldb.Querier, id string) (domain.Ticket, error) {
 	r, err := q.GetTicket(ctx, id)
 	if err != nil {
-		return store.Ticket{}, notFound(err, id)
+		return domain.Ticket{}, notFound(err, id)
 	}
-	ts, err := s.withLabels(ctx, q, []store.Ticket{toTicket(r)})
+	ts, err := s.withLabels(ctx, q, []domain.Ticket{toTicket(r)})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	return ts[0], nil
 }
 
 // Get returns one ticket with its labels.
-func (s *Store) Get(ctx context.Context, id string) (store.Ticket, error) {
+func (s *Store) Get(ctx context.Context, id string) (domain.Ticket, error) {
 	return s.get(ctx, s.rq, id)
 }
 
-func history(ctx context.Context, q sqldb.Querier, t store.Ticket, at time.Time, actor, op string, diff any) error {
+func history(ctx context.Context, q sqldb.Querier, t domain.Ticket, at time.Time, actor, op string, diff any) error {
 	d := []byte("{}")
 	if diff != nil {
 		var err error
@@ -259,14 +260,14 @@ func history(ctx context.Context, q sqldb.Querier, t store.Ticket, at time.Time,
 // mutate is the single write path for an existing ticket: load, apply fn,
 // write with a revision guard, record history.
 func (s *Store) mutate(ctx context.Context, q sqldb.Querier, id, actor, op string,
-	fn func(t *store.Ticket) (diff any, err error),
-) (store.Ticket, error) {
+	fn func(t *domain.Ticket) (diff any, err error),
+) (domain.Ticket, error) {
 	return s.mutateWith(ctx, q, id, actor, op, fn, nil)
 }
 
 // writeFn writes t (already at its new revision) over prev. It returns
 // the rows changed; 0 means the write's guard did not hold.
-type writeFn func(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error)
+type writeFn func(ctx context.Context, q sqldb.Querier, t domain.Ticket, prev int64, now time.Time) (int64, error)
 
 // errGuard is a guarded write that matched no row; callers turn it into
 // the error (or skip) that fits them.
@@ -275,28 +276,28 @@ var errGuard = errors.New("guard did not hold")
 // mutateWith is mutate with a custom write. With w non-nil, a write that
 // changes no row returns errGuard wrapped with ErrConflict.
 func (s *Store) mutateWith(ctx context.Context, q sqldb.Querier, id, actor, op string,
-	fn func(t *store.Ticket) (diff any, err error), w writeFn,
-) (store.Ticket, error) {
+	fn func(t *domain.Ticket) (diff any, err error), w writeFn,
+) (domain.Ticket, error) {
 	t, err := s.get(ctx, q, id)
 	if err != nil {
 		return t, err
 	}
 	diff, err := fn(&t)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	now := s.now()
 	prev := storerules.Bump(&t, now)
 	if w != nil {
 		n, err := w(ctx, q, t, prev, now)
 		if err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 		if n == 0 {
-			return store.Ticket{}, fmt.Errorf("%w: %s: %w", store.ErrConflict, id, errGuard)
+			return domain.Ticket{}, fmt.Errorf("%w: %s: %w", domain.ErrConflict, id, errGuard)
 		}
 		if err := history(ctx, q, t, now, actor, op, diff); err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 		return t, nil
 	}
@@ -311,39 +312,39 @@ func (s *Store) mutateWith(ctx context.Context, q sqldb.Querier, id, actor, op s
 		UpdatedAt: ns(now), ClosedAt: ns(t.ClosedAt), ID: id, ExpectedRevision: prev,
 	})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if n == 0 {
-		return store.Ticket{}, fmt.Errorf("%w: %s", store.ErrConflict, id)
+		return domain.Ticket{}, fmt.Errorf("%w: %s", domain.ErrConflict, id)
 	}
 	if err := syncMeta(ctx, q, id, t.Meta); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if err := syncResources(ctx, q, id, t.Fields); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if err := history(ctx, q, t, now, actor, op, diff); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	return t, nil
 }
 
-func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt store.NewTicket) (store.Ticket, error) {
+func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt store.NewTicket) (domain.Ticket, error) {
 	if nt.Project == "" {
-		return store.Ticket{}, fmt.Errorf("%w: project is required", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: project is required", domain.ErrInvalid)
 	}
-	fields, err := store.NormalizeFields(nt.Kind, nt.Fields)
+	fields, err := domain.NormalizeFields(nt.Kind, nt.Fields)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
-	meta, err := store.NormalizeMeta(nt.Meta)
+	meta, err := domain.NormalizeMeta(nt.Meta)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	id := nt.ID
 	if id == "" {
 		if id, err = s.mint(ctx, q, nt.Project, idTag(nt.Kind)); err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 	}
 	prio := store.DefaultPriority
@@ -360,7 +361,7 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	cols := fieldColumns(fields)
 	err = q.InsertTicket(ctx, sqldb.InsertTicketParams{
 		ID: id, Project: nt.Project, Kind: string(nt.Kind), Title: nt.Title, Body: nt.Body,
-		Status: string(store.StatusOpen), Priority: int64(prio), Pool: nt.Pool, Holder: nt.Holder,
+		Status: string(domain.StatusOpen), Priority: int64(prio), Pool: nt.Pool, Holder: nt.Holder,
 		ParentID: parent, DeferUntil: ns(nt.DeferUntil), Ephemeral: boolInt(nt.Ephemeral),
 		Fields: string(fields), Meta: string(meta), Revision: 1, CreatedBy: actor,
 		CreatedAt: ns(now), UpdatedAt: ns(now),
@@ -368,17 +369,17 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 		FIndex: cols.index, FWaiting: cols.waiting,
 	})
 	if err != nil {
-		return store.Ticket{}, s.classify(err, id)
+		return domain.Ticket{}, s.classify(err, id)
 	}
 	if err := syncMeta(ctx, q, id, meta); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if err := syncResources(ctx, q, id, fields); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	for _, l := range nt.Labels {
 		if err := s.addLabel(ctx, q, id, l); err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 	}
 	t, err := s.get(ctx, q, id)
@@ -404,8 +405,8 @@ func (s *Store) classify(err error, id string) error {
 	switch {
 	case kind == nil:
 		return err
-	case errors.Is(kind, store.ErrNotFound):
-		return fmt.Errorf("%w: %s: referenced ticket does not exist", store.ErrNotFound, id)
+	case errors.Is(kind, domain.ErrNotFound):
+		return fmt.Errorf("%w: %s: referenced ticket does not exist", domain.ErrNotFound, id)
 	default:
 		return fmt.Errorf("%w: %s: %w", kind, id, err)
 	}
@@ -413,7 +414,7 @@ func (s *Store) classify(err error, id string) error {
 
 // Apply checks Unclaimed, inserts tickets, re-parents, removes and adds
 // edges in one transaction.
-func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
+func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []domain.Ticket, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		for _, id := range slices.Sorted(maps.Keys(g.Revisions)) {
 			t, err := s.get(ctx, q, id)
@@ -421,7 +422,7 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 				return err
 			}
 			if t.Revision != g.Revisions[id] {
-				return fmt.Errorf("%w: %s changed", store.ErrConflict, id)
+				return fmt.Errorf("%w: %s changed", domain.ErrConflict, id)
 			}
 		}
 		for id, count := range g.Children {
@@ -430,7 +431,7 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 				return err
 			}
 			if n != count {
-				return fmt.Errorf("%w: %s children changed", store.ErrConflict, id)
+				return fmt.Errorf("%w: %s children changed", domain.ErrConflict, id)
 			}
 		}
 		for _, id := range g.Unclaimed {
@@ -438,11 +439,11 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 			if err != nil {
 				return err
 			}
-			if t.Status != store.StatusOpen || t.Holder != "" {
-				return fmt.Errorf("%w: %s is %s (holder %q)", store.ErrNotHolder, id, t.Status, t.Holder)
+			if t.Status != domain.StatusOpen || t.Holder != "" {
+				return fmt.Errorf("%w: %s is %s (holder %q)", domain.ErrNotHolder, id, t.Status, t.Holder)
 			}
 		}
-		out = make([]store.Ticket, 0, len(g.Tickets))
+		out = make([]domain.Ticket, 0, len(g.Tickets))
 		for _, nt := range g.Tickets {
 			t, err := s.insert(ctx, q, actor, nt)
 			if err != nil {
@@ -453,7 +454,7 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 		ids := slices.Sorted(maps.Keys(g.Reparent))
 		for _, id := range ids {
 			parent := g.Reparent[id]
-			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
+			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *domain.Ticket) (any, error) {
 				t.ParentID = parent
 				return map[string]any{"parent_id": parent}, nil
 			}); err != nil {
@@ -474,8 +475,8 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 			}
 		}
 		for _, id := range slices.Sorted(maps.Keys(g.Fields)) {
-			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
-				fields, err := store.NormalizeFields(t.Kind, g.Fields[id])
+			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *domain.Ticket) (any, error) {
+				fields, err := domain.NormalizeFields(t.Kind, g.Fields[id])
 				if err != nil {
 					return nil, err
 				}
@@ -486,7 +487,7 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 			}
 		}
 		for _, id := range slices.Sorted(maps.Keys(g.Close)) {
-			if _, err := s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
+			if _, err := s.mutate(ctx, q, id, actor, "close", func(t *domain.Ticket) (any, error) {
 				d, _, err := storerules.Close(t, nil, g.Close[id], s.now())
 				return d, err
 			}); err != nil {
@@ -547,8 +548,8 @@ func nextSeq(ctx context.Context, q sqldb.Querier, prefix string) (int64, error)
 
 // idTag is the kind tag in a new id: sessions get one so their ids are
 // distinguishable from ticket ids (#615).
-func idTag(k store.Kind) string {
-	if k == store.KindSession {
+func idTag(k domain.Kind) string {
+	if k == domain.KindSession {
 		return ids.SessionTag
 	}
 	return ""
@@ -561,15 +562,15 @@ func limit(n int) int64 {
 	return int64(n)
 }
 
-func toTickets(rows []sqldb.Ticket) []store.Ticket {
-	out := make([]store.Ticket, len(rows))
+func toTickets(rows []sqldb.Ticket) []domain.Ticket {
+	out := make([]domain.Ticket, len(rows))
 	for i, r := range rows {
 		out[i] = toTicket(r)
 	}
 	return out
 }
 
-func (s *Store) claim(t *store.Ticket, holder string, lease time.Duration) (store.Claim, any) {
+func (s *Store) claim(t *domain.Ticket, holder string, lease time.Duration) (store.Claim, any) {
 	c, d, _ := storerules.Claim(t, holder, lease, s.now())
 	return c, d
 }
@@ -580,7 +581,7 @@ func checkLease(holder string, lease time.Duration) error {
 
 // claimWrite is the guarded write of a claim: it holds only if the
 // ticket is still unblocked when written (#406).
-func claimWrite(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error) {
+func claimWrite(ctx context.Context, q sqldb.Querier, t domain.Ticket, prev int64, now time.Time) (int64, error) {
 	return q.ClaimWriteTicket(ctx, sqldb.ClaimWriteTicketParams{
 		Status: string(t.Status), Holder: t.Holder, LeaseUntil: ns(t.LeaseUntil), Fence: t.Fence,
 		Revision: t.Revision, UpdatedAt: ns(now), ID: t.ID, ExpectedRevision: prev,
@@ -595,35 +596,35 @@ const claimNextTries = 64
 // in progress is returned again with the same fence and a renewed lease.
 // A candidate lost to a concurrent claimer (or blocked meanwhile) is
 // skipped for the next one, up to claimNextTries.
-func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
+func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t domain.Ticket, c store.Claim, err error) {
 	if err := checkLease(req.Holder, req.Lease); err != nil {
 		return t, c, err
 	}
 	for range claimNextTries {
 		t, c, err = s.claimNextOnce(ctx, req)
-		if !errors.Is(err, store.ErrConflict) {
+		if !errors.Is(err, domain.ErrConflict) {
 			return t, c, err
 		}
 	}
 	return t, c, err
 }
 
-func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
+func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t domain.Ticket, c store.Claim, err error) {
 	err = s.sqlTx(ctx, func(tx *sql.Tx) error {
 		q := s.wc.bind(tx)
 		id, err := s.claimCandidate(ctx, tx, req)
 		if errors.Is(err, sql.ErrNoRows) {
-			return store.ErrNoWork
+			return domain.ErrNoWork
 		}
 		if err != nil {
 			return err
 		}
 		fresh := false
-		t, err = s.mutateWith(ctx, q, id, req.Holder, "claim", func(t *store.Ticket) (any, error) {
+		t, err = s.mutateWith(ctx, q, id, req.Holder, "claim", func(t *domain.Ticket) (any, error) {
 			if err := storerules.StillCandidate(*t, req.Holder); err != nil {
 				return nil, err
 			}
-			fresh = t.Status == store.StatusOpen
+			fresh = t.Status == domain.StatusOpen
 			var d any
 			c, d = s.claim(t, req.Holder, req.Lease)
 			return d, nil
@@ -639,7 +640,7 @@ func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store
 
 // Claim claims one specific ticket. It must be open and either unassigned or
 // pre-assigned to holder, and unblocked.
-func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duration) (t store.Ticket, c store.Claim, err error) {
+func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duration) (t domain.Ticket, c store.Claim, err error) {
 	if err := checkLease(holder, lease); err != nil {
 		return t, c, err
 	}
@@ -657,11 +658,11 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 			return err
 		}
 		fresh := false
-		t, err = s.mutateWith(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
+		t, err = s.mutateWith(ctx, q, id, holder, "claim", func(t *domain.Ticket) (any, error) {
 			if err := storerules.CanClaim(*t, holder, blocked, full != 0 || empty != 0); err != nil {
 				return nil, err
 			}
-			fresh = t.Status == store.StatusOpen
+			fresh = t.Status == domain.StatusOpen
 			var d any
 			c, d = s.claim(t, holder, lease)
 			return d, nil
@@ -680,19 +681,19 @@ func (s *Store) blocked(ctx context.Context, q sqldb.Querier, id string) (bool, 
 		return false, err
 	}
 	for _, e := range edges {
-		if e.FromID != id || !store.EdgeKind(e.Kind).Blocking() {
+		if e.FromID != id || !domain.EdgeKind(e.Kind).Blocking() {
 			continue
 		}
 		b, err := q.GetTicket(ctx, e.ToID)
 		if err != nil {
 			return false, err
 		}
-		if b.Status != string(store.StatusClosed) {
+		if b.Status != string(domain.StatusClosed) {
 			return true, nil
 		}
 		// A step unblocks the next only when it closed done or skipped
 		// (matches notBlocked in list.go).
-		if b.Kind == string(store.KindStep) && b.Resolution != "done" && b.Resolution != store.StepSkipped {
+		if b.Kind == string(domain.KindStep) && b.Resolution != "done" && b.Resolution != domain.StepSkipped {
 			return true, nil
 		}
 	}
@@ -720,34 +721,34 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 		return c, err
 	}
 	if n == 0 {
-		return c, fmt.Errorf("%w: %s", store.ErrNotHolder, c.TicketID)
+		return c, fmt.Errorf("%w: %s", domain.ErrNotHolder, c.TicketID)
 	}
 	return c, nil
 }
 
-func reopen(t *store.Ticket) { storerules.Reopen(t) }
+func reopen(t *domain.Ticket) { storerules.Reopen(t) }
 
 // Release lets go of a ticket as o says (#579): close, hand off, or
 // return to open.
-func (s *Store) Release(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (store.Ticket, error) {
+func (s *Store) Release(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (domain.Ticket, error) {
 	if id == "" && c != nil {
 		id = c.TicketID
 	}
 	if c != nil && c.TicketID != "" && c.TicketID != id {
-		return store.Ticket{}, fmt.Errorf("%w: claim is for %s, not %s", store.ErrInvalid, c.TicketID, id)
+		return domain.Ticket{}, fmt.Errorf("%w: claim is for %s, not %s", domain.ErrInvalid, c.TicketID, id)
 	}
 	if actor == "" && c != nil {
 		actor = c.Holder
 	}
 	switch {
 	case o.Close != "" && o.Pool != "":
-		return store.Ticket{}, fmt.Errorf("%w: release: close and pool are exclusive", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: release: close and pool are exclusive", domain.ErrInvalid)
 	case o.Close != "":
 		return s.closeTicket(ctx, actor, id, c, o)
 	case o.Pool != "":
 		return s.handoff(ctx, actor, id, c, o.Pool, o.Note)
 	case c == nil:
-		return store.Ticket{}, fmt.Errorf("%w: release to open needs a claim", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: release to open needs a claim", domain.ErrInvalid)
 	}
 	return s.release(ctx, *c, o.Reason, o.Until)
 }
@@ -762,10 +763,10 @@ func (s *Store) Expire(ctx context.Context, actor, holder, reason string) ([]str
 }
 
 // release returns a held ticket to open and unassigned.
-func (s *Store) release(ctx context.Context, c store.Claim, reason string, until time.Time) (t store.Ticket, err error) {
+func (s *Store) release(ctx context.Context, c store.Claim, reason string, until time.Time) (t domain.Ticket, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
-		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
+		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *domain.Ticket) (any, error) {
 			d, n, err := storerules.Release(t, c, reason, until, s.now())
 			note = n
 			return d, err
@@ -781,12 +782,12 @@ func (s *Store) release(ctx context.Context, c store.Claim, reason string, until
 // handoff moves a ticket to pool, releases its holder, bumps the fence
 // and adds note as a comment by actor, all in one transaction (#492).
 // A non-nil claim must still hold the ticket. It is not a step failure.
-func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t store.Ticket, err error) {
+func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t domain.Ticket, err error) {
 	if pool == "" {
-		return store.Ticket{}, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: handoff needs a pool", domain.ErrInvalid)
 	}
 	err = s.tx(ctx, func(q sqldb.Querier) error {
-		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *store.Ticket) (any, error) {
+		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *domain.Ticket) (any, error) {
 			return storerules.Handoff(t, c, pool, note)
 		})
 		if err != nil || strings.TrimSpace(note) == "" {
@@ -810,10 +811,10 @@ func (s *Store) note(ctx context.Context, q sqldb.Querier, id, body string) erro
 // closeTicket closes a ticket with o.Close, fenced by c when non-nil. A
 // request_changes close of a step within its round cap reopens o.Reopen
 // in the same transaction (JOB-98).
-func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (t store.Ticket, err error) {
+func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (t domain.Ticket, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
-		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
+		t, err = s.mutate(ctx, q, id, actor, "close", func(t *domain.Ticket) (any, error) {
 			d, n, err := storerules.Close(t, c, o.Close, s.now(), o.StepResult)
 			note = n
 			return d, err
@@ -824,14 +825,14 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 		if err := s.note(ctx, q, t.ID, note); err != nil {
 			return err
 		}
-		if o.Close != store.ResolutionRequestChanges || t.Kind != store.KindStep || t.Status == store.StatusClosed {
+		if o.Close != domain.ResolutionRequestChanges || t.Kind != domain.KindStep || t.Status == domain.StatusClosed {
 			return nil
 		}
 		if o.Reopen == "" {
-			return fmt.Errorf("%w: request_changes on %s names no step to reopen", store.ErrInvalid, id)
+			return fmt.Errorf("%w: request_changes on %s names no step to reopen", domain.ErrInvalid, id)
 		}
 		var tnote string
-		target, err := s.mutate(ctx, q, o.Reopen, actor, "reopen", func(tt *store.Ticket) (any, error) {
+		target, err := s.mutate(ctx, q, o.Reopen, actor, "reopen", func(tt *domain.Ticket) (any, error) {
 			d, n, err := storerules.RequestChanges(tt, t, o.Note)
 			tnote = n
 			return d, err
@@ -845,8 +846,8 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 }
 
 // reopen returns a closed ticket to open, keeping its holder unset.
-func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, ifRev int64) (store.Ticket, error) {
-	return s.mutate(ctx, q, id, actor, "reopen", func(t *store.Ticket) (any, error) {
+func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, ifRev int64) (domain.Ticket, error) {
+	return s.mutate(ctx, q, id, actor, "reopen", func(t *domain.Ticket) (any, error) {
 		return nil, storerules.ReopenClosed(t, ifRev)
 	})
 }
@@ -862,13 +863,13 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqld
 		}
 		for _, id := range list {
 			var note string
-			_, err := s.mutateWith(ctx, q, id, actor, op, func(t *store.Ticket) (any, error) {
+			_, err := s.mutateWith(ctx, q, id, actor, op, func(t *domain.Ticket) (any, error) {
 				extra, _ := diff.(map[string]any)
 				d, n, err := storerules.Expire(t, op, extra, s.now())
 				note = n
 				return d, err
 			}, w)
-			if errors.Is(err, store.ErrConflict) {
+			if errors.Is(err, domain.ErrConflict) {
 				// Changed since the list was read (renewed, released or
 				// closed by its holder): not this sweep's to reopen.
 				continue
@@ -889,7 +890,7 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqld
 // releaseHolder reopens everything a dead holder held or was assigned.
 func (s *Store) releaseHolder(ctx context.Context, actor, holder, reason string) ([]string, error) {
 	if holder == "" {
-		return nil, fmt.Errorf("%w: holder is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: holder is required", domain.ErrInvalid)
 	}
 	return s.reopenAll(ctx, actor, "release",
 		func(q sqldb.Querier) ([]string, error) { return q.HeldBy(ctx, holder) },
@@ -902,7 +903,7 @@ func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error)
 	now := s.now()
 	return s.reopenAll(ctx, actor, "lease_expired",
 		func(q sqldb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ns(now)) }, nil,
-		func(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, at time.Time) (int64, error) {
+		func(ctx context.Context, q sqldb.Querier, t domain.Ticket, prev int64, at time.Time) (int64, error) {
 			return q.ExpireWriteTicket(ctx, sqldb.ExpireWriteTicketParams{
 				Status: string(t.Status), Resolution: t.Resolution, Holder: t.Holder,
 				LeaseUntil: ns(t.LeaseUntil), Fields: string(t.Fields), Revision: t.Revision,
@@ -914,9 +915,9 @@ func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error)
 // Update applies u in one transaction: reopen, fields, labels, comment.
 // Holder changes (pre-assignment) are allowed only while the ticket is
 // open.
-func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t store.Ticket, err error) {
+func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t domain.Ticket, err error) {
 	if u.Comment != "" && strings.TrimSpace(u.Comment) == "" {
-		return store.Ticket{}, fmt.Errorf("%w: empty comment", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: empty comment", domain.ErrInvalid)
 	}
 	extras := u.Reopen || len(u.AddLabels) > 0 || len(u.RemoveLabels) > 0 || u.Comment != ""
 	// An update with nothing but labels or a comment leaves the revision
@@ -987,18 +988,18 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 	return t, err
 }
 
-func (s *Store) updateFields(ctx context.Context, q sqldb.Querier, actor, id string, u store.Update) (store.Ticket, error) {
-	return s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
+func (s *Store) updateFields(ctx context.Context, q sqldb.Querier, actor, id string, u store.Update) (domain.Ticket, error) {
+	return s.mutate(ctx, q, id, actor, "update", func(t *domain.Ticket) (any, error) {
 		return storerules.ApplyUpdate(t, u)
 	})
 }
 
-func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e store.Edge) error {
+func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e domain.Edge) error {
 	if !e.Kind.Valid() {
-		return fmt.Errorf("%w: edge kind %q", store.ErrInvalid, e.Kind)
+		return fmt.Errorf("%w: edge kind %q", domain.ErrInvalid, e.Kind)
 	}
 	if e.From == e.To {
-		return fmt.Errorf("%w: self edge on %s", store.ErrInvalid, e.From)
+		return fmt.Errorf("%w: self edge on %s", domain.ErrInvalid, e.From)
 	}
 	if e.Kind.Blocking() {
 		cycle, err := q.BlockingPathExists(ctx, sqldb.BlockingPathExistsParams{Start: e.To, Target: e.From})
@@ -1006,7 +1007,7 @@ func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e st
 			return err
 		}
 		if cycle {
-			return fmt.Errorf("%w: %s -> %s", store.ErrCycle, e.From, e.To)
+			return fmt.Errorf("%w: %s -> %s", domain.ErrCycle, e.From, e.To)
 		}
 	}
 	now := s.now()
@@ -1022,13 +1023,13 @@ func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e st
 	return history(ctx, q, t, now, actor, "edge_add", map[string]any{"to": e.To, "kind": e.Kind})
 }
 
-func (s *Store) removeEdge(ctx context.Context, q sqldb.Querier, actor string, e store.Edge) error {
+func (s *Store) removeEdge(ctx context.Context, q sqldb.Querier, actor string, e domain.Edge) error {
 	n, err := q.DeleteEdge(ctx, sqldb.DeleteEdgeParams{FromID: e.From, ToID: e.To, Kind: string(e.Kind)})
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("%w: edge %s -> %s (%s)", store.ErrNotFound, e.From, e.To, e.Kind)
+		return fmt.Errorf("%w: edge %s -> %s (%s)", domain.ErrNotFound, e.From, e.To, e.Kind)
 	}
 	t, err := s.get(ctx, q, e.From)
 	if err != nil {
@@ -1040,7 +1041,7 @@ func (s *Store) removeEdge(ctx context.Context, q sqldb.Querier, actor string, e
 func (s *Store) addLabel(ctx context.Context, q sqldb.Querier, id, label string) error {
 	label = strings.TrimSpace(label)
 	if label == "" {
-		return fmt.Errorf("%w: empty label", store.ErrInvalid)
+		return fmt.Errorf("%w: empty label", domain.ErrInvalid)
 	}
 	_, err := q.InsertLabel(ctx, sqldb.InsertLabelParams{TicketID: id, Label: label})
 	return s.classify(err, id)
@@ -1061,7 +1062,7 @@ func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) erro
 // does for its Comment.
 func (s *Store) graphComment(ctx context.Context, q sqldb.Querier, actor string, c store.GraphComment) error {
 	if strings.TrimSpace(c.Body) == "" {
-		return fmt.Errorf("%w: empty comment", store.ErrInvalid)
+		return fmt.Errorf("%w: empty comment", domain.ErrInvalid)
 	}
 	t, err := s.get(ctx, q, c.TicketID)
 	if err != nil {

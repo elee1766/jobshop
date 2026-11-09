@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -31,22 +32,22 @@ pools:
 
 // createSlotSession does what newSession does for the slot (pick under
 // slotMu, store it on the row) without starting a runner.
-func createSlotSession(t *testing.T, c *Controller, pool string) (store.Ticket, error) {
+func createSlotSession(t *testing.T, c *Controller, pool string) (domain.Ticket, error) {
 	t.Helper()
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
 	slot, err := c.sessionSlot(t.Context(), c.config(), pool)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: "fake", Slot: slot})
+	fields, err := json.Marshal(domain.SessionFields{Agent: "fake", Slot: slot})
 	require.NoError(t, err)
-	return store.Create(t.Context(), c.store, "test", store.NewTicket{Project: "js", Kind: store.KindSession, Title: "s", Pool: pool, Fields: fields})
+	return store.Create(t.Context(), c.store, "test", store.NewTicket{Project: "js", Kind: domain.KindSession, Title: "s", Pool: pool, Fields: fields})
 }
 
-func slotOf(t *testing.T, tk store.Ticket) int {
+func slotOf(t *testing.T, tk domain.Ticket) int {
 	t.Helper()
-	f, err := store.DecodeFields[store.SessionFields](tk)
+	f, err := domain.DecodeFields[domain.SessionFields](tk)
 	require.NoError(t, err)
 	require.NotNil(t, f.Slot)
 	return *f.Slot

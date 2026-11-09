@@ -7,6 +7,7 @@ import (
 
 	"github.com/nullism/bqb"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -17,11 +18,11 @@ func (s *Store) Thread(ctx context.Context, id string, p store.Parts) (store.Thr
 	var th store.Thread
 	var err error
 	if p.Edges {
-		th.Edges = []store.Edge{}
+		th.Edges = []domain.Edge{}
 		err = s.each(ctx, bqb.New("SELECT from_id, to_id, kind, created_at FROM edges "+
 			"WHERE from_id = ? OR to_id = ? ORDER BY created_at, from_id, to_id, kind", id, id),
 			func(r *sql.Rows) error {
-				var e store.Edge
+				var e domain.Edge
 				var at int64
 				if err := r.Scan(&e.From, &e.To, &e.Kind, &at); err != nil {
 					return err
@@ -35,11 +36,11 @@ func (s *Store) Thread(ctx context.Context, id string, p store.Parts) (store.Thr
 		}
 	}
 	if p.Comments {
-		th.Comments = []store.Comment{}
+		th.Comments = []domain.Comment{}
 		err = s.each(ctx, bqb.New("SELECT id, ticket_id, author, body, created_at FROM comments "+
 			"WHERE ticket_id = ? AND deleted = 0 ORDER BY id", id),
 			func(r *sql.Rows) error {
-				var c store.Comment
+				var c domain.Comment
 				var at int64
 				if err := r.Scan(&c.ID, &c.TicketID, &c.Author, &c.Body, &at); err != nil {
 					return err

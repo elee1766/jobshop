@@ -14,6 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -78,7 +79,7 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 		if err := g.call(rpc.MethodGuard, rpc.GuardParams{Action: action, Target: team, Detail: detail}, &r); err != nil {
 			return fmt.Errorf("linear api: guard %s: %w (not sent)", action, err)
 		}
-		if r.Decision != rpc.GuardAllow {
+		if r.Decision != domain.GuardAllow {
 			record(r.Decision, 1)
 			msg := fmt.Sprintf("linear api: guard %s %s: %s: %s (not sent)", action, team, r.Decision, r.Reason)
 			if r.Ticket != "" {
@@ -105,18 +106,18 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 		}
 	}
 	if err != nil {
-		record(rpc.GuardAllow, 1)
+		record(domain.GuardAllow, 1)
 		return err
 	}
 	var r struct {
 		Errors json.RawMessage `json:"errors"`
 	}
 	if json.Unmarshal(out, &r) == nil && len(r.Errors) > 0 && string(r.Errors) != "null" && string(r.Errors) != "[]" {
-		record(rpc.GuardAllow, 1)
+		record(domain.GuardAllow, 1)
 		warn(stderr, string(r.Errors))
 		return errGraphQL
 	}
-	record(rpc.GuardAllow, 0)
+	record(domain.GuardAllow, 0)
 	return nil
 }
 

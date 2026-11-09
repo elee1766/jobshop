@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // events collects a subscription's events.
@@ -58,7 +58,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 
 	// Ticket pools do not start sessions by key.
 	err = admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{Pool: "dev", Key: "k", Text: "hi"}, nil)
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 
 	var sent rpc.SessionSendResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{Pool: "chat", Key: "matrix:r:1", Text: "hello"}, &sent))
@@ -91,7 +91,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	}
 	assert.Equal(t, 1, prompted, "pool prompt on the first chat turn")
 	assert.Equal(t, rpc.EventState, got[0].Type)
-	assert.Equal(t, store.StatusOpen, got[0].Status)
+	assert.Equal(t, domain.StatusOpen, got[0].Status)
 	assert.EqualValues(t, 1, got[0].First, "full replay starts at the journal beginning")
 	var tool *rpc.ToolSummary
 	for _, e := range got {
@@ -189,7 +189,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 		return admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: sent.Session}, &stopped) == nil && stopped.Cancelled
 	}, "session cancelled")
 	passEventually(t, root.Dir, func() bool { return cancels() == before+1 }, "cancel turn ended")
-	require.ErrorIs(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: "js-nope"}, nil), store.ErrInvalid)
+	require.ErrorIs(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: "js-nope"}, nil), domain.ErrInvalid)
 
 	// Closing the session ends the stream with a state event.
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sent.Session}, nil))
@@ -207,7 +207,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	assert.Equal(t, "done", r.Resolution)
 	last := ev2.get()[len(ev2.get())-1]
 	assert.Equal(t, rpc.EventState, last.Type)
-	assert.Equal(t, store.StatusClosed, last.Status)
+	assert.Equal(t, domain.StatusClosed, last.Status)
 }
 
 // TestChatPoolKeys: two keys get two sessions, a key keeps its session
@@ -245,10 +245,10 @@ func TestChatPoolKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	// A manual session in no pool refuses rw attach.
-	var manual store.Ticket
+	var manual domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Project: "js", Agent: "fake"}, &manual))
 	_, err = send(rpc.SessionSendParams{ID: manual.ID, Attach: true})
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 
 	// The same key after a controller restart reaches the same session.
 	stop()
@@ -266,7 +266,7 @@ func TestChatPoolKeys(t *testing.T) {
 	var s rpc.ShowResult
 	passEventually(t, root.Dir, func() bool {
 		advance(t, root.Dir, 4*time.Second)
-		return admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &s) == nil && s.Ticket.Status == store.StatusClosed
+		return admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &s) == nil && s.Ticket.Status == domain.StatusClosed
 	}, "idle chat session closed")
 	assert.Equal(t, "idle", s.Ticket.Resolution)
 }
@@ -290,9 +290,9 @@ func TestHumanSlot(t *testing.T) {
 	}
 	require.NoError(t, send("a"))
 	require.NoError(t, send("b"), "the reserved human slot")
-	assert.ErrorIs(t, send("c"), store.ErrConflict)
+	assert.ErrorIs(t, send("c"), domain.ErrConflict)
 	require.NoError(t, send("a"), "an open key still reaches its session")
 	var res rpc.SessionNewResult
 	err = admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Project: "js", Pool: "chat"}, &res)
-	assert.ErrorIs(t, err, store.ErrConflict)
+	assert.ErrorIs(t, err, domain.ErrConflict)
 }

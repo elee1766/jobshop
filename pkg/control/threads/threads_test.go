@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func lc(id, handle string) Comment {
@@ -56,10 +56,10 @@ func TestText(t *testing.T) {
 func TestOwner(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
-	closedOld := &Follower{T: store.Ticket{ID: "a", Status: store.StatusClosed, ClosedAt: now.Add(-2 * time.Hour)}}
-	closedNew := &Follower{T: store.Ticket{ID: "b", Status: store.StatusClosed, ClosedAt: now.Add(-time.Hour)}}
-	open := &Follower{T: store.Ticket{ID: "c", Status: store.StatusOpen}}
-	work := &Follower{T: store.Ticket{ID: "d", Status: store.StatusInProgress}}
+	closedOld := &Follower{T: domain.Ticket{ID: "a", Status: domain.StatusClosed, ClosedAt: now.Add(-2 * time.Hour)}}
+	closedNew := &Follower{T: domain.Ticket{ID: "b", Status: domain.StatusClosed, ClosedAt: now.Add(-time.Hour)}}
+	open := &Follower{T: domain.Ticket{ID: "c", Status: domain.StatusOpen}}
+	work := &Follower{T: domain.Ticket{ID: "d", Status: domain.StatusInProgress}}
 	assert.Equal(t, "b", Owner([]*Follower{closedOld, closedNew}).T.ID)
 	assert.Equal(t, "c", Owner([]*Follower{closedNew, open}).T.ID)
 	assert.Equal(t, "d", Owner([]*Follower{open, closedNew, work}).T.ID)

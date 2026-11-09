@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -13,11 +14,11 @@ import (
 // so a run never routes down after a failure. A held step is left alone
 // (its holder may still be working); the next event after it reopens
 // moves it.
-func (c *Controller) escalatePool(ctx context.Context, cfg *config.Config, step *store.Ticket, why string) {
-	if step.Kind != store.KindStep || step.Status == store.StatusInProgress {
+func (c *Controller) escalatePool(ctx context.Context, cfg *config.Config, step *domain.Ticket, why string) {
+	if step.Kind != domain.KindStep || step.Status == domain.StatusInProgress {
 		return
 	}
-	sf, err := store.DecodeFields[store.StepFields](*step)
+	sf, err := domain.DecodeFields[domain.StepFields](*step)
 	if err != nil || sf.RetryPool == "" || step.Pool == sf.RetryPool {
 		return
 	}
@@ -49,10 +50,10 @@ func (c *Controller) escalateFailedSteps(ctx context.Context, cfg *config.Config
 	}
 	for i := range steps {
 		s := &steps[i]
-		if s.Kind != store.KindStep || s.Status != store.StatusOpen {
+		if s.Kind != domain.KindStep || s.Status != domain.StatusOpen {
 			continue
 		}
-		sf, err := store.DecodeFields[store.StepFields](*s)
+		sf, err := domain.DecodeFields[domain.StepFields](*s)
 		if err != nil || sf.Failures == 0 || sf.RetryPool == "" || s.Pool == sf.RetryPool {
 			continue
 		}

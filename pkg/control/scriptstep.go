@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/elee1766/jobshop/pkg/control/stepexec"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -16,12 +17,12 @@ import (
 // scriptInputs loads the run and step envelopes and the program the run
 // pinned. A run whose callback code changed since it started fails the
 // attempt rather than running new code against old state.
-func (c *Controller) scriptInputs(ctx context.Context, t store.Ticket, sf store.StepFields) (stepexec.ScriptInputs, error) {
+func (c *Controller) scriptInputs(ctx context.Context, t domain.Ticket, sf domain.StepFields) (stepexec.ScriptInputs, error) {
 	runTicket, err := c.store.Get(ctx, sf.Run)
 	if err != nil {
 		return stepexec.ScriptInputs{}, err
 	}
-	rf, err := store.DecodeFields[store.RunFields](runTicket)
+	rf, err := domain.DecodeFields[domain.RunFields](runTicket)
 	if err != nil {
 		return stepexec.ScriptInputs{}, err
 	}
@@ -43,7 +44,7 @@ func (c *Controller) scriptInputs(ctx context.Context, t store.Ticket, sf store.
 	run := &hooks.Run{ID: runTicket.ID, Workflow: rf.Workflow, Key: rf.Key, Project: runTicket.Project, Inputs: rf.Inputs, Vars: rf.Vars, State: rf.State, Steps: []hooks.Step{}}
 	var step hooks.Step
 	for _, child := range children {
-		if child.Kind != store.KindStep {
+		if child.Kind != domain.KindStep {
 			continue
 		}
 		in, err := hooks.StepInput(child)

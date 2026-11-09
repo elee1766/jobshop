@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -49,7 +50,7 @@ type Host interface {
 	Now() time.Time
 	After(d time.Duration) <-chan time.Time
 	// List lists tickets (sessions, open and closed).
-	List(ctx context.Context, f store.Filter) ([]store.Ticket, error)
+	List(ctx context.Context, f store.Filter) ([]domain.Ticket, error)
 	// SessionDir is where a session's journal.ndjson lives.
 	SessionDir(id string) string
 	// Redactor redacts a session's rows with its env's secret values.
@@ -87,7 +88,7 @@ func New(h Host, log *slog.Logger, m *telemetry.Metrics) *Shipper {
 }
 
 type session struct {
-	t       store.Ticket
+	t       domain.Ticket
 	mapper  *journal.Mapper
 	off     int64 // journal bytes read
 	shipped int64 // last seq VictoriaLogs accepted
@@ -174,7 +175,7 @@ func (sh *Shipper) dropDone() {
 // flushes VictoriaLogs so the rows are searchable when it returns.
 func (sh *Shipper) Backfill(ctx context.Context, cl *journal.Client, since time.Duration) (rpc.JournalBackfillResult, error) {
 	res := rpc.JournalBackfillResult{}
-	closed, err := sh.host.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 1 << 20})
+	closed, err := sh.host.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed, Order: store.OrderNewest, Limit: 1 << 20})
 	if err != nil {
 		return res, err
 	}
@@ -227,7 +228,7 @@ func (sh *Shipper) Backfill(ctx context.Context, cl *journal.Client, since time.
 // trackSessions adds open sessions, and at the first pass sessions closed
 // in the last day, and marks closed ones.
 func (sh *Shipper) trackSessions(ctx context.Context, first bool) error {
-	open, err := sh.host.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Limit: 1 << 20})
+	open, err := sh.host.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Limit: 1 << 20})
 	if err != nil {
 		return err
 	}
@@ -244,7 +245,7 @@ func (sh *Shipper) trackSessions(ctx context.Context, first bool) error {
 		}
 	}
 	if first {
-		closed, err := sh.host.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 1000})
+		closed, err := sh.host.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed, Order: store.OrderNewest, Limit: 1000})
 		if err != nil {
 			return err
 		}
@@ -260,14 +261,14 @@ func (sh *Shipper) trackSessions(ctx context.Context, first bool) error {
 // trackSession starts shipping t from its cursor. The journal is read
 // from the start anyway: the mapper needs the earlier prompts to tag
 // later frames with their ticket.
-func (sh *Shipper) trackSession(t store.Ticket) {
+func (sh *Shipper) trackSession(t domain.Ticket) {
 	if _, ok := sh.sessions[t.ID]; ok {
 		return
 	}
-	f, _ := store.DecodeFields[store.SessionFields](t)
+	f, _ := domain.DecodeFields[domain.SessionFields](t)
 	sh.sessions[t.ID] = &session{
 		t: t, shipped: f.ShippedSeq, queued: f.ShippedSeq, saved: f.ShippedSeq, savedAt: sh.host.Now(),
-		closed: t.Status == store.StatusClosed,
+		closed: t.Status == domain.StatusClosed,
 		mapper: &journal.Mapper{
 			Src:    journal.Source{Project: t.Project, Pool: t.Pool, Session: t.ID},
 			Redact: sh.host.Redactor(t.ID),

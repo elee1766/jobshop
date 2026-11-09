@@ -39,6 +39,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
@@ -382,7 +383,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	// (JOB-105).
 	st = store.Traced(st)
 	// Resource caps gate claims (#400); reload re-syncs them.
-	if err := st.SetResources(ctx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()}); err != nil {
+	if err := st.SetResources(ctx, domain.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()}); err != nil {
 		return err
 	}
 
@@ -517,7 +518,7 @@ func (c *Controller) serve() error {
 		return err
 	}
 
-	open, err := c.store.List(c.ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(c.ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		// Canceled during startup is a clean stop, not a failure (#61).
 		// Checked before stop, which cancels c.ctx itself.
@@ -530,7 +531,7 @@ func (c *Controller) serve() error {
 	}
 	startCfg := c.config()
 	for _, t := range open {
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.ReadOnly {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.ReadOnly {
 			c.setReadOnly(t.ID, true)
 		}
 		if err := c.openSession(t); err != nil {
@@ -769,7 +770,7 @@ func (c *Controller) socketPath(session string) string {
 // window reaches here twice; binding under c.mu and skipping an open
 // session keeps the second call from removing or rebinding the live
 // socket (#479).
-func (c *Controller) openSession(t store.Ticket) error {
+func (c *Controller) openSession(t domain.Ticket) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.sessions[t.ID]; ok {
@@ -849,7 +850,7 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 		defer c.metrics.Since(ctx, time.Now(), name)
 		res, err := h.call(c, ctx, sc, params)
 		if err != nil {
-			if !errors.Is(err, store.ErrNoWork) {
+			if !errors.Is(err, domain.ErrNoWork) {
 				span.SetStatus(codes.Error, err.Error())
 				c.log.DebugContext(ctx, "rpc error", "method", name, "actor", sc.actor, "err", err)
 			}

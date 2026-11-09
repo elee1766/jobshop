@@ -17,8 +17,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // fakeGitHub answers the reads the github pack's triggers make. Times
@@ -134,7 +134,7 @@ func runKeys(t *testing.T, c *controltest.Controller, workflow string) []string 
 	t.Helper()
 	keys := make([]string, 0)
 	for _, r := range workflowRuns(t, c, workflow) {
-		f, err := store.DecodeFields[store.RunFields](r)
+		f, err := domain.DecodeFields[domain.RunFields](r)
 		require.NoError(t, err)
 		keys = append(keys, f.Key)
 	}
@@ -150,12 +150,12 @@ func runTitle(t *testing.T, c *controltest.Controller, workflow string) string {
 	return runs[0].Title
 }
 
-func workflowRuns(t *testing.T, c *controltest.Controller, workflow string) []store.Ticket {
+func workflowRuns(t *testing.T, c *controltest.Controller, workflow string) []domain.Ticket {
 	t.Helper()
-	var runs, out []store.Ticket
+	var runs, out []domain.Ticket
 	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 	for _, r := range runs {
-		f, err := store.DecodeFields[store.RunFields](r)
+		f, err := domain.DecodeFields[domain.RunFields](r)
 		require.NoError(t, err)
 		if f.Workflow == workflow {
 			out = append(out, r)
@@ -186,7 +186,7 @@ func TestPacks(t *testing.T) {
 	assert.Equal(t, []string{"scan:issue_no_run:7"}, runKeys(t, c, "github-triage"), "new, planning, outside and PR items are skipped")
 	assert.Equal(t, "Add a thing", runTitle(t, c, "github-triage"), "an issue's triage run is titled with the issue")
 
-	var planned []store.Ticket
+	var planned []domain.Ticket
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: "task", Pool: "github-plan", Meta: map[string]string{"trigger.name": "github-replan"}}, &planned)
 		return len(planned) > 0
@@ -207,11 +207,11 @@ func TestPacks(t *testing.T) {
 		c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "push", Target: target}, &r)
 		return r
 	}
-	assert.Equal(t, rpc.GuardDeny, guard("").Decision, "no target")
+	assert.Equal(t, domain.GuardDeny, guard("").Decision, "no target")
 	for _, ref := range []string{"master", "origin/main", "HEAD:master", "refs/heads/main"} {
 		r := guard(ref)
-		assert.Equal(t, rpc.GuardDeny, r.Decision, ref)
+		assert.Equal(t, domain.GuardDeny, r.Decision, ref)
 		assert.Contains(t, r.Reason, "never push to", ref)
 	}
-	assert.Equal(t, rpc.GuardAllow, guard("fix-301").Decision)
+	assert.Equal(t, domain.GuardAllow, guard("fix-301").Decision)
 }

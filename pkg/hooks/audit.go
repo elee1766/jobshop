@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -95,7 +95,7 @@ func (c *Engine) recoverHookClaims(ctx context.Context, col store.Collection) er
 				rec.Holder = ""
 			}
 			rec.LeaseUntil = time.Time{}
-			if _, err := col.Update(ctx, rec); err != nil && !errors.Is(err, store.ErrConflict) {
+			if _, err := col.Update(ctx, rec); err != nil && !errors.Is(err, domain.ErrConflict) {
 				return err
 			}
 			changed = true
@@ -106,8 +106,27 @@ func (c *Engine) recoverHookClaims(ctx context.Context, col store.Collection) er
 	}
 }
 
+// ListFilter selects durable hook invocations for the operator. Empty fields
+// match everything.
+type ListFilter struct {
+	Run     string
+	Trigger string
+	State   string
+	Limit   int
+}
+
+// Audit is one invocation with its attempts and capability calls in
+// execution order. Truncated is set when more attempts or calls exist than
+// are returned.
+type Audit struct {
+	Invocation store.Record
+	Attempts   []store.Record
+	Calls      []store.Record
+	Truncated  bool
+}
+
 // List returns bounded public invocation summaries without private journal inputs.
-func (c *Engine) List(ctx context.Context, p rpc.AutomationListParams) (any, error) {
+func (c *Engine) List(ctx context.Context, p ListFilter) ([]store.Record, error) {
 	col, err := c.store.Collection(ctx, hookInvocations)
 	if err != nil {
 		return nil, err
@@ -140,32 +159,32 @@ func (c *Engine) List(ctx context.Context, p rpc.AutomationListParams) (any, err
 }
 
 // Show returns public invocation, attempt, and capability evidence in execution order.
-func (c *Engine) Show(ctx context.Context, p rpc.IDParams) (any, error) {
+func (c *Engine) Show(ctx context.Context, id string) (Audit, error) {
 	col, err := c.store.Collection(ctx, hookInvocations)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
-	invocation, err := col.Get(ctx, p.ID)
+	invocation, err := col.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
 	attempts, err := c.store.Collection(ctx, hookAttempts)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
 	calls, err := c.store.Collection(ctx, hookCalls)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
-	filter := store.RecordFilter{Where: map[string]string{"invocation": p.ID}, Order: store.OrderCreatedDesc, Limit: hookAuditAttempts + 1}
+	filter := store.RecordFilter{Where: map[string]string{"invocation": id}, Order: store.OrderCreatedDesc, Limit: hookAuditAttempts + 1}
 	history, err := attempts.List(ctx, filter)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
 	filter.Limit = hookAuditCalls + 1
 	trace, err := calls.List(ctx, filter)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
 	truncated := len(history) > hookAuditAttempts || len(trace) > hookAuditCalls
 	history = history[:min(len(history), hookAuditAttempts)]
@@ -184,19 +203,19 @@ func (c *Engine) Show(ctx context.Context, p rpc.IDParams) (any, error) {
 	})
 	invocation, err = c.publicHookInvocation(invocation, false)
 	if err != nil {
-		return nil, err
+		return Audit{}, err
 	}
 	for i := range history {
 		history[i], err = c.publicHookAttempt(history[i])
 		if err != nil {
-			return nil, err
+			return Audit{}, err
 		}
 	}
 	for i := range trace {
 		trace[i], err = c.publicHookCall(trace[i])
 		if err != nil {
-			return nil, err
+			return Audit{}, err
 		}
 	}
-	return rpc.AutomationResult{Invocation: invocation, Attempts: history, Calls: trace, Truncated: truncated}, nil
+	return Audit{Invocation: invocation, Attempts: history, Calls: trace, Truncated: truncated}, nil
 }

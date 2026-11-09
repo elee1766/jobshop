@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -27,7 +28,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 		return nil, err
 	}
 	if p.Key == "" {
-		return nil, fmt.Errorf("%w: upsert needs a key", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: upsert needs a key", domain.ErrInvalid)
 	}
 	proj, err := c.project(sc, p.Project)
 	if err != nil {
@@ -41,8 +42,8 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 	if err != nil {
 		return nil, err
 	}
-	var cur *store.Ticket
-	if len(found) > 0 && found[0].Status != store.StatusClosed {
+	var cur *domain.Ticket
+	if len(found) > 0 && found[0].Status != domain.StatusClosed {
 		cur = &found[0]
 	}
 	if p.Close {
@@ -58,11 +59,11 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 		if err != nil {
 			return nil, err
 		}
-		t := res.(store.Ticket)
+		t := res.(domain.Ticket)
 		return rpc.UpsertResult{Op: "closed", Ticket: &t}, nil
 	}
 	if p.Title == "" {
-		return nil, fmt.Errorf("%w: upsert needs a title", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: upsert needs a title", domain.ErrInvalid)
 	}
 	if cur == nil {
 		meta, err := json.Marshal(map[string]map[string]string{upsertMetaPack: {"key": p.Key}})
@@ -70,7 +71,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 			return nil, err
 		}
 		t, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
-			Project: proj, Kind: store.KindTask, Title: p.Title, Body: p.Body,
+			Project: proj, Kind: domain.KindTask, Title: p.Title, Body: p.Body,
 			Pool: p.Pool, Labels: p.Labels, Meta: meta,
 		})
 		if err != nil {

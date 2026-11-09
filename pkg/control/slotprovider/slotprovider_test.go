@@ -18,7 +18,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // fakeHost serves a fixed resource report and runs background calls on a
@@ -27,7 +27,7 @@ type fakeHost struct {
 	t   *testing.T
 	dir string
 	now time.Time
-	rep store.ResourceReport
+	rep domain.ResourceReport
 	wg  sync.WaitGroup
 }
 
@@ -36,11 +36,11 @@ func (h *fakeHost) Go(f func())              { h.wg.Go(f) }
 func (h *fakeHost) Context() context.Context { return h.t.Context() }
 func (h *fakeHost) Dir() string              { return h.dir }
 func (h *fakeHost) Env() []string            { return os.Environ() }
-func (h *fakeHost) Resources(_ context.Context, pool string) (store.ResourceReport, error) {
+func (h *fakeHost) Resources(_ context.Context, pool string) (domain.ResourceReport, error) {
 	if pool == "" {
 		return h.rep, nil
 	}
-	return store.ResourceReport{Demand: h.rep.Demand}, nil
+	return domain.ResourceReport{Demand: h.rep.Demand}, nil
 }
 
 func newClient(t *testing.T) (*slotprovider.Client, *fakeHost) {
@@ -99,7 +99,7 @@ func TestCallHTTP(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	p := &config.Provider{URL: srv.URL}
-	require.NoError(t, c.Call(t.Context(), p, slotprovider.Call{Op: "demand", Resource: "emu", Demand: &store.SlotDemand{Waiting: 2}}))
+	require.NoError(t, c.Call(t.Context(), p, slotprovider.Call{Op: "demand", Resource: "emu", Demand: &domain.SlotDemand{Waiting: 2}}))
 	assert.Equal(t, "demand", got.Op)
 	assert.Equal(t, 2, got.Demand.Waiting)
 
@@ -119,7 +119,7 @@ func TestPassDemandAndIdle(t *testing.T) {
 		DemandEvery: "1h", IdleRelease: "10m",
 	}
 	cfg := cfgOf(p)
-	h.rep = store.ResourceReport{Slots: []store.Slot{{Pool: "emu", ID: "e1", State: store.SlotReady, UpdatedAt: h.now}}}
+	h.rep = domain.ResourceReport{Slots: []domain.Slot{{Pool: "emu", ID: "e1", State: domain.SlotReady, UpdatedAt: h.now}}}
 
 	c.Pass(t.Context(), cfg)
 	h.wg.Wait()
@@ -135,7 +135,7 @@ func TestPassDemandAndIdle(t *testing.T) {
 	h.wg.Wait()
 	assert.Len(t, calls(t, h.dir), 2, "remove not asked again within idle_release")
 
-	h.rep.Demand = store.SlotDemand{Waiting: 1}
+	h.rep.Demand = domain.SlotDemand{Waiting: 1}
 	h.now = h.now.Add(20 * time.Minute)
 	c.Pass(t.Context(), cfg)
 	h.wg.Wait()
@@ -146,14 +146,14 @@ func TestPassDemandAndIdle(t *testing.T) {
 // the prompt quotes values for a shell.
 func TestEnvAndPrompt(t *testing.T) {
 	t.Parallel()
-	tk := store.Ticket{ID: "t1", Status: store.StatusInProgress, Fence: 2}
-	rep := store.ResourceReport{Slots: []store.Slot{
-		{Pool: "emu", ID: "e1", State: store.SlotHeld, Ticket: "t1", Fence: 2, Env: map[string]string{"B": "it's", "A": "1"}},
-		{Pool: "emu", ID: "e2", State: store.SlotReady},
+	tk := domain.Ticket{ID: "t1", Status: domain.StatusInProgress, Fence: 2}
+	rep := domain.ResourceReport{Slots: []domain.Slot{
+		{Pool: "emu", ID: "e1", State: domain.SlotHeld, Ticket: "t1", Fence: 2, Env: map[string]string{"B": "it's", "A": "1"}},
+		{Pool: "emu", ID: "e2", State: domain.SlotReady},
 	}}
 	env := slotprovider.Env(rep, tk)
 	assert.Equal(t, []string{"JOBSHOP_SLOT_EMU=e1", "A=1", "B=it's"}, env)
 	assert.Contains(t, slotprovider.Prompt(env), `export B='it'\''s'`)
 	assert.Empty(t, slotprovider.Prompt(nil))
-	assert.Empty(t, slotprovider.Env(store.ResourceReport{}, tk))
+	assert.Empty(t, slotprovider.Env(domain.ResourceReport{}, tk))
 }

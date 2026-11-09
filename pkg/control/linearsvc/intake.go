@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -248,8 +249,8 @@ func intakeMatch(is linear.Summary, states, labels, skip []string) bool {
 // issuesWithOpenRun is meta.linear.issue of every open run.
 func (s *Service) issuesWithOpenRun(ctx context.Context) (map[string]bool, error) {
 	out := map[string]bool{}
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-		runs, err := s.host.List(ctx, store.Filter{Kind: store.KindRun, Status: st})
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
+		runs, err := s.host.List(ctx, store.Filter{Kind: domain.KindRun, Status: st})
 		if err != nil {
 			return nil, err
 		}

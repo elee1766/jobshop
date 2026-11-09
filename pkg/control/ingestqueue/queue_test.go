@@ -11,21 +11,21 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type fakeHost struct {
 	clk   *clock.Fake
-	woken [][]store.InboxItem
+	woken [][]domain.InboxItem
 }
 
-func (h *fakeHost) Clock() clock.Clock              { return h.clk }
-func (h *fakeHost) Store() ingest.InboxStore        { return nil }
-func (h *fakeHost) SpoolPath() string               { return "" }
-func (h *fakeHost) WakeWaits(its []store.InboxItem) { h.woken = append(h.woken, its) }
-func (h *fakeHost) Drained(_ []store.InboxItem)     {}
+func (h *fakeHost) Clock() clock.Clock               { return h.clk }
+func (h *fakeHost) Store() ingest.InboxStore         { return nil }
+func (h *fakeHost) SpoolPath() string                { return "" }
+func (h *fakeHost) WakeWaits(its []domain.InboxItem) { h.woken = append(h.woken, its) }
+func (h *fakeHost) Drained(_ []domain.InboxItem)     {}
 
 func newService() (*ingestqueue.Service, *fakeHost) {
 	h := &fakeHost{clk: clock.NewFake(time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC))}
@@ -42,7 +42,7 @@ func TestAppendedAdvancesAndWakes(t *testing.T) {
 		t.Fatal("an empty append is not a change")
 	default:
 	}
-	s.Appended([]store.InboxItem{{DeliveryID: "d"}})
+	s.Appended([]domain.InboxItem{{DeliveryID: "d"}})
 	<-ch
 	assert.Len(t, h.woken, 1)
 	res := s.Next(t.Context(), 0, time.Second)
@@ -84,23 +84,23 @@ func TestSettle(t *testing.T) {
 	t.Parallel()
 	run := ingestqueue.Run{Event: ingestqueue.Event{Payload: []byte(`{"a":1}`)}}
 	st, payload, _ := ingestqueue.Settle(run, rpc.GuardResult{}, false)
-	assert.Equal(t, store.InboxAdmitted, st)
+	assert.Equal(t, domain.InboxAdmitted, st)
 	assert.JSONEq(t, `{"a":1}`, string(payload))
 
 	run.Asks = []string{"v: unsure"}
 	st, payload, _ = ingestqueue.Settle(run, rpc.GuardResult{}, false)
-	assert.Equal(t, store.InboxHeld, st)
+	assert.Equal(t, domain.InboxHeld, st)
 	assert.Nil(t, payload)
 
-	st, _, rs := ingestqueue.Settle(run, rpc.GuardResult{Decision: rpc.GuardAllow}, true)
-	assert.Equal(t, store.InboxAdmitted, st, "a human's allow stands over the hold")
+	st, _, rs := ingestqueue.Settle(run, rpc.GuardResult{Decision: domain.GuardAllow}, true)
+	assert.Equal(t, domain.InboxAdmitted, st, "a human's allow stands over the hold")
 	assert.Equal(t, "human", rs[len(rs)-1].Name)
 
 	run.Denied = true
 	st, _, _ = ingestqueue.Settle(run, rpc.GuardResult{}, false)
-	assert.Equal(t, store.InboxDenied, st)
-	st, _, _ = ingestqueue.Settle(run, rpc.GuardResult{Decision: rpc.GuardDeny}, true)
-	assert.Equal(t, store.InboxDenied, st)
+	assert.Equal(t, domain.InboxDenied, st)
+	st, _, _ = ingestqueue.Settle(run, rpc.GuardResult{Decision: domain.GuardDeny}, true)
+	assert.Equal(t, domain.InboxDenied, st)
 }
 
 func TestHooksAddsIntake(t *testing.T) {

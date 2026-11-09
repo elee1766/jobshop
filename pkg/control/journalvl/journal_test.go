@@ -18,9 +18,9 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal/vltest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // shipYAML has two projects, a pool with the journal-search grant and
@@ -188,7 +188,7 @@ func TestJournalShipSearch(t *testing.T) {
 	err = plain.Call(t.Context(), rpc.MethodJournalSearch, rpc.JournalSearchParams{Query: "*"}, nil)
 	require.ErrorIs(t, err, rpc.ErrForbidden, "no grant")
 	err = c.Admin.Call(t.Context(), rpc.MethodJournalSearch, rpc.JournalSearchParams{Query: "bad((("}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid, "LogsQL syntax error")
+	require.ErrorIs(t, err, domain.ErrInvalid, "LogsQL syntax error")
 
 	// Restart with a cursor behind what was shipped (a crash before the
 	// save): frames 9..12 are sent again from the stored cursor, nothing

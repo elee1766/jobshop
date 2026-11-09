@@ -9,8 +9,8 @@ import (
 	"github.com/elee1766/acphost/pkg/sandbox"
 
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // The sandbox spec is built by sessionrt.BuildSandbox from config; the
@@ -21,7 +21,7 @@ import (
 // create configured rw dirs, so it runs on spawn and in the debug view,
 // not for env staleness checks (sandboxKey covers those).
 // home, when set, is the mapped user's home (JOB-19).
-func (c *Controller) sandboxFor(t store.Ticket, exe, cwd, home string) (*sandbox.Sandbox, error) {
+func (c *Controller) sandboxFor(t domain.Ticket, exe, cwd, home string) (*sandbox.Sandbox, error) {
 	return c.poolSandbox(t.Pool, c.root.SessionDir(t.ID), exe, cwd, home)
 }
 
@@ -49,16 +49,16 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return nil, err
 	}

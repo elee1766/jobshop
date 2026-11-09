@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -48,15 +49,15 @@ func TestTimelineSegments(t *testing.T) {
 	c, clk, prs, threads := waitController(t)
 	ctx := t.Context()
 	s1, s2 := mkSession(t, c), mkSession(t, c)
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
-	step := func(name string, idx int) store.Ticket {
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
+	step := func(name string, idx int) domain.Ticket {
 		return mkTicket(t, c, store.NewTicket{
-			Kind: store.KindStep, Title: name, Pool: "dev", ParentID: run.ID,
+			Kind: domain.KindStep, Title: name, Pool: "dev", ParentID: run.ID,
 			Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"` + name + `","index":` + string(rune('0'+idx)) + `,"retries":3,"failures":0}`),
 		})
 	}
 	a, b := step("implement", 0), step("review", 1)
-	require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: b.ID, To: a.ID, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, c.store, "admin", domain.Edge{From: b.ID, To: a.ID, Kind: domain.EdgeBlocks}))
 	t0 := c.now()
 
 	clk.advance(time.Minute)
@@ -65,7 +66,7 @@ func TestTimelineSegments(t *testing.T) {
 	clk.advance(2 * time.Minute)
 	prs.set(recPR, `[[]]`, recChecks)
 	_, err = c.waitAdd(ctx, sessScope(s1), rpc.WaitAddParams{
-		Conds:  []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Required: true}},
+		Conds:  []domain.WaitCond{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Required: true}},
 		Reason: "CI on PR 5", Resume: true,
 	})
 	require.NoError(t, err)
@@ -152,8 +153,8 @@ func TestTimelineHumanAndConflict(t *testing.T) {
 	clk.advance(time.Minute)
 	_, _, err := c.store.Claim(ctx, blocked.ID, s1.ID, time.Hour)
 	require.NoError(t, err)
-	require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: blocked.ID, To: blocker.ID, Kind: store.EdgeBlocks}))
-	require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: q.ID, To: blocker.ID, Kind: store.EdgeWaitsFor}))
+	require.NoError(t, store.AddEdge(ctx, c.store, "admin", domain.Edge{From: blocked.ID, To: blocker.ID, Kind: domain.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, c.store, "admin", domain.Edge{From: q.ID, To: blocker.ID, Kind: domain.EdgeWaitsFor}))
 
 	tl := timelineOf(t, c, blocked.ID)
 	assert.Contains(t, tl.Arrows, rpc.TimelineArrow{From: blocker.ID, To: blocked.ID, Kind: "blocks", State: rpc.ArrowConflict})
@@ -196,7 +197,7 @@ func TestTimelineDeferral(t *testing.T) {
 func TestTimelinePartial(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
-	tk := store.Ticket{ID: "js-e", Kind: store.KindTask, Status: store.StatusOpen, CreatedAt: now.Add(-time.Hour)}
+	tk := domain.Ticket{ID: "js-e", Kind: domain.KindTask, Status: domain.StatusOpen, CreatedAt: now.Add(-time.Hour)}
 	row := timelineRow(&config.Config{}, tk, store.Thread{}, now)
 	assert.True(t, row.Partial)
 	assert.Equal(t, []string{"unknown", "queued"}, segStates(row))

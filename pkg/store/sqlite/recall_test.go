@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -16,7 +17,7 @@ func TestRecallNewCommentSearchable(t *testing.T) {
 	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
-	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "a", tk.ID, "CI failed: golangci-lint gofumpt formatting in pkg/cli")
 	require.NoError(t, err)
@@ -51,7 +52,7 @@ func TestRecallBackfill(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "a", tk.ID, "flaky TestFollowJournal timeout")
 	require.NoError(t, err)

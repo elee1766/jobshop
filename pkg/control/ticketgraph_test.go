@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -21,24 +22,24 @@ func TestTicketGraph(t *testing.T) {
 	// one closed. They are written in one transaction: one ticket.create
 	// each took 3-12s under -race (JOB-117).
 	const parentID = "js-plan"
-	last := store.Ticket{ID: fmt.Sprintf("js-sibling%d", store.DefaultLimit)}
+	last := domain.Ticket{ID: fmt.Sprintf("js-sibling%d", store.DefaultLimit)}
 	seedStore(t, root, func(st store.Store) {
-		g := store.Graph{Tickets: []store.NewTicket{{ID: parentID, Project: "js", Kind: store.KindTask, Title: "Plan"}}, Close: map[string]string{last.ID: "done"}}
+		g := store.Graph{Tickets: []store.NewTicket{{ID: parentID, Project: "js", Kind: domain.KindTask, Title: "Plan"}}, Close: map[string]string{last.ID: "done"}}
 		for i := 0; i <= store.DefaultLimit; i++ {
-			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-sibling%d", i), Project: "js", Kind: store.KindTask, Title: fmt.Sprintf("Sibling %d", i), ParentID: parentID})
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-sibling%d", i), Project: "js", Kind: domain.KindTask, Title: fmt.Sprintf("Sibling %d", i), ParentID: parentID})
 		}
 		_, err := st.Apply(t.Context(), "test", g)
 		require.NoError(t, err)
 	})
 	c := controltest.Start(t, root, control.Options{})
 	ctx := t.Context()
-	create := func(p rpc.CreateParams) store.Ticket {
+	create := func(p rpc.CreateParams) domain.Ticket {
 		t.Helper()
-		var ticket store.Ticket
+		var ticket domain.Ticket
 		require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketCreate, p, &ticket))
 		return ticket
 	}
-	parent := store.Ticket{ID: parentID}
+	parent := domain.Ticket{ID: parentID}
 	child := create(rpc.CreateParams{Title: "Implement", ParentID: parent.ID})
 	leaf := child
 	for i := range 6 {
@@ -48,9 +49,9 @@ func TestTicketGraph(t *testing.T) {
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: dependency.ID}, nil))
 	dependent := create(rpc.CreateParams{Title: "Downstream"})
 	for _, edge := range []rpc.EdgeParams{
-		{From: child.ID, To: dependency.ID, Kind: store.EdgeBlocks},
-		{From: dependent.ID, To: child.ID, Kind: store.EdgeWaitsFor},
-		{From: dependency.ID, To: parent.ID, Kind: store.EdgeTracks},
+		{From: child.ID, To: dependency.ID, Kind: domain.EdgeBlocks},
+		{From: dependent.ID, To: child.ID, Kind: domain.EdgeWaitsFor},
+		{From: dependency.ID, To: parent.ID, Kind: domain.EdgeTracks},
 	} {
 		require.NoError(t, c.Admin.Call(ctx, rpc.MethodEdgeAdd, edge, nil))
 	}
@@ -65,8 +66,8 @@ func TestTicketGraph(t *testing.T) {
 		nodes[node.ID] = node
 	}
 	assert.Len(t, nodes, store.DefaultLimit+11)
-	assert.Equal(t, store.StatusClosed, nodes[last.ID].Status)
-	assert.Equal(t, store.StatusClosed, nodes[dependency.ID].Status)
+	assert.Equal(t, domain.StatusClosed, nodes[last.ID].Status)
+	assert.Equal(t, domain.StatusClosed, nodes[dependency.ID].Status)
 	assert.Contains(t, graph.Relations, rpc.GraphRelation{From: dependent.ID, To: child.ID, Kind: "waits_for"})
 	assert.Contains(t, graph.Relations, rpc.GraphRelation{From: parent.ID, To: child.ID, Kind: "parent"})
 	assert.ElementsMatch(t, []string{"https://github.com/acme/widget/pull/42", "https://linear.app/acme/issue/ENG-2", "https://github.com/acme/widget/issues/9"}, nodes[dependency.ID].Links)
@@ -107,7 +108,7 @@ workflows:
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: run.Run.ID, Meta: json.RawMessage(`{"linear":{"workspace":"acme"}}`)}, nil))
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunShow, rpc.IDParams{ID: run.Run.ID}, &run))
 	assert.Contains(t, run.Links, "https://linear.app/acme/issue/OKU-219")
-	var wrong store.Ticket
+	var wrong domain.Ticket
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "Other oku-trade/trade#45200@abc"}, &wrong))
 	var graph rpc.GraphResult
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: "oku-trade/trade#4520"}, &graph))

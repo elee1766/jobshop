@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -101,7 +102,7 @@ func TestBackfillEnded(t *testing.T) {
 	c.scanSessions(t.Context())
 	got, err := c.store.Get(ctx, sess.ID)
 	require.NoError(t, err)
-	f, err := store.DecodeFields[store.SessionFields](got)
+	f, err := domain.DecodeFields[domain.SessionFields](got)
 	require.NoError(t, err)
 	require.NotNil(t, f.Ended)
 	assert.Equal(t, "old exit", f.Ended.Exit)

@@ -18,8 +18,8 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ids"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Config is the resolved service and work configuration.
@@ -365,7 +365,7 @@ type LearningsConfig struct {
 // defaults when unset.
 func (c *Config) LearningKinds() []string {
 	if len(c.Learnings.Kinds) == 0 {
-		return store.LearningKinds
+		return domain.LearningKinds
 	}
 	return c.Learnings.Kinds
 }
@@ -1791,7 +1791,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	for _, k := range c.Learnings.Kinds {
-		if err := store.ValidKindPattern(k); err != nil {
+		if err := domain.ValidKindPattern(k); err != nil {
 			return nil, fmt.Errorf("%s: learnings.kinds: %w", FileName, err)
 		}
 	}
@@ -1893,7 +1893,7 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			}
 		}
 		for _, k := range l.Kinds {
-			if err := store.ValidKindPattern(k); err != nil {
+			if err := domain.ValidKindPattern(k); err != nil {
 				return fmt.Errorf("when: learnings.kinds: %w", err)
 			}
 		}
@@ -1902,7 +1902,7 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 				return fmt.Errorf("when: learnings.scope %q is not a valid glob", s)
 			}
 		}
-		if l.Source != "" && l.Source != store.LearningSourceAgent && l.Source != store.LearningSourceController {
+		if l.Source != "" && l.Source != domain.LearningSourceAgent && l.Source != domain.LearningSourceController {
 			return fmt.Errorf("when: learnings.source %q must be agent or controller", l.Source)
 		}
 	}

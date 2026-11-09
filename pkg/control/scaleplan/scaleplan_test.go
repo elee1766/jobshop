@@ -8,7 +8,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func TestAutoDesired(t *testing.T) {
@@ -82,13 +82,13 @@ func TestPlanPool(t *testing.T) {
 			"cordoned sessions do not count; scale cordons are lifted before starting", 3,
 			[]scaleplan.Session{
 				{ID: "a"},
-				{ID: "m", Cordon: store.CordonManual},
-				{ID: "s1", Cordon: store.CordonScale, Idle: true},
-				{ID: "s2", Cordon: store.CordonScale},
+				{ID: "m", Cordon: domain.CordonManual},
+				{ID: "s1", Cordon: domain.CordonScale, Idle: true},
+				{ID: "s2", Cordon: domain.CordonScale},
 			},
 			scaleplan.Plan{Uncordon: []string{"s2", "s1"}},
 		},
-		{"manual cordon is never lifted", 2, []scaleplan.Session{{ID: "m", Cordon: store.CordonManual}}, scaleplan.Plan{Start: 2}},
+		{"manual cordon is never lifted", 2, []scaleplan.Session{{ID: "m", Cordon: domain.CordonManual}}, scaleplan.Plan{Start: 2}},
 		{"steady state", 2, []scaleplan.Session{{ID: "a"}, {ID: "b"}}, scaleplan.Plan{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

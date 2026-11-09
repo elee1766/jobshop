@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
 )
 
@@ -28,25 +28,25 @@ func setProviders(ctx context.Context, q sqldb.Querier, names []string) error {
 }
 
 // Slot applies one slot event.
-func (s *Store) Slot(ctx context.Context, actor string, e store.SlotEvent) (store.Slot, string, error) {
+func (s *Store) Slot(ctx context.Context, actor string, e domain.SlotEvent) (domain.Slot, string, error) {
 	switch e.Op {
-	case store.SlotAdd:
+	case domain.SlotAdd:
 		sl, err := s.addSlot(ctx, e.Pool, e.ID, e.Env)
 		return sl, "", err
-	case store.SlotRemove:
+	case domain.SlotRemove:
 		sl, err := s.removeSlot(ctx, e.Pool, e.ID)
 		return sl, "", err
-	case store.SlotUnhealthy:
+	case domain.SlotUnhealthy:
 		return s.slotUnhealthy(ctx, actor, e.Pool, e.ID, e.Reason)
-	case store.SlotReset:
+	case domain.SlotReset:
 		sl, err := s.slotReset(ctx, e.Pool, e.ID, e.OK)
 		return sl, "", err
 	}
-	return store.Slot{}, "", fmt.Errorf("%w: slot op %q", store.ErrInvalid, e.Op)
+	return domain.Slot{}, "", fmt.Errorf("%w: slot op %q", domain.ErrInvalid, e.Op)
 }
 
-func slotOf(r sqldb.ResourceSlot) store.Slot {
-	sl := store.Slot{
+func slotOf(r sqldb.ResourceSlot) domain.Slot {
+	sl := domain.Slot{
 		Pool: r.Pool, ID: r.ID, State: r.State, Ticket: r.Ticket, Fence: r.Fence,
 		Removing: r.Removing != 0, UpdatedAt: fromNS(r.UpdatedAt),
 	}
@@ -56,7 +56,7 @@ func slotOf(r sqldb.ResourceSlot) store.Slot {
 
 func checkSlot(pool, id string) error {
 	if pool == "" || id == "" {
-		return fmt.Errorf("%w: resource and slot id are required", store.ErrInvalid)
+		return fmt.Errorf("%w: resource and slot id are required", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func checkSlot(pool, id string) error {
 func (s *Store) getSlot(ctx context.Context, q sqldb.Querier, pool, id string) (sqldb.ResourceSlot, error) {
 	r, err := q.GetSlot(ctx, sqldb.GetSlotParams{Pool: pool, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
-		return r, fmt.Errorf("%w: slot %s/%s", store.ErrNotFound, pool, id)
+		return r, fmt.Errorf("%w: slot %s/%s", domain.ErrNotFound, pool, id)
 	}
 	return r, err
 }
@@ -78,7 +78,7 @@ func (s *Store) writeSlot(ctx context.Context, q sqldb.Querier, r sqldb.Resource
 
 // addSlot adds a ready slot or updates a known one's env. A gone slot,
 // or one marked removing, is back in service.
-func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]string) (out store.Slot, err error) {
+func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]string) (out domain.Slot, err error) {
 	if err := checkSlot(pool, id); err != nil {
 		return out, err
 	}
@@ -92,7 +92,7 @@ func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]str
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		r, err := s.getSlot(ctx, q, pool, id)
 		switch {
-		case errors.Is(err, store.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			if err := q.InsertSlot(ctx, sqldb.InsertSlotParams{Pool: pool, ID: id, Env: string(b), UpdatedAt: ns(s.now())}); err != nil {
 				return err
 			}
@@ -100,8 +100,8 @@ func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]str
 			return err
 		default:
 			r.Env, r.Removing = string(b), 0
-			if r.State == store.SlotGone {
-				r.State, r.Ticket, r.Fence = store.SlotReady, "", 0
+			if r.State == domain.SlotGone {
+				r.State, r.Ticket, r.Fence = domain.SlotReady, "", 0
 			}
 			if err := s.writeSlot(ctx, q, r); err != nil {
 				return err
@@ -116,7 +116,7 @@ func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]str
 
 // removeSlot deletes a slot that no claim holds; a held or releasing
 // one is marked removing and deleted when its claim ends.
-func (s *Store) removeSlot(ctx context.Context, pool, id string) (out store.Slot, err error) {
+func (s *Store) removeSlot(ctx context.Context, pool, id string) (out domain.Slot, err error) {
 	if err := checkSlot(pool, id); err != nil {
 		return out, err
 	}
@@ -125,13 +125,13 @@ func (s *Store) removeSlot(ctx context.Context, pool, id string) (out store.Slot
 		if err != nil {
 			return err
 		}
-		if r.State == store.SlotHeld || r.State == store.SlotReleasing {
+		if r.State == domain.SlotHeld || r.State == domain.SlotReleasing {
 			r.Removing = 1
 			out = slotOf(r)
 			return s.writeSlot(ctx, q, r)
 		}
 		out = slotOf(r)
-		out.State = store.SlotGone
+		out.State = domain.SlotGone
 		return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 	})
 	return out, err
@@ -140,7 +140,7 @@ func (s *Store) removeSlot(ctx context.Context, pool, id string) (out store.Slot
 // slotUnhealthy marks a slot gone. If a live claim holds it, the ticket
 // is reopened in the same transaction without counting a step failure:
 // the infrastructure failed, not the work.
-func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason string) (out store.Slot, reopened string, err error) {
+func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason string) (out domain.Slot, reopened string, err error) {
 	if err := checkSlot(pool, id); err != nil {
 		return out, "", err
 	}
@@ -149,13 +149,13 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 		if err != nil {
 			return err
 		}
-		if r.State == store.SlotHeld && r.Ticket != "" {
+		if r.State == domain.SlotHeld && r.Ticket != "" {
 			t, err := s.get(ctx, q, r.Ticket)
-			if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
-			if err == nil && t.Status == store.StatusInProgress && t.Fence == r.Fence {
-				_, err := s.mutate(ctx, q, t.ID, actor, "release", func(t *store.Ticket) (any, error) {
+			if err == nil && t.Status == domain.StatusInProgress && t.Fence == r.Fence {
+				_, err := s.mutate(ctx, q, t.ID, actor, "release", func(t *domain.Ticket) (any, error) {
 					reopen(t)
 					return map[string]any{"reason": "resource unhealthy", "slot": pool + "/" + id}, nil
 				})
@@ -171,10 +171,10 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 		}
 		if r.Removing != 0 {
 			out = slotOf(r)
-			out.State = store.SlotGone
+			out.State = domain.SlotGone
 			return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 		}
-		r.State, r.Ticket, r.Fence = store.SlotGone, "", 0
+		r.State, r.Ticket, r.Fence = domain.SlotGone, "", 0
 		out = slotOf(r)
 		return s.writeSlot(ctx, q, r)
 	})
@@ -182,12 +182,12 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 }
 
 // slots lists every slot, or pool's when set.
-func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
+func (s *Store) slots(ctx context.Context, pool string) ([]domain.Slot, error) {
 	rs, err := s.rq.ListSlots(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.Slot, 0, len(rs))
+	out := make([]domain.Slot, 0, len(rs))
 	for _, r := range rs {
 		if pool == "" || r.Pool == pool {
 			out = append(out, slotOf(r))
@@ -200,7 +200,7 @@ func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
 // returns all releasing slots. A claim can end on many paths (close,
 // release, lease expiry, dead holder); reading the ticket here covers
 // all of them without a hook in each.
-func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) {
+func (s *Store) ReleaseSlots(ctx context.Context) (out []domain.Slot, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		out = nil // tx may rerun this after a lost write race
 		if err := q.MarkSlotsReleasing(ctx, ns(s.now())); err != nil {
@@ -211,7 +211,7 @@ func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) 
 			return err
 		}
 		for _, r := range rs {
-			if r.State == store.SlotReleasing {
+			if r.State == domain.SlotReleasing {
 				out = append(out, slotOf(r))
 			}
 		}
@@ -221,7 +221,7 @@ func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) 
 }
 
 // slotReset records the provider's reset of a releasing slot.
-func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out store.Slot, err error) {
+func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out domain.Slot, err error) {
 	if err := checkSlot(pool, id); err != nil {
 		return out, err
 	}
@@ -230,18 +230,18 @@ func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out st
 		if err != nil {
 			return err
 		}
-		if r.State != store.SlotReleasing {
-			return fmt.Errorf("%w: slot %s/%s is %s, not releasing", store.ErrConflict, pool, id, r.State)
+		if r.State != domain.SlotReleasing {
+			return fmt.Errorf("%w: slot %s/%s is %s, not releasing", domain.ErrConflict, pool, id, r.State)
 		}
 		if r.Removing != 0 {
 			out = slotOf(r)
-			out.State = store.SlotGone
+			out.State = domain.SlotGone
 			return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 		}
 		r.Ticket, r.Fence = "", 0
-		r.State = store.SlotGone
+		r.State = domain.SlotGone
 		if ok {
-			r.State = store.SlotReady
+			r.State = domain.SlotReady
 		}
 		out = slotOf(r)
 		return s.writeSlot(ctx, q, r)
@@ -250,8 +250,8 @@ func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out st
 }
 
 // slotDemand reports a provider resource's demand from its slots.
-func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot) (store.SlotDemand, error) {
-	var d store.SlotDemand
+func (s *Store) slotDemand(ctx context.Context, pool string, slots []domain.Slot) (domain.SlotDemand, error) {
+	var d domain.SlotDemand
 	w, err := s.rq.ProviderDemand(ctx, pool)
 	if err != nil {
 		return d, err
@@ -260,9 +260,9 @@ func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot)
 	d.OldestWait = fromNS(w.Oldest)
 	for _, r := range slots {
 		switch r.State {
-		case store.SlotReady:
+		case domain.SlotReady:
 			d.Ready++
-		case store.SlotHeld:
+		case domain.SlotHeld:
 			d.Held++
 		}
 	}
@@ -272,7 +272,7 @@ func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot)
 // takeSlots holds one ready slot of each provider resource t needs, in
 // the claim transaction. No ready slot is a conflict: another claimer
 // took the last one, and the transaction rolls back.
-func (s *Store) takeSlots(ctx context.Context, q sqldb.Querier, t store.Ticket) error {
+func (s *Store) takeSlots(ctx context.Context, q sqldb.Querier, t domain.Ticket) error {
 	names, err := q.TicketProviderResources(ctx, t.ID)
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func (s *Store) takeSlots(ctx context.Context, q sqldb.Querier, t store.Ticket) 
 	for _, n := range names {
 		_, err := q.TakeSlot(ctx, sqldb.TakeSlotParams{Ticket: t.ID, Fence: t.Fence, UpdatedAt: ns(s.now()), Pool: n})
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: %s: no ready %s slot", store.ErrConflict, t.ID, n)
+			return fmt.Errorf("%w: %s: no ready %s slot", domain.ErrConflict, t.ID, n)
 		}
 		if err != nil {
 			return err

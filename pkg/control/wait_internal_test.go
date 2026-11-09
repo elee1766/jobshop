@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -61,13 +62,13 @@ func TestWaitChecksCancelledPR(t *testing.T) {
 	c, _, prs, threads := waitController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	park := func() store.Ticket {
+	park := func() domain.Ticket {
 		tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
 		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
 			ID: tk.ID, Reason: "CI", Any: true,
-			Conds: []store.WaitCond{
-				{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
-				{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
+			Conds: []domain.WaitCond{
+				{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
+				{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
 			},
 		})
 		require.NoError(t, err)
@@ -146,7 +147,7 @@ func TestWaitChecksWorkflow(t *testing.T) {
 				t.Parallel()
 				c, _, prs, threads := waitController(t)
 				ctx := t.Context()
-				cond := store.WaitCond{Type: store.WaitChecks, Repo: "acme/widget", State: tc.state, Workflow: tc.workflow}
+				cond := domain.WaitCond{Type: domain.WaitChecks, Repo: "acme/widget", State: tc.state, Workflow: tc.workflow}
 				head := "aaaa1111"
 				if form == "pr" {
 					head = "aaaa1111bbbb"
@@ -157,7 +158,7 @@ func TestWaitChecksWorkflow(t *testing.T) {
 				}
 				prs.runs[head] = tc.runs
 				tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
-				_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "CI", Conds: []store.WaitCond{cond}})
+				_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "CI", Conds: []domain.WaitCond{cond}})
 				require.NoError(t, err)
 				c.pollWaits(ctx, prs, threads)
 				w := waitOf(mustGet(t, c, tk.ID))
@@ -192,13 +193,13 @@ func TestWaitChecksCommit(t *testing.T) {
 	c, _, prs, threads := waitController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	park := func() store.Ticket {
+	park := func() domain.Ticket {
 		tk := mkTicket(t, c, store.NewTicket{Title: "post-merge", Pool: "dev"})
 		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
 			ID: tk.ID, Reason: "master CI", Any: true,
-			Conds: []store.WaitCond{
-				{Type: store.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "success"},
-				{Type: store.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "failure"},
+			Conds: []domain.WaitCond{
+				{Type: domain.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "success"},
+				{Type: domain.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "failure"},
 			},
 		})
 		require.NoError(t, err)
@@ -324,7 +325,7 @@ func waitController(t *testing.T) (*Controller, *scanClock, *fakePRs, *fakeThrea
 	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}, runs: map[string]string{}}, threads
 }
 
-func sessScope(s store.Ticket) scope {
+func sessScope(s domain.Ticket) scope {
 	return scope{actor: s.ID, session: s.ID, project: s.Project, pool: s.Pool}
 }
 
@@ -348,9 +349,9 @@ func TestWaitApprovalAndChecks(t *testing.T) {
 	c, clk, prs, threads := waitController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
 	step := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindStep, Title: "review", Pool: "dev", ParentID: run.ID,
+		Kind: domain.KindStep, Title: "review", Pool: "dev", ParentID: run.ID,
 		Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"review","index":0,"retries":3,"failures":0}`),
 	})
 	_, _, err := c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
@@ -358,22 +359,22 @@ func TestWaitApprovalAndChecks(t *testing.T) {
 
 	prs.set(recPR, `[[]]`, recChecks)
 	_, err = c.waitAdd(ctx, sessScope(sess), rpc.WaitAddParams{
-		Conds: []store.WaitCond{
-			{Type: store.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob"},
-			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Required: true},
+		Conds: []domain.WaitCond{
+			{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob"},
+			{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Required: true},
 		},
 		Reason: "needs bob's approval", Owner: "bob", Resume: true,
 	})
 	require.NoError(t, err)
 	got, err := c.store.Get(ctx, step.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, got.Status)
-	sf, err := store.DecodeFields[store.StepFields](got)
+	assert.Equal(t, domain.StatusOpen, got.Status)
+	sf, err := domain.DecodeFields[domain.StepFields](got)
 	require.NoError(t, err)
 	assert.Equal(t, 0, sf.Failures, "parking is not a failed attempt")
 	assert.Empty(t, readyIDs(t, c))
 	_, _, err = c.store.ClaimNext(ctx, store.ClaimNext{Project: "js", Pool: "dev", Holder: sess.ID, Lease: time.Hour})
-	require.ErrorIs(t, err, store.ErrNoWork, "a waiting ticket cannot be claimed")
+	require.ErrorIs(t, err, domain.ErrNoWork, "a waiting ticket cannot be claimed")
 
 	c.pollWaits(ctx, prs, threads)
 	w := waitOf(mustGet(t, c, step.ID))
@@ -400,7 +401,7 @@ func TestWaitApprovalAndChecks(t *testing.T) {
 	assert.Contains(t, cs[len(cs)-1].Body, "wants APPROVED by bob on aaaa111, observed APPROVED")
 }
 
-func mustGet(t *testing.T, c *Controller, id string) store.Ticket {
+func mustGet(t *testing.T, c *Controller, id string) domain.Ticket {
 	t.Helper()
 	tk, err := c.store.Get(t.Context(), id)
 	require.NoError(t, err)
@@ -418,12 +419,12 @@ func TestWaitHeadMoved(t *testing.T) {
 	prs.set(recPR, `[[]]`, `[]`)
 	_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{
 		ID: a.ID, Reason: "approval",
-		Conds: []store.WaitCond{{Type: store.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Head: "aaaa1111bbbb"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Head: "aaaa1111bbbb"}},
 	})
 	require.NoError(t, err)
 	_, err = c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{
 		ID: b.ID, Reason: "merge",
-		Conds: []store.WaitCond{{Type: store.WaitPR, Repo: "acme/widget", PR: 5, State: "merged"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitPR, Repo: "acme/widget", PR: 5, State: "merged"}},
 	})
 	require.NoError(t, err)
 	c.pollWaits(ctx, prs, threads)
@@ -455,7 +456,7 @@ func TestWaitChecksConflicting(t *testing.T) {
 	prs.set(`{"state":"open","merged":false,"mergeable":null,"head":{"sha":"aaaa1111bbbb"}}`, `[[]]`, `[]`)
 	_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{
 		ID: a.ID, Reason: "ci",
-		Conds: []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"}},
 	})
 	require.NoError(t, err)
 	c.pollWaits(ctx, prs, threads)
@@ -481,13 +482,13 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	timeout := clk.now().Add(time.Hour)
 	_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
 		ID: a.ID, Reason: "reply from alice", Owner: "alice", Timeout: &timeout,
-		Conds: []store.WaitCond{{Type: store.WaitReply, Thread: "acme/widget#7", From: "alice"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitReply, Thread: "acme/widget#7", From: "alice"}},
 	})
 	require.NoError(t, err)
 	b := mkTicket(t, c, store.NewTicket{Title: "b", Pool: "dev"})
 	_, err = c.waitAdd(ctx, admin, rpc.WaitAddParams{
 		ID: b.ID, Reason: "recheck tomorrow",
-		Conds: []store.WaitCond{{Type: store.WaitTime, At: clk.now().Add(2 * time.Hour)}},
+		Conds: []domain.WaitCond{{Type: domain.WaitTime, At: clk.now().Add(2 * time.Hour)}},
 	})
 	require.NoError(t, err)
 
@@ -531,18 +532,18 @@ func TestWaitValidate(t *testing.T) {
 	c, _, _, _ := waitController(t)
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
 	admin := scope{admin: true, actor: "admin"}
-	for _, conds := range [][]store.WaitCond{
+	for _, conds := range [][]domain.WaitCond{
 		nil,
 		{{Type: "nope"}},
-		{{Type: store.WaitReview, Repo: "acme/widget", PR: 5}},
-		{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "green"}},
-		{{Type: store.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Workflow: "ci"}},
-		{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci", Required: true}},
-		{{Type: store.WaitReply, Thread: "bad"}},
+		{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5}},
+		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "green"}},
+		{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Workflow: "ci"}},
+		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci", Required: true}},
+		{{Type: domain.WaitReply, Thread: "bad"}},
 	} {
 		_, err := c.waitAdd(t.Context(), admin, rpc.WaitAddParams{ID: a.ID, Reason: "x", Conds: conds})
-		require.ErrorIs(t, err, store.ErrInvalid, "%v", conds)
+		require.ErrorIs(t, err, domain.ErrInvalid, "%v", conds)
 	}
-	_, err := c.waitAdd(t.Context(), admin, rpc.WaitAddParams{ID: a.ID, Conds: []store.WaitCond{{Type: store.WaitTime, At: time.Now()}}})
-	require.ErrorIs(t, err, store.ErrInvalid, "reason is required")
+	_, err := c.waitAdd(t.Context(), admin, rpc.WaitAddParams{ID: a.ID, Conds: []domain.WaitCond{{Type: domain.WaitTime, At: time.Now()}}})
+	require.ErrorIs(t, err, domain.ErrInvalid, "reason is required")
 }

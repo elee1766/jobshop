@@ -10,13 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
-func learnings(t *testing.T, c *Controller, f store.LearningFilter) []store.Learning {
+func learnings(t *testing.T, c *Controller, f store.LearningFilter) []domain.Learning {
 	t.Helper()
 	ls, err := learning.List(t.Context(), c.store, f)
 	require.NoError(t, err)
@@ -24,7 +25,7 @@ func learnings(t *testing.T, c *Controller, f store.LearningFilter) []store.Lear
 }
 
 // startWork starts a work run and claims its first step for a dev session.
-func startWork(t *testing.T, c *Controller, key string) (store.Ticket, store.Ticket, scope) {
+func startWork(t *testing.T, c *Controller, key string) (domain.Ticket, domain.Ticket, scope) {
 	t.Helper()
 	ctx := t.Context()
 	if c.metrics == nil {
@@ -35,7 +36,7 @@ func startWork(t *testing.T, c *Controller, key string) (store.Ticket, store.Tic
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: key}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 	return step, sess, scope{actor: sess.ID, session: sess.ID, project: "js", pool: "dev"}
@@ -48,43 +49,43 @@ func TestLearnRPC(t *testing.T) {
 	step, sess, sc := startWork(t, c, "l1")
 
 	_, err := c.learnAdd(ctx, sc, rpc.LearnParams{Kind: "oops", Summary: "x"})
-	require.ErrorIs(t, err, store.ErrInvalid)
-	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningCorrection, Summary: "  "})
-	require.ErrorIs(t, err, store.ErrInvalid)
-	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningCorrection, Summary: "x", Scope: "team:eng"})
-	require.ErrorIs(t, err, store.ErrInvalid)
-	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningCorrection, Summary: "x", Ticket: "js-nope"})
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrInvalid)
+	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningCorrection, Summary: "  "})
+	require.ErrorIs(t, err, domain.ErrInvalid)
+	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningCorrection, Summary: "x", Scope: "team:eng"})
+	require.ErrorIs(t, err, domain.ErrInvalid)
+	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningCorrection, Summary: "x", Ticket: "js-nope"})
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Defaults: the held ticket, its run's repo, the session, source agent.
-	out, err := c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningCorrection, Summary: "use main as base", Fix: "git switch main"})
+	out, err := c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningCorrection, Summary: "use main as base", Fix: "git switch main"})
 	require.NoError(t, err)
-	l := out.(store.Learning)
+	l := out.(domain.Learning)
 	assert.Equal(t, step.ID, l.Ticket)
 	assert.Equal(t, sess.ID, l.Session)
 	assert.Equal(t, "repo:acme/widget", l.Scope)
-	assert.Equal(t, store.LearningSourceAgent, l.Source)
-	assert.Equal(t, store.LearningOpen, l.Status)
+	assert.Equal(t, domain.LearningSourceAgent, l.Source)
+	assert.Equal(t, domain.LearningOpen, l.Status)
 
 	// An explicit scope wins; admin with no ticket is global.
-	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningWorkaround, Summary: "retry go mod download", Scope: "pool:dev"})
+	_, err = c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningWorkaround, Summary: "retry go mod download", Scope: "pool:dev"})
 	require.NoError(t, err)
-	out, err = c.learnAdd(ctx, scope{admin: true, actor: "admin"}, rpc.LearnParams{Kind: store.LearningFailure, Summary: "host disk full"})
+	out, err = c.learnAdd(ctx, scope{admin: true, actor: "admin"}, rpc.LearnParams{Kind: domain.LearningFailure, Summary: "host disk full"})
 	require.NoError(t, err)
-	assert.Equal(t, store.ScopeGlobal, out.(store.Learning).Scope)
+	assert.Equal(t, domain.ScopeGlobal, out.(domain.Learning).Scope)
 
 	res, err := c.learnList(ctx, sc, rpc.LearnListParams{})
 	require.NoError(t, err)
-	assert.Len(t, res.([]store.Learning), 3)
+	assert.Len(t, res.([]domain.Learning), 3)
 	res, err = c.learnList(ctx, sc, rpc.LearnListParams{Scope: "pool:dev"})
 	require.NoError(t, err)
-	require.Len(t, res.([]store.Learning), 1)
-	assert.Equal(t, "retry go mod download", res.([]store.Learning)[0].Summary)
-	res, err = c.learnList(ctx, sc, rpc.LearnListParams{Kind: store.LearningFailure})
+	require.Len(t, res.([]domain.Learning), 1)
+	assert.Equal(t, "retry go mod download", res.([]domain.Learning)[0].Summary)
+	res, err = c.learnList(ctx, sc, rpc.LearnListParams{Kind: domain.LearningFailure})
 	require.NoError(t, err)
-	assert.Len(t, res.([]store.Learning), 1)
+	assert.Len(t, res.([]domain.Learning), 1)
 	_, err = c.learnList(ctx, sc, rpc.LearnListParams{Scope: "repo:bad"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func TestLearnSince(t *testing.T) {
@@ -92,15 +93,15 @@ func TestLearnSince(t *testing.T) {
 	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	_, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningFailure, Summary: "old"})
+	_, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: domain.LearningFailure, Summary: "old"})
 	require.NoError(t, err)
 	clk.advance(48 * time.Hour)
-	_, err = c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningFailure, Summary: "new"})
+	_, err = c.learnAdd(ctx, admin, rpc.LearnParams{Kind: domain.LearningFailure, Summary: "new"})
 	require.NoError(t, err)
 	res, err := c.learnList(ctx, admin, rpc.LearnListParams{Since: 24 * time.Hour})
 	require.NoError(t, err)
-	require.Len(t, res.([]store.Learning), 1)
-	assert.Equal(t, "new", res.([]store.Learning)[0].Summary)
+	require.Len(t, res.([]domain.Learning), 1)
+	assert.Equal(t, "new", res.([]domain.Learning)[0].Summary)
 }
 
 func TestLearnStepFailure(t *testing.T) {
@@ -114,8 +115,8 @@ func TestLearnStepFailure(t *testing.T) {
 	require.NoError(t, err)
 	ls := learnings(t, c, store.LearningFilter{Ticket: step.ID})
 	require.Len(t, ls, 1)
-	assert.Equal(t, store.LearningFailure, ls[0].Kind)
-	assert.Equal(t, store.LearningSourceController, ls[0].Source)
+	assert.Equal(t, domain.LearningFailure, ls[0].Kind)
+	assert.Equal(t, domain.LearningSourceController, ls[0].Source)
 	assert.Equal(t, "repo:acme/widget", ls[0].Scope)
 	assert.Contains(t, ls[0].Summary, "closed failed")
 	assert.Contains(t, ls[0].Summary, "tests flake on CI")
@@ -150,7 +151,7 @@ func TestLearnReviewFinding(t *testing.T) {
 
 	// The reviewer holds its own ticket and comments the finding there.
 	rev := mkTicket(t, c, store.NewTicket{Title: "review", Pool: "plan"})
-	rs := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "plan", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	rs := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "plan", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(ctx, rev.ID, rs.ID, time.Hour)
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, c.store, rs.ID, rev.ID, "missing tests for the error path")
@@ -161,7 +162,7 @@ func TestLearnReviewFinding(t *testing.T) {
 
 	ls := learnings(t, c, store.LearningFilter{Ticket: step.ID})
 	require.Len(t, ls, 1)
-	assert.Equal(t, store.LearningCorrection, ls[0].Kind)
+	assert.Equal(t, domain.LearningCorrection, ls[0].Kind)
 	assert.Contains(t, ls[0].Summary, "review resumed step a")
 	assert.Contains(t, ls[0].Summary, "missing tests for the error path")
 }
@@ -192,7 +193,7 @@ func TestLearnAnswer(t *testing.T) {
 	require.NoError(t, err)
 	ls := learnings(t, c, store.LearningFilter{Ticket: step.ID})
 	require.Len(t, ls, 1)
-	assert.Equal(t, store.LearningCorrection, ls[0].Kind)
+	assert.Equal(t, domain.LearningCorrection, ls[0].Kind)
 	assert.Contains(t, ls[0].Summary, "Which base branch?")
 	assert.Equal(t, "answer from @op: use main", ls[0].Fix)
 }
@@ -202,10 +203,10 @@ func TestLearnFinding(t *testing.T) {
 	c, _, dir := scanController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
-	ls := learnings(t, c, store.LearningFilter{Kind: store.LearningFailure})
+	ls := learnings(t, c, store.LearningFilter{Kind: domain.LearningFailure})
 	require.Len(t, ls, 1)
 	assert.Contains(t, ls[0].Summary, "finding issue_no_run on issue-7: no run")
-	assert.Equal(t, store.LearningSourceController, ls[0].Source)
+	assert.Equal(t, domain.LearningSourceController, ls[0].Source)
 }
 
 // TestLearnUpdate: open -> pr pending -> applied or rejected (#273).
@@ -215,41 +216,41 @@ func TestLearnUpdate(t *testing.T) {
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	add := func() int64 {
-		out, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningFailure, Summary: "x"})
+		out, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: domain.LearningFailure, Summary: "x"})
 		require.NoError(t, err)
-		return out.(store.Learning).ID
+		return out.(domain.Learning).ID
 	}
 	a, b := add(), add()
 	pr := "https://github.com/elee1766/jobshop/pull/9"
 
 	_, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}})
-	require.ErrorIs(t, err, store.ErrInvalid, "needs status or pr")
-	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: store.LearningRejected})
-	require.ErrorIs(t, err, store.ErrInvalid, "rejected needs a pr")
+	require.ErrorIs(t, err, domain.ErrInvalid, "needs status or pr")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: domain.LearningRejected})
+	require.ErrorIs(t, err, domain.ErrInvalid, "rejected needs a pr")
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: "done"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{999}, PR: pr})
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	out, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a, b}, PR: pr})
 	require.NoError(t, err)
-	for _, l := range out.([]store.Learning) {
-		assert.Equal(t, store.LearningOpen, l.Status, "pr pending keeps it open")
+	for _, l := range out.([]domain.Learning) {
+		assert.Equal(t, domain.LearningOpen, l.Status, "pr pending keeps it open")
 		assert.Equal(t, pr, l.PR)
 	}
-	out, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: store.LearningApplied})
+	out, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: domain.LearningApplied})
 	require.NoError(t, err)
-	assert.Equal(t, pr, out.([]store.Learning)[0].PR, "pr kept")
-	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{b}, Status: store.LearningRejected})
+	assert.Equal(t, pr, out.([]domain.Learning)[0].PR, "pr kept")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{b}, Status: domain.LearningRejected})
 	require.NoError(t, err, "pr already set")
 
-	rej := learnings(t, c, store.LearningFilter{Status: store.LearningRejected})
+	rej := learnings(t, c, store.LearningFilter{Status: domain.LearningRejected})
 	require.Len(t, rej, 1)
 	assert.Equal(t, b, rej[0].ID)
 	assert.Equal(t, pr, rej[0].PR)
-	n, err := learning.Count(ctx, c.store, time.Time{}, store.LearningCount{Status: store.LearningOpen})
+	n, err := learning.Count(ctx, c.store, time.Time{}, domain.LearningCount{Status: domain.LearningOpen})
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }

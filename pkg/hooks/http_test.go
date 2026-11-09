@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // A url guardrail hook (#188) answers like a command hook, signed like an
@@ -69,14 +69,14 @@ func TestHookURLRetry(t *testing.T) {
 		p := hookPost{url: h.URL, secret: h.SecretFile, timeout: time.Second, retry: h.Retry, after: after}
 		out, err := p.do(t.Context(), []byte(`{"on":"action"}`))
 		if err != nil {
-			return Answer{rpc.GuardDeny, err.Error()}
+			return Answer{domain.GuardDeny, err.Error()}
 		}
 		return parseHookAnswer(out)
 	}
 
 	// The answer comes from the response body.
 	a := run()
-	assert.Equal(t, Answer{rpc.GuardDeny, "remote says no"}, a)
+	assert.Equal(t, Answer{domain.GuardDeny, "remote says no"}, a)
 	assert.Equal(t, 1, tries)
 
 	// 503 then 429 (Retry-After 7s, capped to max_backoff 5s), then the answer.
@@ -87,7 +87,7 @@ func TestHookURLRetry(t *testing.T) {
 
 	// Out of tries: deny with the last error.
 	a = run(http.StatusBadGateway, http.StatusBadGateway, http.StatusBadGateway)
-	assert.Equal(t, rpc.GuardDeny, a.Decision)
+	assert.Equal(t, domain.GuardDeny, a.Decision)
 	assert.Contains(t, a.Reason, "HTTP 502")
 	assert.Contains(t, a.Reason, "after 3 tries")
 	assert.Equal(t, 3, tries)

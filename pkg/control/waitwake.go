@@ -6,7 +6,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // The controller side of targeted wait wakes (#679). waitengine.Wakes
@@ -27,7 +27,7 @@ func (c *Controller) wakeWaitsSubjects(subjects ...string) {
 }
 
 // wakeWaitsFor wakes the waits new inbox items name.
-func (c *Controller) wakeWaitsFor(items []store.InboxItem) {
+func (c *Controller) wakeWaitsFor(items []domain.InboxItem) {
 	if c.waitWakes.Items(items) {
 		c.signalWaits()
 	}
@@ -104,8 +104,8 @@ func (c *Controller) untilNextTime(ctx context.Context) time.Duration {
 }
 
 // nextWaitTime is untilNextTime over ts.
-func (c *Controller) nextWaitTime(ts []store.Ticket) time.Duration {
-	var ws []store.Wait
+func (c *Controller) nextWaitTime(ts []domain.Ticket) time.Duration {
+	var ws []domain.Wait
 	for _, t := range ts {
 		if w := waitOf(t); w != nil {
 			ws = append(ws, *w)

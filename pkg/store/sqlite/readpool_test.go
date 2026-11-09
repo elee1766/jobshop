@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -18,7 +19,7 @@ func TestReadsDoNotWaitOnWriter(t *testing.T) {
 	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
-	a, err := store.Create(ctx, s, "test", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "a"})
+	a, err := store.Create(ctx, s, "test", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "a"})
 	require.NoError(t, err)
 
 	err = s.WriteTx(ctx, func(tx *sql.Tx) error {

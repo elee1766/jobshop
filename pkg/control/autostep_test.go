@@ -21,8 +21,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // autoServer is an http step target that records requests.
@@ -191,9 +191,9 @@ func passUntilWall(t *testing.T, root config.Root, cond func() bool, msg string)
 	}, 30*time.Second, 10*time.Millisecond, msg)
 }
 
-func stepFields(t *testing.T, s store.Ticket) store.StepFields {
+func stepFields(t *testing.T, s domain.Ticket) domain.StepFields {
 	t.Helper()
-	f, err := store.DecodeFields[store.StepFields](s)
+	f, err := domain.DecodeFields[domain.StepFields](s)
 	require.NoError(t, err)
 	return f
 }
@@ -218,17 +218,17 @@ func TestAutoStepsMixedRun(t *testing.T) {
 
 	passUntilWall(t, root, func() bool {
 		s := showRun(t, admin, r.Run.ID).Steps[0]
-		return stepFields(t, s).Result == "not_yet" && s.Status == store.StatusOpen
+		return stepFields(t, s).Result == "not_yet" && s.Status == domain.StatusOpen
 	}, "probe deferred")
 	s := showRun(t, admin, r.Run.ID).Steps[0]
 	assert.Equal(t, 0, stepFields(t, s).Failures, "not yet is not a failure")
 	assert.Equal(t, clk.Now().Add(time.Minute), s.DeferUntil.UTC())
 	pass(t, root.Dir, 2)
-	assert.Equal(t, store.StatusOpen, showRun(t, admin, r.Run.ID).Steps[0].Status, "deferred until retry_after")
+	assert.Equal(t, domain.StatusOpen, showRun(t, admin, r.Run.ID).Steps[0].Status, "deferred until retry_after")
 
 	clk.Advance(time.Minute)
 	passUntilWall(t, root, func() bool {
-		return showRun(t, admin, r.Run.ID).Steps[1].Status == store.StatusClosed
+		return showRun(t, admin, r.Run.ID).Steps[1].Status == domain.StatusClosed
 	}, "probe and notify done")
 	res := showRun(t, admin, r.Run.ID)
 	pf := stepFields(t, res.Steps[0])
@@ -249,9 +249,9 @@ func TestAutoStepsMixedRun(t *testing.T) {
 	assert.Equal(t, "dev", res.Steps[2].Pool)
 	assert.NotEqual(t, probe, res.Steps[2].ID)
 	closeStep(t, admin, res.Steps[2].ID, "done")
-	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone }, "run done")
+	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunDone }, "run done")
 
-	var orphans []store.Ticket
+	var orphans []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Orphaned: true}, &orphans))
 	assert.Empty(t, orphans, "command and http steps are not orphans")
 }
@@ -266,7 +266,7 @@ func TestAutoStepGoTemplate(t *testing.T) {
 	root := autoRoot(t, ts.URL)
 	admin, _ := startAuto(t, root, clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)))
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "gomixed", Vars: map[string]string{"issue": "9"}})
-	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone }, "run done")
+	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunDone }, "run done")
 	bodies, _ := srv.snapshot()
 	require.Len(t, bodies, 1)
 	assert.JSONEq(t, `{"sha":"go9","issue":"9"}`, bodies[0])
@@ -300,15 +300,15 @@ func TestAutoStepFailureEscalates(t *testing.T) {
 	root := autoRoot(t, "http://127.0.0.1:1")
 	admin, _ := startAuto(t, root, clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)))
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "failing", Vars: map[string]string{"issue": "1"}})
-	devTickets := func() []store.Ticket {
-		var esc []store.Ticket
+	devTickets := func() []domain.Ticket {
+		var esc []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Pool: "dev"}, &esc))
 		return esc
 	}
 	// The run goes needs-human before the escalation ticket is written:
 	// wait for both.
 	passUntilWall(t, root, func() bool {
-		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman && len(devTickets()) > 0
+		return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunNeedsHuman && len(devTickets()) > 0
 	}, "needs human with escalation")
 	s := showRun(t, admin, r.Run.ID).Steps[0]
 	assert.Equal(t, "failed", s.Resolution)
@@ -351,7 +351,7 @@ func TestAutoStepRestart(t *testing.T) {
 
 			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 			admin, _ = startAuto(t, root, clk)
-			passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone }, "run done")
+			passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunDone }, "run done")
 			keys := keyLines(t, root)
 			require.Len(t, keys, 2, "one attempt per controller, none duplicated")
 			f := stepFields(t, showRun(t, admin, r.Run.ID).Steps[0])
@@ -384,7 +384,7 @@ func TestAutoStepHTTPRestart(t *testing.T) {
 	srv.block = false
 	srv.mu.Unlock()
 	admin, _ = startAuto(t, root, clk)
-	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone }, "run done")
+	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunDone }, "run done")
 	_, keys := srv.snapshot()
 	require.Len(t, keys, 2)
 	assert.Equal(t, keys[0], keys[1], "same Idempotency-Key after restart")
@@ -467,7 +467,7 @@ func testCommandStepWorktree(t *testing.T, sandbox bool) {
 	admin, _ := startAuto(t, root, clk)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "wt", Vars: map[string]string{"issue": "9"}})
 	passUntilWall(t, root, func() bool {
-		return showRun(t, admin, r.Run.ID).Steps[1].Status == store.StatusClosed
+		return showRun(t, admin, r.Run.ID).Steps[1].Status == domain.StatusClosed
 	}, "steps done")
 	res := showRun(t, admin, r.Run.ID)
 	work := filepath.Join(root.Dir, "runs", r.Run.ID, "work")
@@ -486,7 +486,7 @@ func testCommandStepWorktree(t *testing.T, sandbox bool) {
 	// State is written before the close that removes the dir.
 	passUntilWall(t, root, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "runs", r.Run.ID))
-		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone && os.IsNotExist(err)
+		return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunDone && os.IsNotExist(err)
 	}, "run done and run dir removed")
 	out, err := exec.Command("git", "-C", repo, "worktree", "list").Output()
 	require.NoError(t, err)

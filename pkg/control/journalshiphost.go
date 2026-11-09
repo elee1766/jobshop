@@ -7,6 +7,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -35,28 +36,28 @@ func (h shipHost) Redactor(session string) *redact.Redactor {
 	return h.c.redactor(journalread.Env(h.c.root.SessionDir(session)))
 }
 
-func (h shipHost) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
+func (h shipHost) List(ctx context.Context, f store.Filter) ([]domain.Ticket, error) {
 	return h.c.store.List(ctx, f)
 }
 
 func (h shipHost) SaveCursor(ctx context.Context, session string, seq int64) error {
-	return h.c.updateSessionFields(ctx, session, func(f *store.SessionFields) { f.ShippedSeq = max(f.ShippedSeq, seq) })
+	return h.c.updateSessionFields(ctx, session, func(f *domain.SessionFields) { f.ShippedSeq = max(f.ShippedSeq, seq) })
 }
 
 // Work is a ticket's run, workflow and step, for row fields.
 func (h shipHost) Work(id string) journal.Work {
 	ctx := context.WithoutCancel(h.c.ctx)
 	t, err := h.c.store.Get(ctx, id)
-	if err != nil || t.Kind != store.KindStep {
+	if err != nil || t.Kind != domain.KindStep {
 		return journal.Work{}
 	}
-	sf, err := store.DecodeFields[store.StepFields](t)
+	sf, err := domain.DecodeFields[domain.StepFields](t)
 	if err != nil {
 		return journal.Work{}
 	}
 	w := journal.Work{Run: sf.Run, Step: sf.Step}
 	if run, err := h.c.store.Get(ctx, sf.Run); err == nil {
-		if rf, err := store.DecodeFields[store.RunFields](run); err == nil {
+		if rf, err := domain.DecodeFields[domain.RunFields](run); err == nil {
 			w.Workflow = rf.Workflow
 		}
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -53,10 +54,10 @@ func TestHookPreparedPlanRespectsRevokedInstanceScope(t *testing.T) {
 	created, err := db.Apply(t.Context(), "test", graph)
 	require.NoError(t, err)
 	run := created[0]
-	fields, err := store.DecodeFields[store.RunFields](run)
+	fields, err := domain.DecodeFields[domain.RunFields](run)
 	require.NoError(t, err)
 	in := hooks.Invocation{
-		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: store.RunRunning},
+		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: domain.RunRunning},
 		ReadSet: map[string]int64{run.ID: run.Revision}, Entry: fields.Automation.OnStart, Digest: fields.Automation.Digest,
 		Actions: []automation.Action{{Kind: "start_step", ID: "work", Pool: "dev", Prompt: "work"}},
 	}
@@ -121,11 +122,11 @@ func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
 	created, err := db.Apply(t.Context(), "test", graph)
 	require.NoError(t, err)
 	run := created[0]
-	fields, err := store.DecodeFields[store.RunFields](run)
+	fields, err := domain.DecodeFields[domain.RunFields](run)
 	require.NoError(t, err)
 	require.True(t, hooks.ScopedRunPin(fields.Automation.Digest))
 	in := hooks.Invocation{
-		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: store.RunRunning},
+		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: domain.RunRunning},
 		Entry: fields.Automation.OnStart, Digest: fields.Automation.Digest,
 		Actions: []automation.Action{{Kind: "finish_run", Outcome: "done"}},
 	}
@@ -150,7 +151,7 @@ func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
 	assert.ErrorContains(t, err, "accepted reference scope", "resume")
 	after, err := db.Get(t.Context(), run.ID)
 	require.NoError(t, err)
-	assert.NotEqual(t, store.StatusClosed, after.Status)
+	assert.NotEqual(t, domain.StatusClosed, after.Status)
 }
 
 // A callback-started static run is checked too: a retry pool that moved to
@@ -189,10 +190,10 @@ func TestHookPreparedStaticChildRejectsRetryProjectDrift(t *testing.T) {
 	created, err := db.Apply(t.Context(), "test", graph)
 	require.NoError(t, err)
 	run := created[0]
-	fields, err := store.DecodeFields[store.RunFields](run)
+	fields, err := domain.DecodeFields[domain.RunFields](run)
 	require.NoError(t, err)
 	in := hooks.Invocation{
-		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: store.RunRunning},
+		Run: run.ID, RunInput: &hooks.Run{ID: run.ID, Workflow: "work", Project: "js", State: domain.RunRunning},
 		ReadSet: map[string]int64{run.ID: run.Revision}, Entry: fields.Automation.OnStart, Digest: fields.Automation.Digest,
 		Actions: []automation.Action{{Kind: "start_run", Workflow: "child", Key: "child"}},
 	}
@@ -210,5 +211,5 @@ func TestHookPreparedStaticChildRejectsRetryProjectDrift(t *testing.T) {
 	c.live.Store(current)
 	assert.ErrorContains(t, c.applyPlannedHook(t.Context(), "plan", in), "planned pool retry changed")
 	_, err = store.OpenRun(t.Context(), db, "child", "child")
-	assert.ErrorIs(t, err, store.ErrNotFound, "no child run may be written")
+	assert.ErrorIs(t, err, domain.ErrNotFound, "no child run may be written")
 }

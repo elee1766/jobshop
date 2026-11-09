@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func postJSON(h http.Handler, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -42,9 +42,9 @@ func TestChatSend(t *testing.T) {
 	assert.Equal(t, rpc.MethodSessionSend+` {"id":"s9","text":"stop","interrupt":true,"attach":true}`, ctl.calls[len(ctl.calls)-1])
 
 	// Selecting a managed chat needs no all-session lookup or rw-attach grant.
-	fields, err := json.Marshal(store.SessionFields{Key: "desk:chosen"})
+	fields, err := json.Marshal(domain.SessionFields{Key: "desk:chosen"})
 	require.NoError(t, err)
-	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: store.Ticket{ID: "s1", Kind: store.KindSession, Fields: fields}}
+	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: domain.Ticket{ID: "s1", Kind: domain.KindSession, Fields: fields}}
 	ctl.calls = nil
 	w = postJSON(h, "/api/chat/send", `{"session":"s1","key":"desk:chosen","text":"selected"}`, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -62,7 +62,7 @@ func TestChatSend(t *testing.T) {
 	}
 
 	// A refused rw attach is a 400 with the controller's reason.
-	ctl.results[rpc.MethodSessionSend] = fmt.Errorf("%w: pool does not allow rw attach", store.ErrInvalid)
+	ctl.results[rpc.MethodSessionSend] = fmt.Errorf("%w: pool does not allow rw attach", domain.ErrInvalid)
 	w = postJSON(h, "/api/chat/send", `{"session":"s9","text":"x"}`, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "rw attach")
@@ -117,7 +117,7 @@ func TestChatAccess(t *testing.T) {
 	// The probe is an attach send with no text, which delivers nothing.
 	assert.Equal(t, rpc.MethodSessionSend+` {"id":"s1","text":"","attach":true}`, ctl.calls[0])
 
-	ctl.results[rpc.MethodSessionSend] = fmt.Errorf("%w: set attach: rw", store.ErrInvalid)
+	ctl.results[rpc.MethodSessionSend] = fmt.Errorf("%w: set attach: rw", domain.ErrInvalid)
 	get(t, h, "/api/session/s1/access", &a)
 	assert.False(t, a.Write)
 	assert.Contains(t, a.Reason, "attach: rw")
@@ -125,8 +125,8 @@ func TestChatAccess(t *testing.T) {
 
 func TestChatList(t *testing.T) {
 	sess := func(id, pool, key string) rpc.SessionInfo {
-		f, _ := json.Marshal(store.SessionFields{Key: key, Agent: "a"})
-		return rpc.SessionInfo{ID: id, Alive: true, Ticket: &store.Ticket{ID: id, Pool: pool, Fields: f}}
+		f, _ := json.Marshal(domain.SessionFields{Key: key, Agent: "a"})
+		return rpc.SessionInfo{ID: id, Alive: true, Ticket: &domain.Ticket{ID: id, Pool: pool, Fields: f}}
 	}
 	ctl := &fakeCtl{results: map[string]any{rpc.MethodSessionList: []rpc.SessionInfo{
 		sess("s1", "operator", "matrix:!r:$e"), sess("s2", "dev", ""), sess("s3", "operator", "desk:abc"),
@@ -149,7 +149,7 @@ func TestChatList(t *testing.T) {
 func TestChatSendEscalation(t *testing.T) {
 	ctl := &fakeCtl{results: map[string]any{
 		rpc.MethodSessionSend: rpc.SessionSendResult{Session: "s1"},
-		rpc.MethodTicketShow: rpc.ShowResult{Ticket: store.Ticket{
+		rpc.MethodTicketShow: rpc.ShowResult{Ticket: domain.Ticket{
 			ID:   "js-e",
 			Meta: []byte(`{"escalation":{"key":"escalation:js-e","pool":"esc-chat","session":"s1"}}`),
 		}},
@@ -160,7 +160,7 @@ func TestChatSendEscalation(t *testing.T) {
 	assert.Equal(t, rpc.MethodSessionSend+` {"pool":"esc-chat","key":"escalation:js-e","text":"resume it"}`, ctl.calls[len(ctl.calls)-1])
 
 	// A ticket without that chat is refused.
-	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: store.Ticket{ID: "js-x"}}
+	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: domain.Ticket{ID: "js-x"}}
 	w = postJSON(h, "/api/chat/send", `{"key":"escalation:js-x","text":"x"}`, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

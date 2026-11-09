@@ -14,6 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -35,7 +36,7 @@ func TestSessionScope(t *testing.T) {
 	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
 
 	admin := dial(t, root.AdminSocket())
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var sess rpc.SessionNewResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &sess))
@@ -53,16 +54,16 @@ func TestSessionScope(t *testing.T) {
 	err = s.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{}, &cl)
 	require.NoError(t, err, "claim --next resumes held work")
 
-	var follow store.Ticket
+	var follow domain.Ticket
 	require.NoError(t, s.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "follow-up"}, &follow))
 	assert.Equal(t, "dev", follow.Pool, "a session's task with no pool goes to its own pool")
 
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sess.Ticket.ID}, nil))
-	var got store.Ticket
+	var got domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {
-		Ticket *store.Ticket `json:"ticket"`
+		Ticket *domain.Ticket `json:"ticket"`
 	}{&got}))
-	assert.Equal(t, store.StatusOpen, got.Status, "closing a session releases its claims")
+	assert.Equal(t, domain.StatusOpen, got.Status, "closing a session releases its claims")
 	_, err = os.Stat(sess.Socket)
 	assert.ErrorIs(t, err, os.ErrNotExist, "session socket is removed")
 }
@@ -129,7 +130,7 @@ func TestSessionListEnded(t *testing.T) {
 	assert.Len(t, ids(rpc.SessionListParams{All: true}), 3)
 
 	err = admin.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{Since: -time.Hour}, nil)
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 // Session lists have no cursor, so old history must not hide newer chats.
@@ -143,7 +144,7 @@ func TestSessionListBeyondDefaultPage(t *testing.T) {
 	seedStore(t, root, func(st store.Store) {
 		g := store.Graph{Close: map[string]string{}}
 		for i := range store.DefaultLimit {
-			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-s-old%d", i), Project: "js", Kind: store.KindSession, Title: "dev jcode session", Pool: "dev", Fields: []byte(`{"agent":"jcode","ended":{}}`)})
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-s-old%d", i), Project: "js", Kind: domain.KindSession, Title: "dev jcode session", Pool: "dev", Fields: []byte(`{"agent":"jcode","ended":{}}`)})
 			g.Close[g.Tickets[i].ID] = "done"
 		}
 		_, err := st.Apply(t.Context(), "test", g)
@@ -177,7 +178,7 @@ func TestMetaPacks(t *testing.T) {
 	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
 
 	admin := dial(t, root.AdminSocket())
-	var tk store.Ticket
+	var tk domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Meta: []byte(`{"github":{"n":1},"gx":{}}`)}, &tk))
 	err = admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Meta: []byte(`{"gihtub":{}}`)}, nil)
 	require.ErrorContains(t, err, "unknown pack")
