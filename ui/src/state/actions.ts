@@ -57,6 +57,8 @@ export function navigate(view: View, section: Section = currentRoute().section, 
   if (view !== 'home') store.set(phoneTabAtom, 'more');
   const url = currentURL();
   url.searchParams.set('view', view);
+  // An embed id belongs to the embed view only.
+  if (view !== 'embed') url.searchParams.delete('embed');
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);

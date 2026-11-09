@@ -60,6 +60,7 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 			{"system", s.systemView},
 			{"chats", s.chatList},
 			{"improvements", s.improvements},
+			{"embeds", s.embedList},
 		}
 		if ref := r.URL.Query().Get("trace"); ref != "" {
 			readers = append(readers, section{"trace", func(request *http.Request) (any, error) {

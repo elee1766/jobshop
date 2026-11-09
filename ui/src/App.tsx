@@ -1,11 +1,12 @@
 import { Provider, useAtom, useAtomValue } from 'jotai';
 import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { Chat } from './screens/Chat.tsx';
+import { Embed } from './screens/Embed.tsx';
 import { Home } from './screens/Home.tsx';
 import { LiveOwner, useTabLifecycle } from './components/LiveOwner.tsx';
 import { useDeskRoute, viewLabel, views } from './lib/route.ts';
 import { goSection, hideChat, navigate, openTrace, showChat, showSection, toggleSince } from './state/actions.ts';
-import { connectedAtom, errorAtom, systemAtom, attention } from './state/live.ts';
+import { connectedAtom, embedsAtom, errorAtom, systemAtom, attention } from './state/live.ts';
 import { store } from './state/store.ts';
 import { chatHiddenAtom, chatOpenAtom, keyboardAtom, phoneTabAtom } from './state/ui.ts';
 
@@ -136,6 +137,7 @@ function Desk() {
             {route.view === 'trace' && <Trace />}
             {route.view === 'improvements' && <Learn />}
             {route.view === 'system' && <System />}
+            {route.view === 'embed' && <Embed />}
           </Suspense>
         </main>
         <aside className="chat-column" aria-label="Chats">
@@ -156,10 +158,11 @@ function Header() {
   const route = useDeskRoute();
   const connected = useAtomValue(connectedAtom);
   const system = useAtomValue(systemAtom);
+  const embeds = useAtomValue(embedsAtom);
   return (
     <header className="tag top">
       <b className="mono">desk</b>
-      <nav aria-label="Main">
+      <nav aria-label="Main" className={embeds && embeds.length > 0 ? 'has-embeds' : undefined}>
         {views.map((page) => (
           <button
             key={page}
@@ -169,6 +172,24 @@ function Header() {
             {viewLabel[page]}
           </button>
         ))}
+        {embeds && embeds.length > 0 && (
+          // The configured tabs (JOB-151) follow the built-in views in config order.
+          <span className="embeds">
+            {embeds.map((embed) => {
+              const chosen = route.view === 'embed' && route.embed === embed.id;
+              return (
+                <button
+                  key={embed.id}
+                  className={chosen ? 'chosen' : undefined}
+                  aria-current={chosen ? 'page' : undefined}
+                  onClick={() => navigate('embed', '', { embed: embed.id })}
+                >
+                  {embed.label}
+                </button>
+              );
+            })}
+          </span>
+        )}
         <span className="divider">|</span>
         <button className={route.since ? 'chosen' : undefined} onClick={toggleSince}>
           catch-up

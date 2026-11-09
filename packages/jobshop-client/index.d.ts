@@ -99,6 +99,15 @@ export interface SystemView {
   ingest: IngestWorkersResult;
   automation: AutomationList;
 }
+export interface EmbedView {
+  id: string;
+  label: string;
+  url: string;
+  /** The complete iframe sandbox attribute value. */
+  sandbox: string;
+  /** The iframe allow attribute value. */
+  allow?: string;
+}
 export interface LiveState {
   attention: AttentionResult;
   overview: { runs: RunResult[]; truncated: boolean };
@@ -106,6 +115,7 @@ export interface LiveState {
   automation: AutomationAudit | { id: string; error: string };
   chats: { pool: string; sessions: ChatSession[] };
   improvements: { learnings: Learning[]; edits: MemoryEdit[] };
+  embeds: { embeds: EmbedView[] };
   trace: TraceView | { error: string };
   desk: Event;
   scheduler: Event;

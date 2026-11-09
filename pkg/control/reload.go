@@ -170,6 +170,10 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 			c.mu.Lock()
 			c.configErr, c.watchErr = "", ""
 			c.mu.Unlock()
+			// Desk reads desk.embeds from the config: tell its live streams.
+			if c.events != nil {
+				c.events.publish([]rpc.Event{{Kind: rpc.EventKindState}})
+			}
 			// A removed pool orphans its queue; say so now, not next tick.
 			c.passStep(ctx, cfg, "report_orphans", c.reportOrphans)
 			return nil

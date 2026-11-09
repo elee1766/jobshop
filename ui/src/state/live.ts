@@ -3,6 +3,7 @@ import type { AttentionItem, Event, Learning, MemoryEdit, RunResult } from '../.
 import type {
   AutomationAudit,
   ChatSession,
+  EmbedView,
   LiveEvent,
   SystemView,
   TraceView,
@@ -27,6 +28,9 @@ export const chats = collection<ChatSession>((chat) => chat.id);
 
 export const systemAtom = atom<SystemView | null>(null);
 export const improvementsAtom = atom<{ learnings: Learning[]; edits: MemoryEdit[] } | null>(null);
+// The configured iframe tabs (desk.embeds). Null until the first snapshot, so
+// a direct link does not claim an embed is missing before Desk has asked.
+export const embedsAtom = atom<EmbedView[] | null>(null);
 export const traceAtom = atom<TraceView | null>(null);
 // The ticket the trace page details: the inspected one, else the root.
 export const selectedAtom = atom<TraceView['ticket'] | null>(null);
@@ -78,6 +82,9 @@ function receive(event: LiveEvent) {
     case 'improvements':
       store.set(improvementsAtom, (prev) => reconcile(prev, event.data));
       break;
+    case 'embeds':
+      store.set(embedsAtom, (prev) => reconcile(prev, event.data.embeds));
+      break;
     case 'trace': {
       if (parseRoute(location.search, location.hash).view !== 'trace') break;
       if ('error' in event.data) {
@@ -122,6 +129,7 @@ export function resetLive() {
   chats.clear(store);
   store.set(systemAtom, null);
   store.set(improvementsAtom, null);
+  store.set(embedsAtom, null);
   store.set(traceAtom, null);
   store.set(selectedAtom, null);
   store.set(auditAtom, null);

@@ -469,6 +469,10 @@ type Desk struct {
 	Plugins map[string]any `yaml:"plugins,omitempty" json:"plugins,omitempty"`
 	// RPC narrows (deny) or widens (allow) methods API clients may call.
 	RPC DeskRPC `yaml:"rpc,omitempty" json:"rpc"`
+	// Embeds are web apps Desk shows as iframe tabs after the built-in
+	// navigation, in this order (JOB-151). Service config only: a pack
+	// cannot add one.
+	Embeds []DeskEmbed `yaml:"embeds,omitempty" json:"embeds,omitempty"`
 }
 
 // DeskRPC holds path.Match globs over admin method names.
@@ -486,7 +490,7 @@ func (d Desk) validate() error {
 			return fmt.Errorf("desk.rpc: bad glob %q: %w", g, err)
 		}
 	}
-	return nil
+	return checkEmbeds(d.Embeds)
 }
 
 // Attention configures the attention view: what waits on a human.
