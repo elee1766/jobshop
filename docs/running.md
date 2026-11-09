@@ -43,7 +43,7 @@ For service YAML, CUE packs, Starlark callbacks and migration, start at
 - **Humans.** Workers report progress and ask questions (`jobshop
   report`). Questions and escalations go to the `attention` list and Desk,
   and optionally to an A2A peer (below).
-- **Desk and A2A.** Desk is a web UI (Svelte) and HTTP API over the admin
+- **Desk and A2A.** Desk is a web UI (React) and HTTP API over the admin
   socket. It shows tickets, runs, sessions and attention, and has chat
   with operator sessions. An A2A gateway hands escalation chats to
   another agent. The Matrix and Discord gateways were removed

@@ -15,17 +15,16 @@ buildNpmPackage {
       ../ui/package.json
       ../ui/package-lock.json
       ../ui/index.html
-      ../ui/vite.config.js
-      ../ui/svelte.config.js
-      ../ui/jsconfig.json
-      ../ui/shell
+      ../ui/vite.config.ts
+      ../ui/tsconfig.json
+      ../ui/src
       ../ui/kit
       ../ui/public
       ../packages/jobshop-client
     ];
   };
   sourceRoot = "source/ui";
-  npmDepsHash = "sha256-3fDXmh4FkdU1CvJ7eQ5yze1MFn+kT5ulNDL76H65Jhs=";
+  npmDepsHash = "sha256-S1xv+UoTjJFSrmHSiN8HYWL+U77neUzh7SK9L8Ei/zs=";
   npmBuildFlags = [
     "--"
     "--outDir"

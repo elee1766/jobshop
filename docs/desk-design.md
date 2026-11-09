@@ -19,8 +19,9 @@ accessibility, useful features, error handling and clear feedback.
   hierarchy. Avoid decorative cards, shadows, gradients and excessive nesting.
 - The light theme uses pale paper, cyan tag bars, yellow selection and restrained
   borders. Use the existing dark theme rather than hardcoding light colors.
-- `ui/shell/tokens.css` is the source of truth for colors, typography, spacing and
-  control dimensions. `ui/shell/app.css` holds shared element and layout styles.
+- `ui/src/tokens.css` is the source of truth for colors, typography, spacing and
+  control dimensions. `ui/src/app.css` holds shared element and layout styles,
+  and `ui/src/index.css` maps the tokens into Tailwind's theme.
   Reuse semantic tokens. Add a shared token only for a real recurring need.
 - Align text baselines, visible text insets and adjacent controls. Bars serving
   the same role should share height and padding. A matching outer box alone does
