@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.24](https://github.com/elee1766/jobshop/compare/v0.9.23...v0.9.24) (2026-11-09)
+
+
+### Bug fixes
+
+* **cli:** serve falls back to the last good config for telemetry ([#1128](https://github.com/elee1766/jobshop/issues/1128)) ([#1130](https://github.com/elee1766/jobshop/issues/1130)) ([427d892](https://github.com/elee1766/jobshop/commit/427d8929e2721c8ed294cd585acfa45340428482))
+
 ## [0.9.23](https://github.com/elee1766/jobshop/compare/v0.9.22...v0.9.23) (2026-11-09)
 
 
