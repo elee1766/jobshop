@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // designPack is the three example workflows from docs/plan.md section 6,
@@ -78,9 +80,9 @@ func TestWorkflowsLoad(t *testing.T) {
 	assert.Equal(t, "Merge it. Cost: $5.\n", pr.Steps[1].Prompt)
 	assert.Empty(t, pr.Steps[0].PromptFile)
 	assert.Equal(t, 3, pr.Steps[0].RetryLimit())
-	assert.Equal(t, map[string]any{"repo": "/src", PackPrefixVar: ""}, pr.PackVars)
+	assert.Equal(t, map[string]any{"repo": "/src", pack.PrefixVar: ""}, pr.PackVars)
 	assert.Equal(t, 1, c.Workflows["blocker-check"].Steps[0].RetryLimit())
-	assert.Equal(t, []string{filepath.Join(dir, "p", PackFileName)}, c.Sources["workflows.pr-work"])
+	assert.Equal(t, []string{filepath.Join(dir, "p", pack.FileName)}, c.Sources["workflows.pr-work"])
 }
 
 func TestWorkflowDefaults(t *testing.T) {
@@ -145,7 +147,7 @@ func TestWorkflowErrors(t *testing.T) {
 			_, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.want)
-			assert.True(t, strings.Contains(err.Error(), filepath.Join("p", PackFileName)), "names the pack: %v", err)
+			assert.True(t, strings.Contains(err.Error(), filepath.Join("p", pack.FileName)), "names the pack: %v", err)
 		})
 	}
 }

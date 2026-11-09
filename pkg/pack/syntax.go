@@ -1,15 +1,14 @@
-package config
+package pack
 
 import (
 	"fmt"
 	"regexp"
 	"sort"
-
-	"github.com/elee1766/jobshop/pkg/config/tmpl"
 )
 
-// Pack templates are Go text/template with missingkey=error and
-// tmpl.Funcs (#383). The older ${name} syntax was removed in #566.
+// Pack templates are Go text/template with missingkey=error and the
+// functions in pack/tmpl (#383). The older ${name} syntax was removed in
+// #566.
 
 // templateGo is the only accepted value of a pack's template: key, kept
 // as a no-op for one release so packs that still set it load.
@@ -22,9 +21,9 @@ func checkSyntax(s string) error {
 	return nil
 }
 
-// placeholder is the load-time value of a var filled later (check
+// Placeholder is the load-time value of a var filled later (check
 // output, scan vars): a reference to itself, left for the later render.
-func placeholder(name string) string {
+func Placeholder(name string) string {
 	return "{{." + name + "}}"
 }
 
@@ -62,14 +61,4 @@ func leftoverVars(m map[string]any, file string) []string {
 	walk(m, "")
 	sort.Strings(keys)
 	return keys
-}
-
-// Fill renders the Go template s from vars. A missing var is an error.
-func Fill(s string, vars map[string]any) (string, error) {
-	return tmpl.Render(s, vars)
-}
-
-// refs returns the var names s references.
-func refs(s string) ([]string, error) {
-	return tmpl.Vars(s)
 }

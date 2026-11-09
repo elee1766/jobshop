@@ -7,7 +7,7 @@
   the key still use `${name}` / `$$` and load unchanged. Each pack's own
   syntax applies to its own files, so a `${}` pack can extend or sit next
   to a `go` pack.
-- `pkg/config/tmpl` parses with `missingkey=error` and a small FuncMap:
+- `pkg/pack/tmpl` (was `pkg/pack/tmpl` (was `pkg/config/tmpl` until JOB-172) until JOB-172) parses with `missingkey=error` and a small FuncMap:
   `default`, `join`, `quote`, `lower`, `indent`, `toYAML`. No shell or
   file access.
 - Same two passes as before. Load time renders pack vars into every

@@ -81,7 +81,7 @@ func rules() []Rule {
 			From: []string{
 				"./pkg/storage/store", "./pkg/storage/store/sqlite", "./pkg/storage/store/postgres", "./pkg/storage/store/storerules",
 				"./pkg/storage/store/writekey", "./pkg/knowledge", "./pkg/knowledge/memory",
-				"./pkg/config", "./pkg/config/tmpl", "./pkg/cron", "./pkg/ids", "./pkg/packcue",
+				"./pkg/config", "./pkg/config/cron", "./pkg/ids", "./pkg/pack", "./pkg/pack/cue", "./pkg/pack/tmpl",
 				"./pkg/integrations/apicall", "./pkg/integrations/github", "./pkg/integrations/linear", "./pkg/integrations/identity",
 				"./pkg/support/clock", "./pkg/support/redact", "./pkg/support/logctx", "./pkg/support/telemetry",
 				"./pkg/execution/automation/...", "./pkg/execution/automation",
@@ -100,12 +100,12 @@ func rules() []Rule {
 			To: []string{"go.starlark.net/..."},
 		},
 		{
-			Name:  "cue-only-in-packcue",
-			Why:   "CUE evaluation is the pack subsystem's. A package that evaluates CUE itself bypasses its no-registry rule.",
+			Name:  "cue-only-in-pack-cue",
+			Why:   "CUE evaluation is pack/cue's: pack loading and the step output schema check both go through it. A package that evaluates CUE itself bypasses its no-registry rule and grows a second evaluator.",
 			Scope: ProdAndTest,
 			From:  []string{"./pkg/...", "./cmd/..."},
 			Except: []string{
-				"./pkg/packcue",
+				"./pkg/pack/cue",
 			},
 			To: []string{"cuelang.org/go/..."},
 		},
@@ -160,7 +160,7 @@ func rules() []Rule {
 			Scope: Closure,
 			From: []string{
 				"./pkg/config", "./pkg/conversation/question", "./pkg/orchestration/scaleplan",
-				"./pkg/orchestration/workflow",
+				"./pkg/orchestration/workflow", "./pkg/pack", "./pkg/pack/cue", "./pkg/pack/tmpl",
 			},
 			To: []string{"./pkg/transport/rpc", "./pkg/storage/store"},
 		},
@@ -239,11 +239,19 @@ func rules() []Rule {
 func onlyRules() []Only {
 	return []Only{
 		{
+			Name:  "pack-is-independent",
+			Why:   "pack assembles files into a merged document and reports provenance. It is handed the few facts it needs as data, so it imports no service configuration, store, automation, provider or process package. config decodes its output and owns validation (JOB-172).",
+			From:  []string{"./pkg/pack"},
+			Allow: []string{"./pkg/pack/cue", "./pkg/pack/tmpl"},
+			Std:   true,
+			Third: true,
+		},
+		{
 			Name: "independent-leaves",
-			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, knowledge/memory by the CLI and the prompt rule without a database (JOB-170: it imports neither the store nor the learning and edit records in pkg/knowledge), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, runbook and flaky as development tools with one caller each. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
+			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, knowledge/memory by the CLI and the prompt rule without a database (JOB-170: it imports neither the store nor the learning and edit records in pkg/knowledge), pack/cue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, runbook and flaky as development tools with one caller each. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
 			From: []string{
-				"./pkg/support/clock", "./pkg/cron", "./pkg/support/logctx", "./pkg/support/redact", "./pkg/config/tmpl",
-				"./pkg/knowledge/memory", "./pkg/packcue", "./pkg/ids", "./pkg/integrations/apicall",
+				"./pkg/support/clock", "./pkg/config/cron", "./pkg/support/logctx", "./pkg/support/redact", "./pkg/pack/tmpl",
+				"./pkg/knowledge/memory", "./pkg/pack/cue", "./pkg/ids", "./pkg/integrations/apicall",
 				"./pkg/tooling/runbook", "./pkg/tooling/flaky",
 			},
 			Std:   true,

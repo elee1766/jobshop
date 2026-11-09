@@ -1,16 +1,15 @@
-package config
+package pack
 
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/goccy/go-yaml"
 )
 
 // loadRootPack keeps the composition file unprefixed; its children are
 // ordinary pack instances with their own vars and prefixes.
-func loadRootPack(path, dir string, rewrite func(string) string) ([]packLayer, []PackRef, error) {
+func (ld loader) loadRoot(path, dir string, rewrite func(string) string) ([]layer, []Ref, error) {
 	if path == "" {
 		return nil, nil, nil
 	}
@@ -25,13 +24,13 @@ func loadRootPack(path, dir string, rewrite func(string) string) ([]packLayer, [
 		path = rewrite(path)
 	}
 	if filepath.Ext(path) == ".cue" {
-		layers, err := loadCUEPack(path)
+		layers, err := ld.loadCUE(path)
 		if err != nil {
 			return nil, nil, packErr(err)
 		}
 		return layers, nil, nil
 	}
-	layers, err := loadPackFile(path, nil, "", 0, true)
+	layers, err := ld.loadPackFile(path, nil, "", 0, true)
 	if err != nil {
 		return nil, nil, packErr(err)
 	}
@@ -45,32 +44,13 @@ func loadRootPack(path, dir string, rewrite func(string) string) ([]packLayer, [
 			return nil, nil, packErr(fmt.Errorf("%s: packs[%d]: prefix %q must match %s", path, i, ref.Prefix, prefixPattern))
 		}
 		if !filepath.IsAbs(ref.Path) {
-			ref.Path = filepath.Join(fileDir(path), ref.Path)
+			ref.Path = filepath.Join(FileDir(path), ref.Path)
 		}
 	}
 	return layers, refs, nil
 }
 
-func packValidationError(err error, refs []PackRef, layers []packLayer) error {
-	if len(refs) > 0 && strings.Contains(err.Error(), PackFileName) {
-		return packErr(err)
-	}
-	for _, layer := range layers {
-		if strings.Contains(err.Error(), layer.file) {
-			return packErr(err)
-		}
-		for _, files := range layer.entrySources {
-			for _, file := range files {
-				if strings.Contains(err.Error(), file) {
-					return packErr(err)
-				}
-			}
-		}
-	}
-	return err
-}
-
-func rootPackRefs(m, vars map[string]any, head *packHead) error {
+func rootPackRefs(m, vars map[string]any, h *head) error {
 	raw, ok := m["packs"]
 	if !ok {
 		return nil
@@ -85,11 +65,11 @@ func rootPackRefs(m, vars map[string]any, head *packHead) error {
 		return err
 	}
 	var refs struct {
-		Packs []PackRef `yaml:"packs"`
+		Packs []Ref `yaml:"packs"`
 	}
 	if err := yaml.UnmarshalWithOptions(b, &refs, yaml.Strict()); err != nil {
 		return err
 	}
-	head.Packs = refs.Packs
+	h.Packs = refs.Packs
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/execution/automation"
 	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
+	packcue "github.com/elee1766/jobshop/pkg/pack/cue"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -310,7 +311,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if action.RetriesSet {
 				retries = action.Retries
 			}
-			if err := hooks.CheckSchema(action.OutputSchema, nil, false); err != nil {
+			if err := packcue.CheckSchema(action.OutputSchema, nil, false); err != nil {
 				return g, err
 			}
 			id, err := c.store.NewID(run.Project)

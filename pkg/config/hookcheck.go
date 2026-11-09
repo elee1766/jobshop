@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // checkHookPrograms compiles callbacks without credentials or capability grants.
-func (c *Config) checkHookPrograms(watch *WatchPaths) error {
+func (c *Config) checkHookPrograms(watch *pack.WatchPaths) error {
 	groups := map[string][]string{}
 	arities := map[string][]int{}
 	add := func(entry string, positional int) error {
@@ -42,17 +43,17 @@ func (c *Config) checkHookPrograms(watch *WatchPaths) error {
 		entries = slices.Compact(entries)
 		engine, err := automation.Load(context.Background(), dir, entries, options)
 		if err != nil {
-			return fmt.Errorf("%w: validate hooks in %s: %w", ErrPack, dir, err)
+			return fmt.Errorf("%w: validate hooks in %s: %w", pack.ErrPack, dir, err)
 		}
 		for _, entry := range entries {
 			for _, positional := range arities[filepath.Join(dir, entry)] {
 				if err := engine.CheckArity(entry, positional); err != nil {
-					return fmt.Errorf("%w: validate hook %s: %w", ErrPack, filepath.Join(dir, entry), err)
+					return fmt.Errorf("%w: validate hook %s: %w", pack.ErrPack, filepath.Join(dir, entry), err)
 				}
 			}
 		}
 		for _, file := range engine.Files() {
-			watch.addFile(file)
+			watch.AddFile(file)
 		}
 	}
 	return nil
@@ -64,7 +65,7 @@ func addHookEntry(groups map[string][]string, entry string) error {
 	}
 	file, function, ok := strings.Cut(entry, ":")
 	if !ok || function == "" {
-		return fmt.Errorf("%w: hook %q must be file.star:function", ErrPack, entry)
+		return fmt.Errorf("%w: hook %q must be file.star:function", pack.ErrPack, entry)
 	}
 	dir := filepath.Dir(file)
 	groups[dir] = append(groups[dir], filepath.Base(file)+":"+function)

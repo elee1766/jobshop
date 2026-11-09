@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestAutomationConfig(t *testing.T) {
@@ -50,7 +52,7 @@ func TestAutomationCapabilitiesAreHostOnly(t *testing.T) {
 		t.Run(key, func(t *testing.T) {
 			dir := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(dir, FileName), []byte("pack: pack.yaml\n"), 0o600))
-			require.NoError(t, os.WriteFile(filepath.Join(dir, PackFileName), []byte(key+": {enabled: true}\n"), 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, pack.FileName), []byte(key+": {enabled: true}\n"), 0o600))
 			_, err := LoadFile(filepath.Join(dir, FileName))
 			require.ErrorContains(t, err, key)
 		})

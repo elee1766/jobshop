@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestCUEPack(t *testing.T) {
@@ -91,7 +92,7 @@ pools: "demo-dev": max_sessions: 2
 	require.NoError(t, SaveLastGood(root.LastGood(), c))
 	writeFiles(t, dir, map[string]string{"packs/demo/broken.cue": "package demo\n#Pack: pools: broken: {agent: \"unknown\", dir: \".\", max_sessions: 0}\n"})
 	last, err := LoadOrLastGood(root)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	require.NotNil(t, last)
 	assert.Equal(t, c.Pools["demo-dev"].Agent, last.Pools["demo-dev"].Agent)
 	assert.Equal(t, c.Pools["demo-dev"].MaxSessions, last.Pools["demo-dev"].MaxSessions)
@@ -126,12 +127,12 @@ func TestCUEPackErrors(t *testing.T) {
 			writeFiles(t, dir, map[string]string{
 				FileName:             "pack: pack.cue\n",
 				"cue.mod/module.cue": "module: \"city.example/test@v0\"\nlanguage: version: \"v0.17.0\"\ndeps: \"remote.example/packs@v0\": {v: \"v0.1.0\", default: true}\n",
-				CUEPackFileName:      "package city\n" + tc.pack + "\n",
+				pack.CUEFileName:     "package city\n" + tc.pack + "\n",
 			})
 			_, err := LoadFile(filepath.Join(dir, FileName))
 			require.ErrorContains(t, err, tc.want)
-			assert.True(t, errors.Is(err, ErrPack))
-			assert.Contains(t, err.Error(), CUEPackFileName)
+			assert.True(t, errors.Is(err, pack.ErrPack))
+			assert.Contains(t, err.Error(), pack.CUEFileName)
 		})
 	}
 }

@@ -339,56 +339,6 @@ func checkTriggerOn(tr *Trigger) error {
 	return nil
 }
 
-// holdTemplates removes step templates from the raw workflows section so
-// pack var substitution leaves them alone. The returned func puts them
-// back.
-func holdTemplates(m map[string]any) func() {
-	type held struct {
-		step map[string]any
-		key  string
-		v    any
-	}
-	var hs []held
-	wfs, _ := m["workflows"].(map[string]any)
-	for _, w := range wfs {
-		wm, _ := w.(map[string]any)
-		steps, _ := wm["steps"].([]any)
-		for _, s := range steps {
-			sm, _ := s.(map[string]any)
-			for _, k := range templateKeys {
-				if v, ok := sm[k]; ok {
-					hs = append(hs, held{sm, k, v})
-					delete(sm, k)
-				}
-			}
-		}
-	}
-	return func() {
-		for _, h := range hs {
-			h.step[h.key] = h.v
-		}
-	}
-}
-
-// setPackVars records the declaring pack's vars on each workflow it
-// declares, and rejects a user-set pack_vars.
-func setPackVars(m map[string]any, vars map[string]any, file string) error {
-	wfs, _ := m["workflows"].(map[string]any)
-	for name, w := range wfs {
-		wm, _ := w.(map[string]any)
-		if wm == nil {
-			continue
-		}
-		if _, ok := wm["pack_vars"]; ok {
-			return fmt.Errorf("%s: workflows.%s: pack_vars is set by the loader", file, name)
-		}
-		if vars != nil {
-			wm["pack_vars"] = vars
-		}
-	}
-	return nil
-}
-
 // checkStepPool checks a step's pool. A pool naming a run var is checked
 // at run start (ResolvePool); one filled from pack vars alone is checked
 // here.
@@ -646,67 +596,6 @@ type EscalationChat struct {
 var EscalationVars = []string{
 	"ticket", "title", "cause", "reason", "body", "held", "held_title", "worker",
 	"run", "workflow", "step", "issue_ref", "pool", "quarantine", "error",
-}
-
-// escalationPassthrough returns vars plus each escalation var mapped to
-// its own reference, so pack substitution leaves them for the controller.
-// Escalation vars win over pack vars of the same name.
-func escalationPassthrough(vars map[string]any) map[string]any {
-	out := make(map[string]any, len(vars)+len(EscalationVars))
-	for k, v := range vars {
-		out[k] = v
-	}
-	for _, k := range EscalationVars {
-		out[k] = placeholder(k)
-	}
-	return out
-}
-
-// escalationPrompts are the inline prompt fields of an escalation block.
-var escalationPrompts = []string{"prompt", "pool_prompt", "hold_prompt"}
-
-// holdEscalationPrompts removes inline escalation prompts so pack var
-// substitution of the whole file leaves them alone; the returned func
-// puts them back. resolveEscalationFiles then substitutes them with the
-// escalation vars passed through.
-func holdEscalationPrompts(m map[string]any) func() {
-	type held struct {
-		e map[string]any
-		k string
-		v any
-	}
-	var hs []held
-	for _, b := range escalationBlocks(m) {
-		e, _ := b.(map[string]any)
-		for _, k := range escalationPrompts {
-			if v, ok := e[k]; ok {
-				hs = append(hs, held{e, k, v})
-				delete(e, k)
-			}
-		}
-	}
-	return func() {
-		for _, h := range hs {
-			h.e[h.k] = h.v
-		}
-	}
-}
-
-// escalationBlocks returns the raw escalation maps of m: the top-level
-// escalation block and each workflow's escalate block.
-func escalationBlocks(m map[string]any) map[string]any {
-	out := map[string]any{}
-	if e, ok := m["escalation"].(map[string]any); ok {
-		out["escalation"] = e
-	}
-	wfs, _ := m["workflows"].(map[string]any)
-	for n, w := range wfs {
-		wm, _ := w.(map[string]any)
-		if e, ok := wm["escalate"].(map[string]any); ok {
-			out["workflows."+n+".escalate"] = e
-		}
-	}
-	return out
 }
 
 // checkEscalation validates an escalation block.

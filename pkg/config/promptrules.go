@@ -5,6 +5,8 @@ import (
 	"path"
 	"path/filepath"
 	"time"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // Prompt rule positions (PromptRule.At).
@@ -221,7 +223,7 @@ func ruleGlobs(m RuleMatch) []string {
 func (c *Config) PoolPacks(pool string) []string {
 	var out []string
 	for _, f := range c.Sources["pools."+pool] {
-		if filepath.Base(f) == PackFileName {
+		if filepath.Base(f) == pack.FileName {
 			out = append(out, filepath.Base(filepath.Dir(f)))
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestInitRootPack(t *testing.T) {
@@ -23,7 +24,7 @@ func TestInitRootPack(t *testing.T) {
 
 	// A pre-existing pack must survive, without a dangling new service file.
 	dir = t.TempDir()
-	pack := filepath.Join(dir, config.PackFileName)
+	pack := filepath.Join(dir, packpkg.FileName)
 	require.NoError(t, os.WriteFile(pack, []byte("existing work\n"), 0o600))
 	require.ErrorIs(t, (initCmd{Dir: dir, Project: "work"}).Run(), os.ErrExist)
 	b, err := os.ReadFile(pack)

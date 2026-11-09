@@ -405,7 +405,7 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 	labels := map[string][]string{}
 	for _, in := range cfg.Instances {
 		for _, name := range in.Triggers {
-			labels[name] = config.InstanceLabels(in)
+			labels[name] = in.Labels()
 		}
 	}
 	for i := range out {

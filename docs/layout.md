@@ -109,9 +109,14 @@ jobshop/
 │   │   └── memory/           memory directory: files, skills, bounded rendering, scope
 │   │                         targets and file writes (#266). Imports nothing of the
 │   │                         module, so it works without the database
-│   ├── config/               YAML loading, validation, defaults; tmpl/ renders
-│   │                         config templates
-│   ├── packcue/              local CUE package evaluation for packs
+│   ├── config/               service configuration: YAML loading, validation,
+│   │   │                     defaults, last-good snapshot
+│   │   └── cron/             5-field schedule parser (JOB-172)
+│   ├── pack/                 pack assembly: root pack, instances, extends,
+│   │   │                     vars, prefixes, merge, provenance, watch paths.
+│   │   │                     Imports no config, store or provider (JOB-172)
+│   │   ├── cue/              standalone CUE evaluation and JSON Schema check
+│   │   └── tmpl/             Go text/template language for packs and config
 │   ├── transport/            external entry points, independent adapters (JOB-174).
 │   │   │                     No orchestration policy: they carry requests to the
 │   │   │                     controller's admin API and render the answers
@@ -304,7 +309,7 @@ Notes:
   generates IDs and the controller lock guarantees one writer, so the
   machine id never needs to vary. Chosen over xid (20 chars) for length;
   uniqueness is the same for a single writer.
-- Cron (decided 2026-11-01, issue #26): `pkg/cron` is a small 5-field
+- Cron (decided 2026-11-01, issue #26): `pkg/config/cron` is a small 5-field
   parser (about 150 lines), not `robfig/cron/v3`. Triggers need only
   `Parse` and `Next`. The controller tick does the scheduling, so the
   library's scheduler, seconds field and descriptors would be unused.

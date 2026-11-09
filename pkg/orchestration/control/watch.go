@@ -9,7 +9,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // configWatcher reloads the config after jobshop.yaml, an include or a
@@ -19,7 +19,7 @@ import (
 type configWatcher struct {
 	c       *Controller
 	w       *fsnotify.Watcher
-	paths   config.WatchPaths
+	paths   pack.WatchPaths
 	watched map[string]bool // dirs given to fsnotify
 	changed []string        // files changed since the last reload
 	timer   <-chan time.Time
@@ -94,7 +94,7 @@ func (cw *configWatcher) close() {
 
 // relevant reports whether a change at p is in the watch set.
 func (cw *configWatcher) relevant(p string) bool {
-	if config.IgnoredChange(p) {
+	if pack.IgnoredChange(p) {
 		return false
 	}
 	p = filepath.Clean(p)

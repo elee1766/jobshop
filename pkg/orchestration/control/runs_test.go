@@ -16,6 +16,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/orchestration/control"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/support/clock"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -39,7 +40,7 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(filepath.Join(pack, "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "impl.md"), []byte("Implement #{{.issue}} in {{.repo}}.\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), []byte(`workflows:
   pr:
     vars: [issue]
     issue: issue
@@ -86,7 +87,7 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	// A second pack instance's pool: a run var naming it fails the start (#880).
 	other := filepath.Join(dir, "ox")
 	require.NoError(t, os.MkdirAll(other, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(other, config.PackFileName), fmt.Appendf(nil, "pools:\n  ox-dev: {project: js, agent: fake, max_sessions: 0, dir: %q}\n", dir), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(other, packpkg.FileName), fmt.Appendf(nil, "pools:\n  ox-dev: {project: js, agent: fake, max_sessions: 0, dir: %q}\n", dir), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
     vars: {repo: /src, review_pool: refinery, dev_pool: refinery}

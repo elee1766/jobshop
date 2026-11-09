@@ -19,6 +19,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/support/telemetry"
 	"github.com/elee1766/jobshop/pkg/tooling/flaky"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
@@ -114,7 +115,7 @@ func (c initCmd) Run() error {
 		_ = os.Remove(r.Config())
 		return err
 	}
-	pack := filepath.Join(c.Dir, config.PackFileName)
+	pack := filepath.Join(c.Dir, packpkg.FileName)
 	f, err = os.OpenFile(pack, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		_ = os.Remove(r.Config())

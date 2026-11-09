@@ -16,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
@@ -28,7 +29,7 @@ func escChatRoot(t *testing.T, chat string) (config.Root, func() func()) {
 	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "esc.md"), []byte("ESC-RUN {{.ticket}} run {{.run}} wf {{.workflow}} step {{.step}} held {{.held}} ({{.held_title}}) cause {{.cause}}: {{.reason}} site {{.site}}; read {{.issue_ref}}.\n{{.body}}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "hold.md"), []byte("ESC-HOLD {{.ticket}} ({{.title}}) cause {{.cause}} held {{.held}} ({{.held_title}}) worker {{.worker}} site {{.site}}: {{.reason}}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "pool.md"), []byte("ESC-POOL {{.ticket}} pool {{.pool}} site {{.site}}: {{.quarantine}}\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), fmt.Appendf(nil, `workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), fmt.Appendf(nil, `workflows:
   pr:
     vars: [issue]
     issue: issue

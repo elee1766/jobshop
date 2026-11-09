@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // Last good config (#227). After each successful load the controller
@@ -27,13 +29,13 @@ type lastGoodSnapshot struct {
 
 type lastGoodMetadata struct {
 	Version     int               `yaml:"version"`
-	Instances   []PackInstance    `yaml:"instances"`
+	Instances   []pack.Instance   `yaml:"instances"`
 	HookDigests map[string]string `yaml:"hook_digests"`
 }
 
 // SaveLastGood writes c (merged, no packs list) to path atomically.
 func SaveLastGood(path string, c *Config) error {
-	metadata := &lastGoodMetadata{Version: 1, Instances: append([]PackInstance{}, c.Instances...), HookDigests: c.HookDigests}
+	metadata := &lastGoodMetadata{Version: 1, Instances: append([]pack.Instance{}, c.Instances...), HookDigests: c.HookDigests}
 	if err := validateLastGoodMetadata(c, metadata); err != nil {
 		return fmt.Errorf("%s: %w", LastGoodName, err)
 	}
@@ -119,7 +121,7 @@ func validateLastGoodMetadata(c *Config, metadata *lastGoodMetadata) error {
 			return errors.New("last-good metadata requires authoritative instances")
 		}
 		for _, instance := range metadata.Instances {
-			if strings.TrimSpace(instance.Path) == "" || instance.Prefix != "" && !prefixPattern.MatchString(instance.Prefix) {
+			if strings.TrimSpace(instance.Path) == "" || instance.Prefix != "" && !pack.ValidPrefix(instance.Prefix) {
 				return errors.New("last-good metadata contains an invalid pack instance")
 			}
 		}
@@ -143,7 +145,7 @@ func LoadOrLastGood(r Root) (*Config, error) {
 	if err == nil {
 		return c, nil
 	}
-	if !errors.Is(err, ErrPack) {
+	if !errors.Is(err, pack.ErrPack) {
 		return nil, err
 	}
 	lg, lerr := LoadLastGood(r.LastGood())

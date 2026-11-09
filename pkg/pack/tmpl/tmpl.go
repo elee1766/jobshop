@@ -1,6 +1,7 @@
-// Package tmpl renders config templates with Go text/template (#383):
-// missing vars are errors, and a small FuncMap with no shell or file
-// access.
+// Package tmpl renders pack and config templates with Go text/template
+// (#383): missing vars are errors, and a small FuncMap with no shell or file
+// access. It is the one template language of the pack subsystem and of the
+// config values rendered after load (JOB-172).
 package tmpl
 
 import (
@@ -16,8 +17,8 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Funcs are the functions templates may call.
-var Funcs = template.FuncMap{
+// funcs are the functions templates may call.
+var funcs = template.FuncMap{
 	// default returns d when v is empty ("", 0, false, nil, empty list).
 	"default": func(d, v any) any {
 		if empty(v) {
@@ -87,9 +88,9 @@ func toYAML(v any) (string, error) {
 	return strings.TrimSuffix(string(b), "\n"), nil
 }
 
-// Parse parses s with missingkey=error and Funcs.
-func Parse(s string) (*template.Template, error) {
-	t, err := template.New("").Option("missingkey=error").Funcs(Funcs).Parse(s)
+// compile parses s with missingkey=error and funcs.
+func compile(s string) (*template.Template, error) {
+	t, err := template.New("").Option("missingkey=error").Funcs(funcs).Parse(s)
 	if err != nil {
 		return nil, clean(err)
 	}
@@ -101,7 +102,7 @@ func Render(s string, vars map[string]any) (string, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil
 	}
-	t, err := Parse(s)
+	t, err := compile(s)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +147,7 @@ func Vars(s string) ([]string, error) {
 	if !strings.Contains(s, "{{") {
 		return nil, nil
 	}
-	t, err := Parse(s)
+	t, err := compile(s)
 	if err != nil {
 		return nil, err
 	}

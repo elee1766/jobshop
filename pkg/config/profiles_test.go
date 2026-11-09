@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 )
 
 const profilesBase = "projects: {js: {}}\nagents: {fake: {command: /bin/true}}\n"
@@ -89,7 +90,7 @@ func TestLabelRuleMatchesPackInstanceLabels(t *testing.T) {
 	dir := t.TempDir()
 	pk := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pk, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(pk, config.PackFileName), []byte("pools:\n  dev: {agent: fake, dir: /tmp}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pk, packpkg.FileName), []byte("pools:\n  dev: {agent: fake, dir: /tmp}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte(profilesBase+`
 sandbox_profiles:
   host: {ro: [/nix/store]}
@@ -116,7 +117,7 @@ func TestHostAttachesProfilesToPackPool(t *testing.T) {
 	dir := t.TempDir()
 	pk := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pk, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(pk, config.PackFileName), []byte(`sandbox_profiles:
+	require.NoError(t, os.WriteFile(filepath.Join(pk, packpkg.FileName), []byte(`sandbox_profiles:
   sys: {ro: [/usr/lib]}
 isolation_profiles:
   mapped: {user: {uid: 1000, map_uid: 100000, map_gid: 100000, groups: [g]}}
@@ -230,7 +231,7 @@ func TestPackRemovedVarErrors(t *testing.T) {
 			"packs:\n  - path: "+pack+"\n    prefix: app-\n    vars: {agent: fake, checkout: /tmp, repo: a/b, "+v+": {}}\n"), 0o600))
 		_, err := config.LoadFile(filepath.Join(dir, config.FileName))
 		require.Error(t, err, v)
-		assert.ErrorIs(t, err, config.ErrPack)
+		assert.ErrorIs(t, err, packpkg.ErrPack)
 		assert.Contains(t, err.Error(), `var "`+v+`" is removed`)
 		assert.Contains(t, err.Error(), "profiles")
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // TestLastGood: a merged config round-trips through the last good file,
@@ -38,7 +39,7 @@ func TestLastGood(t *testing.T) {
 	// A pack with a var this binary does not set: last good, plus the error.
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: p\n"})
 	got, err := LoadOrLastGood(r)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	assert.ErrorContains(t, err, `var "who" is not set`)
 	require.NotNil(t, got)
 	assert.Contains(t, got.Pools, "plan", "the saved config")
@@ -46,21 +47,21 @@ func TestLastGood(t *testing.T) {
 	// A pack entry the validator rejects is the pack's too.
 	writeFiles(t, dir, map[string]string{"p/pack.yaml": "pools:\n  dev: {agent: nosuch, dir: /w}\n"})
 	got, err = LoadOrLastGood(r)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	require.NotNil(t, got)
 
 	// Host errors still fail.
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "bogus: 1\n"})
 	got, err = LoadOrLastGood(r)
 	require.Error(t, err)
-	assert.False(t, errors.Is(err, ErrPack))
+	assert.False(t, errors.Is(err, pack.ErrPack))
 	assert.Nil(t, got)
 
 	// No last good: the pack error fails the start.
 	require.NoError(t, os.Remove(r.LastGood()))
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: p\n"})
 	got, err = LoadOrLastGood(r)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	assert.Nil(t, got)
 }
 
@@ -97,7 +98,7 @@ triggers:
 	require.NoError(t, os.Remove(filepath.Join(dir, "app/pack.yaml")))
 	require.NoError(t, os.Remove(filepath.Join(dir, "app/hooks.star")))
 	last, err := LoadOrLastGood(root)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	require.NotNil(t, last)
 	assert.Equal(t, c.Instances, last.Instances)
 	assert.Equal(t, c.HookDigests, last.HookDigests)

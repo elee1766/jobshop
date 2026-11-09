@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // HookScope records every pool and workflow reference owner's callbacks
@@ -59,7 +60,7 @@ func (c *Config) ResolvePinnedHookReference(owner, kind, name string, scope *dom
 
 // ResolveHookReference keeps dynamic references inside the declaring instance.
 func (c *Config) ResolveHookReference(owner, kind, name string) (string, error) {
-	var own *PackInstance
+	var own *pack.Instance
 	section, ownerName, ok := strings.Cut(owner, ".")
 	if !ok {
 		return "", fmt.Errorf("hook owner must name its configuration section")
@@ -71,7 +72,7 @@ func (c *Config) ResolveHookReference(owner, kind, name string) (string, error) 
 			break
 		}
 	}
-	candidates := func(in PackInstance) []string {
+	candidates := func(in pack.Instance) []string {
 		if kind == "workflow" {
 			return in.Workflows
 		}
