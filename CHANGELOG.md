@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.20](https://github.com/elee1766/jobshop/compare/v0.9.19...v0.9.20) (2026-11-09)
+
+
+### Features
+
+* **desk:** add ticket context menu with quick actions and copy id (JOB-136) ([#1105](https://github.com/elee1766/jobshop/issues/1105)) ([8e29dee](https://github.com/elee1766/jobshop/commit/8e29deeb4b12df8c40f53e612bb23b86547d802c))
+* **desk:** label human and agent messages with sender headers (JOB-137) ([#1107](https://github.com/elee1766/jobshop/issues/1107)) ([3fc9a94](https://github.com/elee1766/jobshop/commit/3fc9a940f91184b460f9e594580efe9b0e6930fc))
+
 ## [0.9.19](https://github.com/elee1766/jobshop/compare/v0.9.18...v0.9.19) (2026-11-09)
 
 
