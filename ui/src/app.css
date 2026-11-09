@@ -669,6 +669,7 @@ td pre {
   margin-right: 4px;
 }
 .trace-layout { min-width: 0; }
+.trace-layout.watching > .ticket-timeline { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .trace-layout.watching { height: calc(100dvh - 62px); min-height: 420px; display: grid; grid-template-rows: minmax(180px, 40%) minmax(0, 1fr); }
 .trace-layout.watching > .ticket-graph { display: flex; flex-direction: column; min-height: 0; }
 .trace-layout.watching .graph-scroll { flex: 1; height: auto; min-height: 0; }
@@ -1119,4 +1120,72 @@ output.block { display: block; margin: 6px 0; }
   .notice {
     bottom: 56px;
   }
+}
+
+/* Timeline (#1103): one bar per ticket on a shared time axis. Colors are the
+   --tl-* tokens; a state is also told apart by its pattern, never by color
+   alone. */
+.ticket-timeline { padding: var(--page-inset); min-width: 0; }
+.ticket-timeline > .graph-heading { margin: calc(-1 * var(--page-inset)) calc(-1 * var(--page-inset)) 0; column-gap: var(--space-4); flex-wrap: nowrap; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0; padding: 0; list-style: none; font-size: var(--font-size-small); }
+.tl-legend li { display: flex; align-items: center; gap: var(--space-2); }
+.tl-swatch { display: inline-block; flex: none; width: 14px; height: 10px; border: 1px solid var(--column); background: var(--tl-queued); }
+.tl-swatch[data-state="working"], .tl-seg[data-state="working"] { background: var(--tl-working); }
+.tl-swatch[data-state="waiting"], .tl-seg[data-state="waiting"] { background: repeating-linear-gradient(135deg, var(--tl-waiting) 0 4px, color-mix(in srgb, var(--tl-waiting) 55%, var(--paper)) 4px 8px); }
+.tl-swatch[data-state="human"], .tl-seg[data-state="human"] { background: var(--tl-human); }
+.tl-swatch[data-state="deferred"], .tl-seg[data-state="deferred"] { background: repeating-linear-gradient(135deg, var(--tl-deferred) 0 4px, color-mix(in srgb, var(--tl-deferred) 45%, var(--paper)) 4px 8px); }
+.tl-swatch[data-state="retry"], .tl-seg[data-state="retry"] { background: var(--tl-retry); }
+.tl-swatch[data-state="unknown"], .tl-seg[data-state="unknown"] { background: repeating-linear-gradient(45deg, var(--tl-unknown) 0 3px, var(--paper) 3px 6px); }
+.tl-seg[data-state="queued"] { background: var(--tl-queued); }
+.tl-arrow-sample { display: inline-block; width: 18px; border-top: 2px solid var(--tl-retry); }
+.tl-arrow-sample[data-shape="tracks"] { border-top: 2px dotted var(--column); }
+.tl-scroll { position: relative; overflow: auto; max-height: min(60dvh, 640px); border: 1px solid var(--rule); overscroll-behavior: contain; }
+.tl-canvas { position: relative; }
+.tl-axis { position: sticky; top: 0; z-index: 3; display: flex; background: var(--paper); border-bottom: 1px solid var(--column); font-size: var(--font-size-small); }
+.tl-corner { position: sticky; left: 0; z-index: 4; flex: none; background: var(--paper); border-right: 1px solid var(--rule); }
+.tl-axis-track { position: relative; flex: none; }
+.tl-tick { position: absolute; top: 8px; transform: translateX(-50%); padding-left: var(--space-2); border-left: 1px solid var(--column); color: var(--muted); white-space: nowrap; line-height: 1.2; }
+.tl-tick-edge { transform: none; color: inherit; }
+.tl-tick-end { transform: translateX(-100%); border-left: 0; border-right: 1px solid var(--column); padding: 0 var(--space-2) 0 0; }
+.tl-tick.tl-now { border-right: 2px solid var(--status-running); }
+.tl-body { position: relative; }
+.tl-row { position: relative; display: flex; border-bottom: 1px solid var(--rule); }
+.tl-row:nth-child(even) { background: var(--row-alt); }
+.tl-row.tl-picked { background: var(--hi); }
+.tl-row[data-conflict] .tl-track { outline: 1px solid var(--tl-conflict); outline-offset: -2px; }
+.tl-label { position: sticky; left: 0; z-index: 2; flex: none; display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; min-width: 0; background: inherit; border-right: 1px solid var(--rule); font-size: var(--font-size-small); }
+.tl-row:not(.tl-picked):not(:nth-child(even)) .tl-label { background: var(--paper); }
+.tl-fold { flex: none; width: 20px; min-height: 20px; padding: 0; text-align: center; background: transparent; border: 0; }
+span.tl-fold { display: inline-block; }
+.tl-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; background: transparent; border: 0; padding: 0 var(--space-1); }
+.tl-track { position: relative; flex: none; }
+.tl-seg { position: absolute; top: 50%; transform: translateY(-50%); min-width: 3px; padding: 0; border: 0; border-radius: 0; }
+.tl-seg:focus-visible, .tl-seg[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 1; }
+.tl-seg[data-open] { border-right: 2px dotted var(--ink); }
+.tl-end { position: absolute; top: 50%; width: 0; transform: translateY(-50%); border-right: 3px solid var(--tl-done); pointer-events: none; }
+.tl-end[data-resolution="failed"], .tl-end[data-resolution="cancelled"] { border-right-color: var(--tl-retry); }
+.tl-marker { position: absolute; top: 3px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--ink); pointer-events: auto; }
+.tl-marker[data-kind="pr"], .tl-marker[data-kind="merged"] { border-top-color: var(--tl-done); }
+.tl-marker[data-kind="session"] { border-top-color: var(--tl-human); }
+.tl-marker-sample { position: static; display: inline-block; vertical-align: middle; margin-left: 0; }
+.tl-nowline { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--status-running); pointer-events: none; z-index: 1; }
+.tl-arrows { position: absolute; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
+.tl-arrow { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.tl-arrows marker path { fill: context-stroke; }
+.tl-arrow[data-shape="met"] { stroke: var(--column); }
+.tl-arrow[data-shape="blocking"], .tl-arrow[data-shape="conflict"] { stroke: var(--tl-conflict); }
+.tl-arrow[data-shape="blocking"] { stroke-dasharray: 5 3; }
+.tl-arrow[data-shape="tracks"] { stroke: var(--column); stroke-dasharray: 1 4; }
+.tl-arrow[data-shape="wait"] { stroke: var(--status-running); stroke-dasharray: 2 4; }
+.tl-arrow[data-shape="wait"][data-state="met"] { stroke: var(--status-closed); }
+.tl-arrow[data-shape="wait"][data-state="invalidated"] { stroke: var(--warn); }
+.tl-detail { margin-top: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
+.tl-detail h3 { margin: 0 0 var(--space-2); font-size: inherit; }
+.tl-segments, .tl-markers { margin: 0; padding-left: var(--space-5); font-size: var(--font-size-small); }
+.tl-segments > li { padding: var(--space-1) var(--space-2); }
+.tl-segments .tl-swatch { margin-right: var(--space-2); }
+.tl-markers { list-style: none; padding: 0; }
+@media (max-width: 760px) {
+  .tl-scroll { max-height: 56dvh; }
+  .ticket-timeline > .graph-heading { flex-wrap: wrap; }
 }

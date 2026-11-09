@@ -129,6 +129,12 @@ export function inspect(id: string) {
   markTrace();
 }
 
+// setLayout switches the trace between the graph ('') and the timeline.
+// Both keep the ref and the inspected ticket.
+export function setLayout(layout: '' | 'timeline') {
+  setParams({ layout });
+}
+
 export function openAudit(id: string) {
   const url = currentURL();
   if (id) url.searchParams.set('audit', id);

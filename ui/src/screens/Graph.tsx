@@ -56,11 +56,13 @@ export function Graph({
   selected,
   onSelect,
   onWatch,
+  onTimeline,
 }: {
   graph: GraphResult;
   selected: string;
   onSelect: (id: string) => void;
   onWatch: (id: string) => void;
+  onTimeline: () => void;
 }) {
   const layout = useMemo(() => graphLayout(graph), [graph]);
   const [viewportRef, { width, height }] = useSize<HTMLDivElement>();
@@ -269,6 +271,7 @@ export function Graph({
             +
           </button>
           <button onClick={() => setTouched(null)}>reset</button>
+          <button onClick={onTimeline}>timeline</button>
         </div>
       </div>
       {graph.truncated && (

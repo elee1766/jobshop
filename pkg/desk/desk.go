@@ -656,6 +656,7 @@ type TicketView struct {
 	Inspected  *store.Ticket             `json:"inspected,omitempty"`
 	Inspection *rpc.ShowResult           `json:"inspection,omitempty"`
 	Graph      *rpc.GraphResult          `json:"graph,omitempty"`
+	Timeline   *rpc.TimelineResult       `json:"timeline,omitempty"`
 	Run        *rpc.RunResult            `json:"run,omitempty"`
 	Trace      *rpc.TraceNode            `json:"trace,omitempty"`
 	Sessions   map[string]rpc.HolderInfo `json:"sessions,omitempty"`

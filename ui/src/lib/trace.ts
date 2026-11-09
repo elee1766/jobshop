@@ -6,12 +6,15 @@ export function stepName(fields: unknown): string {
   return typeof step === 'string' ? step : '';
 }
 
-export function state(ticket: Ticket) {
+// What the status letter and state text read of a ticket (a timeline row has these too).
+export type Stateful = Pick<Ticket, 'status' | 'resolution' | 'fields'>;
+
+export function state(ticket: Stateful) {
   const fields = ticket.fields as { state?: string } | undefined;
   return [fields?.state || ticket.status, ticket.resolution].filter(Boolean).join(' · ');
 }
 
-export function statusLetter(ticket: Ticket): string {
+export function statusLetter(ticket: Stateful): string {
   return ({ open: 'O', in_progress: 'R', closed: 'C' } as Record<string, string>)[ticket.status] || '?';
 }
 

@@ -162,6 +162,26 @@ func TestViews(t *testing.T) {
 	assert.NotNil(t, ss)
 }
 
+// TestTraceTimeline (#1103): the trace snapshot carries the timeline only
+// when asked, since it replays every node's history.
+func TestTraceTimeline(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodTicketGraph:    rpc.GraphResult{Root: "r1"},
+		rpc.MethodTicketTimeline: rpc.TimelineResult{Root: "r1", Rows: []rpc.TimelineRow{{ID: "r1"}}},
+		rpc.MethodTicketShow:     rpc.ShowResult{Ticket: store.Ticket{ID: "r1"}},
+		rpc.MethodTicketTrace:    rpc.TraceNode{ID: "r1"},
+	}}
+	h := New(Config{}, ctl, nil).Handler()
+	var plain TicketView
+	get(t, h, "/api/trace/r1", &plain)
+	assert.Nil(t, plain.Timeline)
+	assert.NotContains(t, ctl.calls, rpc.MethodTicketTimeline+` {"id":"r1","limit":2000}`)
+	var tv TicketView
+	get(t, h, "/api/trace/r1?timeline=1", &tv)
+	require.NotNil(t, tv.Timeline)
+	assert.Equal(t, "r1", tv.Timeline.Rows[0].ID)
+}
+
 // TestHolderSessions: api/work?detail=1 carries each run's steps, last
 // comment and the holder of its in-progress step, and api/ticket fills
 // trace nodes with their holder session (JOB-54).

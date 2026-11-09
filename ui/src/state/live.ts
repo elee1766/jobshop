@@ -105,6 +105,7 @@ function receive(event: LiveEvent) {
 export interface StreamParams {
   trace?: string;
   inspect?: string;
+  timeline?: boolean;
   audit?: string;
 }
 

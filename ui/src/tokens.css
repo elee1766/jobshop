@@ -29,6 +29,17 @@
   --status-open: #205b9b;
   --status-closed: #27633d;
   --status-running: #8a4c00;
+  /* Timeline segment states (#1103), from Jira's timeline palette. Other
+     views do not use them: state colors elsewhere stay the status ones. */
+  --tl-queued: #dfe1e6;
+  --tl-working: #0052cc;
+  --tl-waiting: #4c9aff;
+  --tl-human: #ffab00;
+  --tl-deferred: #b3bac5;
+  --tl-retry: #de350b;
+  --tl-done: #00875a;
+  --tl-conflict: #de350b;
+  --tl-unknown: #ebecf0;
   /* Acme's scroll bar: a column-colored track, the visible part in paper.
      Defined here so the dark theme's --column and --paper apply. */
   --scrollbar-size: 12px;
@@ -52,5 +63,14 @@
   --status-open: #99c4ff;
   --status-closed: #9ed5a8;
   --status-running: #f0c17b;
+  --tl-queued: #5c6370;
+  --tl-working: #4c8dff;
+  --tl-waiting: #7fb2ff;
+  --tl-human: #ffb938;
+  --tl-deferred: #7a8190;
+  --tl-retry: #ff6b4a;
+  --tl-done: #36b37e;
+  --tl-conflict: #ff6b4a;
+  --tl-unknown: #3b3f47;
   color-scheme: dark;
 }

@@ -1,11 +1,12 @@
 import { useAtom, useAtomValue } from 'jotai';
 import { useDeskRoute } from '../lib/route.ts';
-import { inspect, openAudit, openTrace } from '../state/actions.ts';
+import { inspect, openAudit, openTrace, setLayout } from '../state/actions.ts';
 import { selectedAtom, traceAtom } from '../state/live.ts';
 import { watchedSessionAtom } from '../state/ui.ts';
 import { Graph } from './Graph.tsx';
 import { SessionViewer } from './SessionViewer.tsx';
 import { TicketDetails } from './TicketDetails.tsx';
+import { Timeline } from './Timeline.tsx';
 import { TraceSearch } from './TraceSearch.tsx';
 
 export function Trace() {
@@ -19,12 +20,35 @@ export function Trace() {
       <TraceSearch key={route.ref} reference={route.ref} onOpen={openTrace} />
       {trace?.graph && (
         <div className={'trace-layout' + (watched ? ' watching' : '')}>
-          <Graph
-            graph={trace.graph}
-            selected={selected?.id || trace.graph.root}
-            onSelect={inspect}
-            onWatch={setWatched}
-          />
+          {route.timeline ? (
+            trace.timeline ? (
+              <Timeline
+                timeline={trace.timeline}
+                selected={selected?.id || trace.graph.root}
+                onSelect={inspect}
+                onTrace={openTrace}
+                onGraph={() => setLayout('')}
+              />
+            ) : (
+              <section aria-label="Ticket timeline" className="ticket-timeline">
+                <div className="tag graph-heading">
+                  <h2>timeline</h2>
+                  <button className="push-right" onClick={() => setLayout('')}>
+                    graph
+                  </button>
+                </div>
+                <p className="muted section-body">loading timeline…</p>
+              </section>
+            )
+          ) : (
+            <Graph
+              graph={trace.graph}
+              selected={selected?.id || trace.graph.root}
+              onSelect={inspect}
+              onWatch={setWatched}
+              onTimeline={() => setLayout('timeline')}
+            />
+          )}
           <div className={'trace-bottom' + (watched ? ' watching' : '')}>
             {selected && (
               <TicketDetails
