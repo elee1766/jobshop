@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.22](https://github.com/elee1766/jobshop/compare/v0.9.21...v0.9.22) (2026-11-09)
+
+
+### Features
+
+* **tooling:** import-graph boundary check and package ownership map (JOB-165) ([#1112](https://github.com/elee1766/jobshop/issues/1112)) ([c2d0353](https://github.com/elee1766/jobshop/commit/c2d03534c43c873b2be34c106eb7e90bec30989f))
+
 ## [0.9.21](https://github.com/elee1766/jobshop/compare/v0.9.20...v0.9.21) (2026-11-09)
 
 
