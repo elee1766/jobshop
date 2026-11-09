@@ -23,8 +23,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
