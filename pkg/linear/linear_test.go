@@ -3,6 +3,7 @@ package linear_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -201,4 +202,51 @@ func TestUnavailable(t *testing.T) {
 	_, err := linear.New("http://127.0.0.1:1", apicall.Static("lin_api_x")).GetIssue(t.Context(), "ENG-1")
 	assert.True(t, linear.Unavailable(err), "connection refused: %v", err)
 	assert.False(t, linear.Unavailable(nil))
+}
+
+// A rate limit or a refused credential is a typed error with the status it
+// stands for and when to retry, whatever HTTP status Linear wrapped it in.
+func TestStatusError(t *testing.T) {
+	gql := func(code string) string {
+		return `{"errors":[{"message":"m","extensions":{"code":"` + code + `"}}]}`
+	}
+	for name, tc := range map[string]struct {
+		status int
+		header map[string]string
+		body   string
+		want   int
+	}{
+		"graphql rate limit in a 400": {http.StatusBadRequest, map[string]string{"Retry-After": "30"}, gql("RATELIMITED"), 429},
+		"graphql auth in a 400":       {http.StatusBadRequest, nil, gql("AUTHENTICATION_ERROR"), 401},
+		"plain 429":                   {http.StatusTooManyRequests, nil, `{}`, 429},
+		"html 502":                    {http.StatusBadGateway, nil, `<html>bad gateway</html>`, 502},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				for k, v := range tc.header {
+					w.Header().Set(k, v)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+			err := linear.New(srv.URL, apicall.Static("k")).GraphQL(t.Context(), `query{viewer{id}}`, nil, &struct{}{})
+			var se *linear.StatusError
+			require.ErrorAs(t, err, &se)
+			assert.Equal(t, tc.want, se.Code)
+			if tc.header["Retry-After"] != "" {
+				assert.WithinDuration(t, time.Now().Add(30*time.Second), se.RetryAfter, 5*time.Second)
+			} else {
+				assert.True(t, se.RetryAfter.IsZero())
+			}
+		})
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"errors":[{"message":"bad field","extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}`)
+	}))
+	defer srv.Close()
+	err := linear.New(srv.URL, apicall.Static("k")).GraphQL(t.Context(), `query{x}`, nil, &struct{}{})
+	var se *linear.StatusError
+	require.Error(t, err)
+	assert.False(t, errors.As(err, &se), "any other GraphQL error stays a plain error")
 }

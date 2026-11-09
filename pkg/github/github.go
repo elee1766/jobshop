@@ -320,8 +320,10 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 		return err
 	}
 	var r struct {
-		Data   json.RawMessage `json:"data"`
-		Errors []struct {
+		// Message is the body of a non-GraphQL error, such as a 403.
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+		Errors  []struct {
 			Type    string `json:"type"`
 			Message string `json:"message"`
 		} `json:"errors"`
@@ -347,7 +349,7 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 	}
 	if resp.Status != http.StatusOK || len(r.Data) == 0 || string(r.Data) == "null" {
 		if resp.Status != http.StatusOK {
-			return &StatusError{Method: http.MethodPost, Path: "/graphql", Status: resp.Status, RetryAt: at}
+			return &StatusError{Method: http.MethodPost, Path: "/graphql", Status: resp.Status, Body: r.Message, RetryAt: at}
 		}
 		return fmt.Errorf("github graphql: HTTP %d", resp.Status)
 	}
