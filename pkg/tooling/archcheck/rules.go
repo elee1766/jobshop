@@ -69,7 +69,7 @@ func rules() []Rule {
 				"./pkg/store", "./pkg/store/sqlite", "./pkg/store/postgres", "./pkg/store/storerules",
 				"./pkg/writekey", "./pkg/learning", "./pkg/memedit", "./pkg/memory",
 				"./pkg/config", "./pkg/config/tmpl", "./pkg/cron", "./pkg/ids", "./pkg/packcue",
-				"./pkg/apicall", "./pkg/github", "./pkg/linear", "./pkg/identity",
+				"./pkg/integrations/apicall", "./pkg/integrations/github", "./pkg/integrations/linear", "./pkg/integrations/identity",
 				"./pkg/clock", "./pkg/redact", "./pkg/logctx", "./pkg/telemetry",
 				"./pkg/automation/...", "./pkg/automation",
 			},
@@ -158,6 +158,31 @@ func rules() []Rule {
 			From:  []string{"./pkg/hooks"},
 			To:    []string{"./pkg/rpc"},
 		},
+		{
+			Name:  "provider-clients-are-siblings",
+			Why:   "GitHub and Linear differ (REST and ETags against GraphQL, redirect policy, error types) and share only apicall and internal/transport. One importing the other would grow the lowest-common-denominator tracker the family is not meant to have (JOB-169).",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/integrations/github"},
+			To:    []string{"./pkg/integrations/linear"},
+		},
+		{
+			Name:  "provider-clients-are-siblings-reverse",
+			Why:   "GitHub and Linear differ (REST and ETags against GraphQL, redirect policy, error types) and share only apicall and internal/transport. One importing the other would grow the lowest-common-denominator tracker the family is not meant to have (JOB-169).",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/integrations/linear"},
+			To:    []string{"./pkg/integrations/github"},
+		},
+		{
+			Name:  "identity-only-in-control",
+			Why:   "Minting and caching credentials is the controller's job (it holds the keys and token files). Every other package takes an apicall.Source, so a client, a hook or a capability never reads a key or knows how a token is minted.",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/...", "./cmd/..."},
+			Except: []string{
+				"./pkg/control",
+				"./pkg/integrations/identity",
+			},
+			To: []string{"./pkg/integrations/identity"},
+		},
 	}
 }
 
@@ -169,7 +194,19 @@ func onlyRules() []Only {
 			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, memory by the CLI without a database (JOB-164: knowledge/memory stays usable without the database-backed learning machinery), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, hostspec as the spec file format. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
 			From: []string{
 				"./pkg/clock", "./pkg/cron", "./pkg/logctx", "./pkg/redact", "./pkg/config/tmpl",
-				"./pkg/memory", "./pkg/packcue", "./pkg/ids", "./pkg/apicall", "./pkg/hostspec",
+				"./pkg/memory", "./pkg/packcue", "./pkg/ids", "./pkg/integrations/apicall", "./pkg/hostspec",
+			},
+			Std:   true,
+			Third: true,
+		},
+		{
+			Name: "provider-clients-stay-small",
+			Why:  "The GitHub and Linear clients are used by automation, the CLI, ingest and the controller. Each takes a token source and sends requests: it imports apicall, the family's shared transport and telemetry, and no config, store or other subsystem.",
+			From: []string{"./pkg/integrations/github", "./pkg/integrations/linear"},
+			Allow: []string{
+				"./pkg/integrations/apicall",
+				"./pkg/integrations/internal/transport",
+				"./pkg/telemetry",
 			},
 			Std:   true,
 			Third: true,

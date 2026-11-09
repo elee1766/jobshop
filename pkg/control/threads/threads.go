@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 const (
@@ -76,7 +76,7 @@ func (t Thread) Name() string {
 	return "GitHub " + t.Key()
 }
 
-// GitHub is the thread as pkg/github reads it.
+// GitHub is the thread as pkg/integrations/github reads it.
 func (t Thread) GitHub() github.Thread {
 	return github.Thread{Repo: t.Repo, Number: t.Number, PR: t.PR}
 }

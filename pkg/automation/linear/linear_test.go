@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/automation"
-	linclient "github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	linclient "github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 const token = "lin_oauth_minted-per-call"

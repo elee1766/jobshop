@@ -81,14 +81,17 @@ jobshop/
 │   ├── automation/           trusted Starlark hook engine; api/ is the shared
 │   │                         contract, command/ github/ http/ jev/ linear/ tickets/
 │   │                         are the bounded host capabilities
-│   ├── apicall/              token source and per-call options Linear and GitHub share
+│   ├── integrations/         provider clients and credentials (JOB-169); no shared
+│   │   │                     tracker interface, github and linear never import each other
+│   │   ├── apicall/          token source and per-call options Linear and GitHub share
+│   │   ├── github/           GitHub REST client and read-only observation of
+│   │   │                     PRs, checks, reviews and threads (JOB-143)
+│   │   ├── linear/           Linear GraphQL client (#201)
+│   │   ├── identity/         credentials for configured identities: App tokens,
+│   │   │                     Linear client_credentials (#200), the host's gh token
+│   │   └── internal/transport/  token renewal on 401 and the body limit both clients use
 │   ├── browse/               read-only Linear and GitHub browse service behind
 │   │                         browse.*: scope, cache, rate-limit blocking (JOB-163)
-│   ├── github/               GitHub REST client and read-only observation of
-│   │                         PRs, checks, reviews and threads (JOB-143)
-│   ├── linear/               Linear GraphQL client (#201)
-│   ├── identity/             credentials for configured identities: App tokens,
-│   │                         Linear client_credentials (#200)
 │   ├── ingest/               webhook spool and inbox types (#318)
 │   ├── learning/             learnings collection (#264)
 │   ├── memedit/              memory edits collection and the curator gate's
@@ -138,7 +141,7 @@ flowchart TD
   cli --> rpc & config
   config --> cron
   control --> store & rpc & config & telemetry & acphost & hostspec
-  control --> hooks & automation & github & linear & identity
+  control --> hooks & automation & integrations
   control --> engines
   subgraph engines[control subpackages]
     activity & journalship & journalcompress & journalread & linearsvc
@@ -146,10 +149,10 @@ flowchart TD
     chatlife --> attention --> question
   end
   engines --> store & rpc & config
-  activity --> github & linear
-  waitengine --> github & linear
+  activity --> integrations
+  waitengine --> integrations
   triggers & ingestqueue --> hooks
-  hooks --> automation & github & linear
+  hooks --> automation & integrations
   hostspec --> acphost & telemetry
   sqlite[store/sqlite] & postgres[store/postgres] --> store
   storetest[store/storetest] --> store

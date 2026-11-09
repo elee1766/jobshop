@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,7 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/internal/transport"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -303,16 +303,19 @@ func (c *Client) post(ctx context.Context, b []byte) (*http.Response, []byte, er
 	if err != nil {
 		return nil, nil, fmt.Errorf("linear: %w", err)
 	}
-	resp, body, err := c.send(ctx, tok, b)
-	if err == nil && resp.StatusCode == http.StatusUnauthorized {
-		if fresh, rerr := c.Auth.Renew(ctx, tok); rerr == nil && fresh != tok {
-			resp, body, err = c.send(ctx, fresh, b)
+	type answer struct {
+		resp *http.Response
+		body []byte
+	}
+	a, err := transport.Authorized(ctx, c.Auth, tok, func(tok string) (answer, int, error) {
+		resp, body, err := c.send(ctx, tok, b)
+		a := answer{resp, body}
+		if err != nil {
+			return a, 0, err
 		}
-	}
-	if err == nil {
-		apicall.Received(ctx)
-	}
-	return resp, body, err
+		return a, resp.StatusCode, nil
+	})
+	return a.resp, a.body, err
 }
 
 func (c *Client) send(ctx context.Context, tok string, b []byte) (*http.Response, []byte, error) {
@@ -336,8 +339,8 @@ func (c *Client) send(ctx context.Context, tok string, b []byte) (*http.Response
 		return nil, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
-	if err == nil && len(body) > maxBody {
+	body, over, err := transport.ReadLimited(resp.Body, maxBody)
+	if over {
 		err = fmt.Errorf("linear: response over %d bytes", maxBody)
 	}
 	return resp, body, err

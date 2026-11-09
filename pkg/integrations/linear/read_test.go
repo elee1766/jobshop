@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // recorded serves testdata files chosen by pick and records each call.

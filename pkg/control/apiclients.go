@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/identity"
-	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/identity"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // apiClients holds one client per identity, shared by every caller in the
@@ -98,7 +95,7 @@ func (c *Controller) githubOrHost(cfg *config.Config, name, repo string) *github
 	c.clients.mu.Lock()
 	defer c.clients.mu.Unlock()
 	if c.clients.host == nil {
-		c.clients.host = github.New("", &hostToken{})
+		c.clients.host = github.New("", &identity.HostToken{})
 	}
 	return c.clients.host
 }
@@ -121,43 +118,6 @@ func linearBase(u string) string {
 		return linear.DefaultAPIURL
 	}
 	return u
-}
-
-// hostToken is GH_TOKEN, else `gh auth token`, cached ten minutes.
-type hostToken struct {
-	mu  sync.Mutex
-	tok string
-	at  time.Time
-}
-
-func (h *hostToken) Token(ctx context.Context) (string, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.tok != "" && time.Since(h.at) < 10*time.Minute {
-		return h.tok, nil
-	}
-	tok := os.Getenv("GH_TOKEN")
-	if tok == "" {
-		cmd, done := telemetry.ExecContext(ctx, "gh-auth-token", "gh", "auth", "token")
-		out, err := cmd.Output()
-		done(err)
-		if err != nil {
-			return "", fmt.Errorf("no identity covers the repo and gh auth token failed: %w", err)
-		}
-		tok = strings.TrimSpace(string(out))
-	}
-	h.tok, h.at = tok, time.Now()
-	return tok, nil
-}
-
-// Renew forgets a refused token and reads it again.
-func (h *hostToken) Renew(ctx context.Context, stale string) (string, error) {
-	h.mu.Lock()
-	if h.tok == stale {
-		h.tok = ""
-	}
-	h.mu.Unlock()
-	return h.Token(ctx)
 }
 
 // appJWT is a fresh App JWT per request; it lives ten minutes.

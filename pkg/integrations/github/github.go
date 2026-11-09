@@ -19,7 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/internal/transport"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -210,16 +211,13 @@ func (c *Client) Raw(ctx context.Context, r Request) (*Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("github: %w", err)
 	}
-	resp, err := c.send(ctx, r, u, body, tok)
-	if err == nil && resp.Status == http.StatusUnauthorized {
-		if fresh, rerr := c.Auth.Renew(ctx, tok); rerr == nil && fresh != tok {
-			resp, err = c.send(ctx, r, u, body, fresh)
+	return transport.Authorized(ctx, c.Auth, tok, func(tok string) (*Response, int, error) {
+		resp, err := c.send(ctx, r, u, body, tok)
+		if err != nil {
+			return nil, 0, err
 		}
-	}
-	if err == nil {
-		apicall.Received(ctx)
-	}
-	return resp, err
+		return resp, resp.Status, nil
+	})
 }
 
 func (r Request) method() string {
@@ -293,11 +291,11 @@ func (c *Client) send(ctx context.Context, r Request, u string, body []byte, tok
 	if limit <= 0 {
 		limit = DefaultMaxBody
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	b, over, err := transport.ReadLimited(resp.Body, limit)
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > limit {
+	if over {
 		return nil, fmt.Errorf("github %s %s: response over %d bytes", r.method(), r.Path, limit)
 	}
 	return &Response{Status: resp.StatusCode, Header: resp.Header, Body: b}, nil
