@@ -18,6 +18,7 @@ import type {
   HolderInfo,
   Ticket,
   IngestWorkersResult,
+  BrowseScopeResult,
 } from "./rpc.js";
 export type * from "./rpc.js";
 export interface RequestOptions {
@@ -120,6 +121,7 @@ export interface LiveState {
   chats: { pool: string; sessions: ChatSession[] };
   improvements: { learnings: Learning[]; edits: MemoryEdit[] };
   embeds: { embeds: EmbedView[] };
+  browse: BrowseScopeResult;
   trace: TraceView | { error: string };
   desk: Event;
   scheduler: Event;

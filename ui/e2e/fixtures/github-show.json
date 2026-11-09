@@ -1,0 +1,549 @@
+{
+  "item": {
+    "provider": "github",
+    "scope": "elee1766/jobshop",
+    "ref": "elee1766/jobshop#1097",
+    "id": "#1097",
+    "kind": "pr",
+    "title": "feat(desk): migrate Desk to React, Jotai, Wouter and Tailwind (JOB-150)",
+    "state": "merged",
+    "state_type": "merged",
+    "owner": "elee-agent",
+    "owner_bot": true,
+    "checks": "pass",
+    "labels": [],
+    "updated_at": "2026-11-09T01:16:05Z",
+    "url": "https://github.com/elee1766/jobshop/pull/1097"
+  },
+  "body": "Refs JOB-150. Delivers the full migration; the issue stays open until review checks its whole acceptance list. Ports Desk from Svelte to React, Jotai, Wouter and Tailwind with Base UI, TanStack Virtual and Hotkeys, Fuse, Oxlint and Oxfmt, and removes Svelte. Go, the API and the SSE contract are unchanged.\n\nBehavior: the URL contract (query state, #waiting and #inflight), one api/live connection per tab, native confirm and prompt, and the e2e class, id and role locators are kept. Wait edges and external graph nodes from #1095 are ported with a mocked-stream spec.\n\nBudgets (docs/notes/JOB-150-desk-react-port.md, worst of three): every runtime, resource and tooling budget is met. JS is 189.3 KB gzip against a 190 KB ceiling, so that one has almost no headroom. Trace, learn and sys are lazy chunks preloaded when idle.\n\nOxc compiler: experimental, off by default (DESK_COMPILER=1). It builds and passes the e2e suite but adds about 16 KB gzip, over budget, so it is not on. TanStack Virtual is skipped by the compiler in Transcript only.\n\nTested: tsc, Oxlint, Oxfmt, 18 unit tests, go build, vet, test, golangci-lint, nix build .#jobshop, e2e on desktop and mobile (65 passed, 7 skipped, the same real-agent skips as the baseline) and behind a path prefix.\n\nRollback: revert the cutover commits and rebuild. nix/desk-ui.nix has a new npmDepsHash and fileset, and CI runs check, unit tests and build.\n",
+  "props": {
+    "labels": [],
+    "author": "elee-agent",
+    "base": "master",
+    "head": "issue-JOB-150-react",
+    "additions": 7418,
+    "deletions": 3009,
+    "changed_files": 75,
+    "mergeable": "unknown",
+    "created_at": "2026-11-09T01:10:13Z"
+  },
+  "linked": [
+    {
+      "kind": "issue",
+      "ref": "JOB-150",
+      "relation": "mentions"
+    }
+  ],
+  "threads": [
+    {
+      "id": "IC_kwDOVevQxc8AAAABkSFl-g",
+      "kind": "comment",
+      "url": "https://github.com/elee1766/jobshop/pull/1097#issuecomment-6729852410",
+      "comments": [
+        {
+          "id": "IC_kwDOVevQxc8AAAABkSFl-g",
+          "author": "linear-code",
+          "bot": true,
+          "at": "2026-11-09T01:10:19Z",
+          "url": "https://github.com/elee1766/jobshop/pull/1097#issuecomment-6729852410",
+          "body": "\u003c!-- linear-linkback --\u003e\n\u003cp\u003e\u003ca href=\"https://linear.app/gfx-labs/issue/JOB-150\"\u003eJOB-150\u003c/a\u003e\u003c/p\u003e"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "docs/desk-design.md",
+      "additions": 3,
+      "deletions": 2,
+      "change": "modified"
+    },
+    {
+      "path": "docs/layout.md",
+      "additions": 2,
+      "deletions": 2,
+      "change": "modified"
+    },
+    {
+      "path": "docs/notes/JOB-150-desk-react-port.md",
+      "additions": 140,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "docs/running.md",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "nix/desk-ui.nix",
+      "additions": 4,
+      "deletions": 5,
+      "change": "modified"
+    },
+    {
+      "path": "pkg/desk/desk.go",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "ui/.oxfmtrc.json",
+      "additions": 6,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/.oxlintrc.json",
+      "additions": 40,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/AGENTS.md",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "ui/e2e/graph-waits.spec.js",
+      "additions": 63,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/e2e/shell.spec.js",
+      "additions": 87,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/index.html",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "ui/jsconfig.json",
+      "additions": 0,
+      "deletions": 14,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/kit/titles.js",
+      "additions": 1,
+      "deletions": 1,
+      "change": "modified"
+    },
+    {
+      "path": "ui/package-lock.json",
+      "additions": 1810,
+      "deletions": 278,
+      "change": "modified"
+    },
+    {
+      "path": "ui/package.json",
+      "additions": 25,
+      "deletions": 6,
+      "change": "modified"
+    },
+    {
+      "path": "ui/shell/App.svelte",
+      "additions": 0,
+      "deletions": 863,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/Chat.svelte",
+      "additions": 0,
+      "deletions": 589,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/HookAudit.svelte",
+      "additions": 0,
+      "deletions": 155,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/Learn.svelte",
+      "additions": 0,
+      "deletions": 185,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/SessionTranscript.svelte",
+      "additions": 0,
+      "deletions": 191,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/SessionViewer.svelte",
+      "additions": 0,
+      "deletions": 46,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/TicketDetails.svelte",
+      "additions": 0,
+      "deletions": 72,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/TicketHistory.svelte",
+      "additions": 0,
+      "deletions": 39,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/TitleAction.svelte",
+      "additions": 0,
+      "deletions": 38,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/TitleText.svelte",
+      "additions": 0,
+      "deletions": 11,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/Trace.svelte",
+      "additions": 0,
+      "deletions": 232,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/TraceSearch.svelte",
+      "additions": 0,
+      "deletions": 92,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/shell/main.js",
+      "additions": 0,
+      "deletions": 7,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "additions": 209,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/app.css",
+      "additions": 28,
+      "deletions": 11,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/components/LiveOwner.tsx",
+      "additions": 90,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/components/Markdown.tsx",
+      "additions": 24,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/components/StatusLetter.tsx",
+      "additions": 18,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/components/TitleAction.tsx",
+      "additions": 59,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/components/TitleText.tsx",
+      "additions": 25,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/index.css",
+      "additions": 42,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/api.ts",
+      "additions": 0,
+      "deletions": 0,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/attachments.ts",
+      "additions": 59,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/learn.ts",
+      "additions": 49,
+      "deletions": 53,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/model.ts",
+      "additions": 44,
+      "deletions": 47,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/push.ts",
+      "additions": 40,
+      "deletions": 37,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/reconcile.ts",
+      "additions": 30,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/route.ts",
+      "additions": 131,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/search.test.ts",
+      "additions": 76,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/search.ts",
+      "additions": 78,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/session.ts",
+      "additions": 0,
+      "deletions": 0,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/shortcuts.ts",
+      "additions": 35,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/trace.ts",
+      "additions": 91,
+      "deletions": 23,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/src/lib/useSessionFrames.ts",
+      "additions": 128,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/lib/useSize.ts",
+      "additions": 21,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/main.tsx",
+      "additions": 7,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/Chat.tsx",
+      "additions": 819,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/Graph.tsx",
+      "additions": 542,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/Home.tsx",
+      "additions": 367,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/HookAudit.tsx",
+      "additions": 358,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/Learn.tsx",
+      "additions": 273,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/SessionViewer.tsx",
+      "additions": 52,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/System.tsx",
+      "additions": 173,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/TicketDetails.tsx",
+      "additions": 180,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/TicketHistory.tsx",
+      "additions": 121,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/TraceScreen.tsx",
+      "additions": 52,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/TraceSearch.tsx",
+      "additions": 185,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/screens/Transcript.tsx",
+      "additions": 302,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/actions.ts",
+      "additions": 221,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/chatBridge.ts",
+      "additions": 10,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/entities.ts",
+      "additions": 55,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/live.ts",
+      "additions": 131,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/store.ts",
+      "additions": 5,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/state/ui.ts",
+      "additions": 76,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/src/tokens.css",
+      "additions": 0,
+      "deletions": 0,
+      "change": "renamed"
+    },
+    {
+      "path": "ui/svelte.config.js",
+      "additions": 0,
+      "deletions": 3,
+      "change": "deleted"
+    },
+    {
+      "path": "ui/tsconfig.json",
+      "additions": 19,
+      "deletions": 0,
+      "change": "added"
+    },
+    {
+      "path": "ui/vite.config.ts",
+      "additions": 7,
+      "deletions": 2,
+      "change": "renamed"
+    }
+  ],
+  "files_total": 75,
+  "checks": [
+    {
+      "name": "nix",
+      "state": "pass",
+      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925271837",
+      "started_at": "2026-11-09T01:10:27Z",
+      "seconds": 101
+    },
+    {
+      "name": "pr-title",
+      "state": "pass",
+      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109462/job/128925273115",
+      "started_at": "2026-11-09T01:10:19Z",
+      "seconds": 3
+    },
+    {
+      "name": "pr-title",
+      "state": "pass",
+      "url": "https://github.com/elee1766/jobshop/actions/runs/42544120885/job/128925306576",
+      "started_at": "2026-11-09T01:10:26Z",
+      "seconds": 4
+    },
+    {
+      "name": "ui",
+      "state": "pass",
+      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925271649",
+      "started_at": "2026-11-09T01:10:26Z",
+      "seconds": 16
+    },
+    {
+      "name": "go",
+      "state": "pass",
+      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925395705",
+      "started_at": "2026-11-09T01:12:46Z",
+      "seconds": 82
+    }
+  ],
+  "checks_total": 5,
+  "status": {
+    "state": "fresh",
+    "fetched_at": "2026-11-09T12:00:00Z"
+  }
+}

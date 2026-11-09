@@ -18,6 +18,10 @@ export interface TicketMenuTarget {
   inspectable?: boolean;
   // Set on waiting items, which can also be discussed in chat.
   item?: AttentionItem;
+  // Set on a Linear issue or GitHub PR or issue (JOB-163). It is not a
+  // Jobshop ticket, so the menu offers only what applies to it: attach to
+  // chat, copy the reference and open it at the provider.
+  provider?: { name: string; url: string };
 }
 
 // Anything with a rectangle to sit next to: an element or the pointer.

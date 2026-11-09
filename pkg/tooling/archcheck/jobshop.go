@@ -119,6 +119,7 @@ func owners() []Owner {
 		{Pkg: "./pkg/control", Target: "orchestration/control", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/controltest", Target: "orchestration/control/controltest", Family: "orchestration", Child: "JOB-168", Harness: true},
 		{Pkg: "./pkg/control/activity", Target: "orchestration/activity", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/browse", Target: "orchestration/browse (reads Linear and GitHub for Desk)", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/attention", Target: "orchestration/attention", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/question", Target: "orchestration/question", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/ingestqueue", Target: "orchestration/ingest", Family: "orchestration", Child: "JOB-168"},

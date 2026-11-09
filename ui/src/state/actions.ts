@@ -1,4 +1,13 @@
-import { currentRoute, currentURL, go, setParams, type Section, type View } from '../lib/route.ts';
+import {
+  browseKeys,
+  browseViews,
+  currentRoute,
+  currentURL,
+  go,
+  setParams,
+  type Section,
+  type View,
+} from '../lib/route.ts';
 import { client } from '../lib/api.ts';
 import { errorAtom, selectedAtom, traceAtom } from './live.ts';
 import { store } from './store.ts';
@@ -51,6 +60,16 @@ export function hideChat() {
   store.set(chatOpenAtom, false);
 }
 
+// leaveBrowse drops the query values the Linear and GitHub views own when the
+// URL is going to another view or coming from one, so a group or filter of one
+// provider never leaks into the other, and an issue key is not read as a
+// waiting item on home.
+function leaveBrowse(url: URL, to: View) {
+  const from = currentRoute().view;
+  if (from === to || !(browseViews.includes(from as never) || browseViews.includes(to as never))) return;
+  for (const key of [...browseKeys, 'item']) url.searchParams.delete(key);
+}
+
 // navigate pushes a view. The other references stay in the URL, so a page
 // and back keeps the in-flight filter, the trace and the audit.
 export function navigate(view: View, section: Section = currentRoute().section, params: Record<string, string> = {}) {
@@ -59,6 +78,10 @@ export function navigate(view: View, section: Section = currentRoute().section, 
   url.searchParams.set('view', view);
   // An embed id belongs to the embed view only.
   if (view !== 'embed') url.searchParams.delete('embed');
+  // The Linear and GitHub views own their query values (JOB-163). Moving to
+  // another view drops them, so a group or filter of one provider never leaks
+  // into the other, and an issue key is not read as a waiting item on home.
+  if (view !== currentRoute().view) leaveBrowse(url, view);
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
@@ -105,6 +128,7 @@ export function openTrace(ref: string) {
   }
   store.set(chatOpenAtom, false);
   const url = currentURL();
+  leaveBrowse(url, 'trace');
   url.searchParams.set('ref', ref);
   url.searchParams.delete('inspect');
   url.searchParams.set('view', 'trace');
@@ -121,6 +145,7 @@ export function inspect(id: string) {
   if (currentRoute().inspect === id) return;
   store.set(selectedAtom, null);
   const url = currentURL();
+  leaveBrowse(url, 'trace');
   url.searchParams.set('inspect', id);
   url.searchParams.set('view', 'trace');
   url.hash = '';
@@ -137,6 +162,7 @@ export function setLayout(layout: '' | 'timeline') {
 
 export function openAudit(id: string) {
   const url = currentURL();
+  leaveBrowse(url, 'system');
   if (id) url.searchParams.set('audit', id);
   else url.searchParams.delete('audit');
   url.searchParams.set('view', 'system');
@@ -206,6 +232,14 @@ export function triage(ids: string[]) {
     ids,
     'triage ' + new Date().toISOString().slice(0, 19),
   );
+}
+
+// discussProvider starts a named chat with a Linear issue or GitHub PR or issue
+// attached (JOB-163). The reference is provider:ref, which Desk resolves
+// through browse.show when the message is sent.
+export function discussProvider(provider: string, ref: string) {
+  showChat();
+  chatBridge.start?.('', [provider + ':' + ref], ref);
 }
 
 export function attach(refs: string[]) {

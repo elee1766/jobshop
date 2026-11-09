@@ -33,6 +33,8 @@ test('tabs follow the built-in views in configured order', async ({ page, isMobi
     'trace',
     'learn',
     'sys',
+    'linear',
+    'github',
     'Cross app',
     'Same host',
     'Denied XFO',

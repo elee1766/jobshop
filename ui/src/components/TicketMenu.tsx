@@ -114,7 +114,7 @@ function Popup({ state }: { state: TicketMenuState }) {
   // A navigation while the menu is open (Back, a live redirect) dismisses it
   // rather than leave it pointing at a row that is gone. Base UI's modal
   // menu already blocks scrolling and clicks on the page behind it.
-  const place = route.view + '|' + route.ref + '|' + route.inspect;
+  const place = route.view + '|' + route.ref + '|' + route.inspect + '|' + route.scope;
   const opened = useRef(place);
   useEffect(() => {
     if (opened.current !== place) closeTicketMenu();
@@ -160,7 +160,7 @@ function Popup({ state }: { state: TicketMenuState }) {
               closeType === 'keyboard' ? (state.returnTo?.isConnected ? state.returnTo : true) : false
             }
           >
-            {!isRoot && (
+            {!isRoot && !target.provider && (
               <Menu.Item className="ticket-menu-item" onClick={() => openTrace(target.id)}>
                 {target.inspectable ? 'open as graph root' : 'open in trace'}
               </Menu.Item>
@@ -184,10 +184,20 @@ function Popup({ state }: { state: TicketMenuState }) {
               attach to chat
             </Menu.Item>
             <Menu.Item className="ticket-menu-item" closeOnClick={false} onClick={() => void copy()}>
-              copy ticket id
+              {target.provider ? 'copy reference' : 'copy ticket id'}
             </Menu.Item>
+            {target.provider && (
+              <Menu.LinkItem
+                className="ticket-menu-item"
+                href={target.provider.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                open in {target.provider.name} ↗
+              </Menu.LinkItem>
+            )}
             <div className="ticket-menu-id">
-              <span className="muted">ticket id</span>
+              <span className="muted">{target.provider ? 'reference' : 'ticket id'}</span>
               <code>{target.id}</code>
               {failed && (
                 <span role="alert" className="warn">

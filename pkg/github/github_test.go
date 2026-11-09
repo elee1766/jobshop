@@ -75,3 +75,38 @@ func TestClient(t *testing.T) {
 	_, err = cl.Do(ctx, github.Request{Path: "https://elsewhere.example/repos/o/r"})
 	require.ErrorContains(t, err, "leaves the API")
 }
+
+// GraphQL turns a rate limit into a *StatusError that says when to retry,
+// and tells it from a 403 for a permission.
+func TestGraphQLStatusError(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status  int
+		header  map[string]string
+		body    string
+		limited bool
+		retry   bool
+	}{
+		"429 with retry-after":    {429, map[string]string{"Retry-After": "60"}, `{"message":"slow down"}`, true, true},
+		"403 primary limit":       {403, map[string]string{"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "4102444800"}, `{"message":"API rate limit exceeded"}`, true, true},
+		"403 secondary limit":     {403, nil, `{"message":"You have exceeded a secondary rate limit"}`, true, false},
+		"403 permission":          {403, nil, `{"message":"Resource not accessible by integration"}`, false, false},
+		"200 graphql rate limit":  {200, nil, `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`, true, false},
+		"502 without a json body": {502, nil, `<html>`, false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				for k, v := range tc.header {
+					w.Header().Set(k, v)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+			err := github.New(srv.URL, apicall.Static("t")).GraphQL(t.Context(), `query{viewer{login}}`, nil, &struct{}{})
+			var se *github.StatusError
+			require.ErrorAs(t, err, &se)
+			assert.Equal(t, tc.limited, se.RateLimited())
+			assert.Equal(t, tc.retry, !se.RetryAt.IsZero())
+		})
+	}
+}

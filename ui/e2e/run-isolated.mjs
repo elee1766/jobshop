@@ -147,7 +147,7 @@ desk:
   await until('desk', reachable(`${desk}/api/embeds`));
   await until('the embed fixture', reachable('http://127.0.0.1:7498/seen'));
 
-  code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', '--workers=2']);
+  code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', 'browse.spec.js', 'browse-live.spec.js', '--workers=2']);
   // The reload spec rewrites this root's config and reloads it, so it runs
   // alone, after the others.
   if (code === 0) {

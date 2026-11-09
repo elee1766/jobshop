@@ -82,6 +82,8 @@ jobshop/
 │   │                         contract, command/ github/ http/ jev/ linear/ tickets/
 │   │                         are the bounded host capabilities
 │   ├── apicall/              token source and per-call options Linear and GitHub share
+│   ├── browse/               read-only Linear and GitHub browse service behind
+│   │                         browse.*: scope, cache, rate-limit blocking (JOB-163)
 │   ├── github/               GitHub REST client and read-only observation of
 │   │                         PRs, checks, reviews and threads (JOB-143)
 │   ├── linear/               Linear GraphQL client (#201)

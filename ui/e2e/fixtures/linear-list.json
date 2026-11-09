@@ -1,0 +1,124 @@
+{
+  "items": [
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-165",
+      "id": "JOB-165",
+      "kind": "issue",
+      "title": "Refactor baseline: reconcile master, map ownership and enforce import boundaries",
+      "state": "In Progress",
+      "state_type": "started",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T10:44:07.762Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-165"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-164",
+      "id": "JOB-164",
+      "kind": "issue",
+      "title": "Refactor pkg into coherent subsystem families with shared domain types and enforced boundaries",
+      "state": "Backlog",
+      "state_type": "backlog",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T10:40:46.756Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-164"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-163",
+      "id": "JOB-163",
+      "kind": "issue",
+      "title": "Desk: implement native Linear and GitHub views from approved Plan9 designs",
+      "state": "In Progress",
+      "state_type": "started",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T10:10:43.993Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-163"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-161",
+      "id": "JOB-161",
+      "kind": "issue",
+      "title": "Proposed target: Desk follow-ups after the React port (context menus, message headers, iframe tabs)",
+      "state": "In Progress",
+      "state_type": "started",
+      "owner": "elee-agent",
+      "labels": [
+        "target"
+      ],
+      "updated_at": "2026-11-09T09:29:16.052Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-161"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-175",
+      "id": "JOB-175",
+      "kind": "issue",
+      "title": "Audit final package ownership, dependency boundaries and restart compatibility",
+      "state": "Todo",
+      "state_type": "unstarted",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T09:01:37.845Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-175"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-174",
+      "id": "JOB-174",
+      "kind": "issue",
+      "title": "Group transport adapters, support primitives and development tooling",
+      "state": "Todo",
+      "state_type": "unstarted",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T09:01:36.229Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-174"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-173",
+      "id": "JOB-173",
+      "kind": "issue",
+      "title": "Group persistence and journal ownership under storage without a universal store abstraction",
+      "state": "Todo",
+      "state_type": "unstarted",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T09:01:35.818Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-173"
+    },
+    {
+      "provider": "linear",
+      "scope": "JOB",
+      "ref": "JOB-172",
+      "id": "JOB-172",
+      "kind": "issue",
+      "title": "Separate independent pack ownership from service configuration",
+      "state": "Todo",
+      "state_type": "unstarted",
+      "owner": "eddy",
+      "labels": [],
+      "updated_at": "2026-11-09T09:01:35.347Z",
+      "url": "https://linear.app/gfx-labs/issue/JOB-172"
+    }
+  ],
+  "next": "ca71317f-44d3-4fa4-a466-4ad15dead649",
+  "has_more": true,
+  "status": {
+    "state": "fresh",
+    "fetched_at": "2026-11-09T12:00:00Z"
+  }
+}

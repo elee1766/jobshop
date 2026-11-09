@@ -61,6 +61,14 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 			{"chats", s.chatList},
 			{"improvements", s.improvements},
 			{"embeds", s.embedList},
+			// The scope and its revision (JOB-163): no provider call. An
+			// activity event moves the revision and this section is sent
+			// again, which is what tells an open Linear or GitHub view to read.
+			{"browse", func(r *http.Request) (any, error) {
+				var result rpc.BrowseScopeResult
+				err := s.ctl.Call(r.Context(), rpc.MethodBrowseScope, struct{}{}, &result)
+				return result, err
+			}},
 		}
 		if ref := r.URL.Query().Get("trace"); ref != "" {
 			readers = append(readers, section{"trace", func(request *http.Request) (any, error) {

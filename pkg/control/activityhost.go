@@ -50,6 +50,7 @@ func (h activityHost) Ingest(ctx context.Context) { h.c.ingestPass(ctx) }
 // Admitted checks newly admitted merges for reverts. It runs before the
 // cache is saved, as before the extraction.
 func (h activityHost) Admitted(ctx context.Context, items []rpc.ActivityItem) {
+	h.c.browseChanged(items)
 	if rs, ok := h.c.activitySource().(github.PullSource); ok {
 		h.c.checkReverts(ctx, rs, items)
 	}

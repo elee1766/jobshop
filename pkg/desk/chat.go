@@ -119,6 +119,14 @@ func (s *Server) referenceContext(r *http.Request, refs []string) (string, error
 		if strings.TrimSpace(ref) == "" || len(ref) > 256 || strings.ContainsAny(ref, "\r\n") {
 			return "", fmt.Errorf("%w: invalid context reference", errBadRequest)
 		}
+		if provider, item, ok := strings.Cut(ref, ":"); ok && (provider == rpc.BrowseLinear || provider == rpc.BrowseGitHub) {
+			record, err := s.providerContext(r, provider, item)
+			if err != nil {
+				return "", err
+			}
+			records = append(records, record)
+			continue
+		}
 		var shown rpc.ShowResult
 		if err := s.ctl.Call(r.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: ref}, &shown); err != nil {
 			var trace rpc.TraceNode
@@ -145,6 +153,26 @@ func (s *Server) referenceContext(r *http.Request, refs []string) (string, error
 		return "", fmt.Errorf("%w: context is too large", errBadRequest)
 	}
 	return context, nil
+}
+
+// providerContext is the context record of a Linear issue or GitHub PR or
+// issue the Linear and GitHub views attach (JOB-163, "linear:JOB-150",
+// "github:owner/name#986"). It is read through browse.show, so only a
+// configured team or repo resolves, and it carries the title, state and the
+// provider's own link, not the discussion.
+func (s *Server) providerContext(r *http.Request, provider, item string) (map[string]string, error) {
+	var d rpc.BrowseDetail
+	p := rpc.BrowseShowParams{Provider: provider, Ref: item, Brief: true}
+	if err := s.ctl.Call(r.Context(), rpc.MethodBrowseShow, p, &d); err != nil {
+		return nil, fmt.Errorf("resolve context %q: %w", provider+":"+item, err)
+	}
+	if d.Status.State == rpc.BrowseError {
+		return nil, fmt.Errorf("%w: resolve context %q: %s", errBadRequest, provider+":"+item, d.Status.Message)
+	}
+	return map[string]string{
+		"ref": provider + ":" + d.Item.Ref, "provider": provider, "id": d.Item.Ref, "kind": d.Item.Kind,
+		"title": d.Item.Title, "state": d.Item.State, "link": d.Item.URL,
+	}, nil
 }
 
 // chatCancel is POST /api/chat/cancel {session}: Stop. It cancels the
