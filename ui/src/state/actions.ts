@@ -60,6 +60,16 @@ export function hideChat() {
   store.set(chatOpenAtom, false);
 }
 
+// leaveBrowse drops the query values the Linear and GitHub views own when the
+// URL is going to another view or coming from one, so a group or filter of one
+// provider never leaks into the other, and an issue key is not read as a
+// waiting item on home.
+function leaveBrowse(url: URL, to: View) {
+  const from = currentRoute().view;
+  if (from === to || !(browseViews.includes(from as never) || browseViews.includes(to as never))) return;
+  for (const key of [...browseKeys, 'item']) url.searchParams.delete(key);
+}
+
 // navigate pushes a view. The other references stay in the URL, so a page
 // and back keeps the in-flight filter, the trace and the audit.
 export function navigate(view: View, section: Section = currentRoute().section, params: Record<string, string> = {}) {
@@ -71,10 +81,7 @@ export function navigate(view: View, section: Section = currentRoute().section, 
   // The Linear and GitHub views own their query values (JOB-163). Moving to
   // another view drops them, so a group or filter of one provider never leaks
   // into the other, and an issue key is not read as a waiting item on home.
-  const from = currentRoute().view;
-  if (view !== from && (browseViews.includes(from as never) || browseViews.includes(view as never))) {
-    for (const key of [...browseKeys, 'item']) url.searchParams.delete(key);
-  }
+  if (view !== currentRoute().view) leaveBrowse(url, view);
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
@@ -121,6 +128,7 @@ export function openTrace(ref: string) {
   }
   store.set(chatOpenAtom, false);
   const url = currentURL();
+  leaveBrowse(url, 'trace');
   url.searchParams.set('ref', ref);
   url.searchParams.delete('inspect');
   url.searchParams.set('view', 'trace');
@@ -137,6 +145,7 @@ export function inspect(id: string) {
   if (currentRoute().inspect === id) return;
   store.set(selectedAtom, null);
   const url = currentURL();
+  leaveBrowse(url, 'trace');
   url.searchParams.set('inspect', id);
   url.searchParams.set('view', 'trace');
   url.hash = '';
@@ -153,6 +162,7 @@ export function setLayout(layout: '' | 'timeline') {
 
 export function openAudit(id: string) {
   const url = currentURL();
+  leaveBrowse(url, 'system');
   if (id) url.searchParams.set('audit', id);
   else url.searchParams.delete('audit');
   url.searchParams.set('view', 'system');

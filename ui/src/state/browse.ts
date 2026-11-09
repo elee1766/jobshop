@@ -7,8 +7,8 @@ import type {
   BrowseListParams,
   BrowseListResult,
   BrowseStatus,
-  BrowseThread,
 } from '../../../packages/jobshop-client/rpc.js';
+import { commentIds, mergeItems, mergeThreads } from '../lib/browse.ts';
 import { client } from '../lib/api.ts';
 import { browseAtom } from './live.ts';
 
@@ -72,13 +72,6 @@ export interface ListState {
   busy: boolean;
   // The call itself failed (scope refused, Desk forbids browse, no network).
   error: string;
-}
-
-// mergeItems keeps the refreshed first page and the older pages that were
-// loaded after it, without repeating an item that moved up.
-export function mergeItems(first: BrowseItem[], loaded: BrowseItem[], pageSize: number): BrowseItem[] {
-  const seen = new Set(first.map((item) => item.ref));
-  return [...first, ...loaded.slice(pageSize).filter((item) => !seen.has(item.ref))];
 }
 
 class ListResource extends Resource<ListState> {
@@ -204,27 +197,6 @@ export interface DetailState {
   // Comment ids the reader has already had in front of them. A comment that
   // arrives later is new.
   seen: Set<string>;
-}
-
-export const commentIds = (threads: BrowseThread[]) => threads.flatMap((t) => t.comments.map((c) => c.id));
-
-// mergeThreads folds more threads into a list by id: a thread that is in both
-// gets the comments of both, oldest first.
-export function mergeThreads(base: BrowseThread[], more: BrowseThread[]): BrowseThread[] {
-  const out = base.map((t) => ({ ...t, comments: [...t.comments] }));
-  for (const thread of more) {
-    const at = out.findIndex((t) => t.id === thread.id);
-    if (at < 0) {
-      out.push(thread);
-      continue;
-    }
-    const have = new Set(out[at].comments.map((c) => c.id));
-    const merged = [...out[at].comments, ...thread.comments.filter((c) => !have.has(c.id))].toSorted(
-      (a, b) => Date.parse(a.at) - Date.parse(b.at),
-    );
-    out[at] = { ...out[at], comments: merged, hidden: Math.max(out[at].hidden ?? 0, thread.hidden ?? 0) || undefined };
-  }
-  return out;
 }
 
 class DetailResource extends Resource<DetailState> {

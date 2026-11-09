@@ -379,7 +379,6 @@ function ChecksSummary({ detail }: { detail: BrowseDetail }) {
     <div className="tag browse-checks-line">
       <span>checks</span>
       <span>{words.join(', ') || `${total}`}</span>
-      <button onClick={() => setParams({ tab: 'checks' })}>details</button>
       {detail.item.url && (
         <a href={detail.item.url + '/checks'} target="_blank" rel="noopener noreferrer">
           details on github ↗
