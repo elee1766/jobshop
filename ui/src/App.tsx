@@ -1,16 +1,58 @@
 import { Provider, useAtom, useAtomValue } from 'jotai';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { Chat } from './screens/Chat.tsx';
 import { Home } from './screens/Home.tsx';
-import { Learn } from './screens/Learn.tsx';
-import { System } from './screens/System.tsx';
-import { Trace } from './screens/TraceScreen.tsx';
 import { LiveOwner, useTabLifecycle } from './components/LiveOwner.tsx';
 import { useDeskRoute, viewLabel, views } from './lib/route.ts';
 import { goSection, hideChat, navigate, openTrace, showChat, showSection, toggleSince } from './state/actions.ts';
 import { connectedAtom, errorAtom, systemAtom, attention } from './state/live.ts';
 import { store } from './state/store.ts';
 import { chatHiddenAtom, chatOpenAtom, keyboardAtom, phoneTabAtom } from './state/ui.ts';
+
+// Home and chat are the first screens and ship in the entry chunk. The graph,
+// learn and system screens are separate chunks, which keeps the first load
+// near the framework floor (JOB-150 budgets). They are fetched when the
+// browser is idle after the first render, so a first switch finds them cached.
+//
+// A lazy() component that already loaded still suspends once on its first
+// render, and React holds a revealed Suspense boundary for 300 ms. So a loaded
+// screen is kept here and rendered directly.
+function screen(load: () => Promise<ComponentType>) {
+  let loaded: ComponentType | undefined;
+  let promise: Promise<ComponentType> | undefined;
+  const start = () =>
+    (promise ??= load().then((c) => {
+      loaded = c;
+      return c;
+    }));
+  const Lazy = lazy(() => start().then((c) => ({ default: c })));
+  return {
+    start,
+    Screen: () => {
+      const Loaded = loaded;
+      return Loaded ? <Loaded /> : <Lazy />;
+    },
+  };
+}
+
+const traceScreen = screen(() => import('./screens/TraceScreen.tsx').then((m) => m.Trace));
+const learnScreen = screen(() => import('./screens/Learn.tsx').then((m) => m.Learn));
+const systemScreen = screen(() => import('./screens/System.tsx').then((m) => m.System));
+const { Screen: Trace } = traceScreen;
+const { Screen: Learn } = learnScreen;
+const { Screen: System } = systemScreen;
+
+function usePreloadScreens() {
+  useEffect(() => {
+    const load = () => [traceScreen, learnScreen, systemScreen].forEach((s) => void s.start());
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(load, { timeout: 1500 });
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(load, 300);
+    return () => clearTimeout(id);
+  }, []);
+}
 
 export function App() {
   return (
@@ -23,6 +65,7 @@ export function App() {
 
 function Desk() {
   useTabLifecycle();
+  usePreloadScreens();
   const route = useDeskRoute();
   const [phoneTab, setPhoneTab] = useAtom(phoneTabAtom);
   const hidden = useAtomValue(chatHiddenAtom);
@@ -89,9 +132,11 @@ function Desk() {
       <div className="columns">
         <main className="work">
           {route.view === 'home' && <Home />}
-          {route.view === 'trace' && <Trace />}
-          {route.view === 'improvements' && <Learn />}
-          {route.view === 'system' && <System />}
+          <Suspense fallback={null}>
+            {route.view === 'trace' && <Trace />}
+            {route.view === 'improvements' && <Learn />}
+            {route.view === 'system' && <System />}
+          </Suspense>
         </main>
         <aside className="chat-column" aria-label="Chats">
           <button className="show-chats" onClick={showChat}>

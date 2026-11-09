@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "svelte-check --fail-on-warnings",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "oxlint --deny-warnings src",
+    "format": "oxfmt --write src vite.config.ts",
+    "format:check": "oxfmt --check src vite.config.ts",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "test:unit": "node --test src/lib/search.test.ts kit/links.test.js kit/titles.test.js ../packages/jobshop-client/index.test.js",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
