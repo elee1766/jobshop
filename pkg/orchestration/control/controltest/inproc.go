@@ -17,15 +17,14 @@ import (
 // process spawn the race build pays about a second for (#361). The agent
 // is still the child process acphost starts. Tests about real process
 // trees (restart and adopt, sandbox, env refresh, stuck and busy) use
-// detached hosts instead. Agent crashes work in-process through Exited
-// (#467).
+// detached hosts instead. Agent crashes work in-process because
+// acphost closes client connections when Main returns (#467, #1133).
 //
 // Not built on acphost's acphosttest (#723): the controller calls Start
 // from its own goroutine, where acphosttest.Start's t.Fatalf is not
 // allowed; acphosttest.Start rewrites the spec the controller already
 // wrote; and it blocks until the socket listens, while the controller
-// polls the socket itself. Stop and Exited here match acphosttest's
-// Stop and Done.
+// polls the socket itself. Stop here matches acphosttest's Stop.
 type InProcHosts struct {
 	mu   sync.Mutex
 	runs map[string]chan struct{} // dir -> closed when Main returns
@@ -87,16 +86,6 @@ func (h *InProcHosts) Stop(dir string) bool {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-}
-
-// Exited is closed when the host for dir returns (control.HostExits).
-func (h *InProcHosts) Exited(dir string) <-chan struct{} {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if done, ok := h.runs[dir]; ok {
-		return done
-	}
-	return nil
 }
 
 // StopAll stops every host still running, for test cleanup.
