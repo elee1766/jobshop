@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.17](https://github.com/elee1766/jobshop/compare/v0.9.16...v0.9.17) (2026-11-09)
+
+
+### Features
+
+* **desk:** show waits as edges in the trace graph ([#1091](https://github.com/elee1766/jobshop/issues/1091)) ([#1095](https://github.com/elee1766/jobshop/issues/1095)) ([9a1efd3](https://github.com/elee1766/jobshop/commit/9a1efd3d84dcf52f260462c6787cf6971055ed7c))
+
 ## [0.9.16](https://github.com/elee1766/jobshop/compare/v0.9.15...v0.9.16) (2026-11-08)
 
 
