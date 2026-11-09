@@ -1,6 +1,8 @@
+import { useAtomValue } from 'jotai';
 import { useEffect, useRef, useState } from 'react';
 import { sessionActivity } from '../lib/session.ts';
 import { useSessionFrames } from '../lib/useSessionFrames.ts';
+import { traceAtom } from '../state/live.ts';
 import { Transcript } from './Transcript.tsx';
 
 // A read-only view of one session. Escape and the dismiss button close it;
@@ -10,6 +12,9 @@ export function SessionViewer({ id, onClose }: { id: string; onClose: () => void
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const activity = sessionActivity(frames);
+  // The agent's header label: its pool, else its agent name, from the trace.
+  const holder = useAtomValue(traceAtom)?.sessions?.[id];
+  const agent = holder?.pool || holder?.agent?.name || 'agent';
 
   useEffect(() => closeButton.current?.focus({ preventScroll: true }), []);
   useEffect(() => {
@@ -45,7 +50,7 @@ export function SessionViewer({ id, onClose }: { id: string; onClose: () => void
             {connection === 'ended' ? 'No journal messages recorded.' : 'Waiting for session output…'}
           </p>
         )}
-        <Transcript frames={frames} viewport={viewport} onOlder={prepend} />
+        <Transcript frames={frames} viewport={viewport} agent={agent} onOlder={prepend} />
       </div>
     </section>
   );
