@@ -115,6 +115,14 @@ pools:
     max_sessions: 200
     prompt: "Operator pool instructions"
     dir: ${JSON.stringify(work)}
+  # A warm ticket pool for the pool controls spec (JOB-178).
+  worker:
+    project: js
+    agent: fake
+    min_sessions: 1
+    max_sessions: 3
+    idle_timeout: 1h
+    dir: ${JSON.stringify(work)}
 workflows:
   # Stays open for a day: a row for the menu spec, with no outside effect.
   link-acceptance:
@@ -148,6 +156,8 @@ desk:
   await until('the embed fixture', reachable('http://127.0.0.1:7498/seen'));
 
   code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', 'browse.spec.js', 'browse-live.spec.js', '--workers=2']);
+  // It scales the shared worker pool, so the two projects run one at a time.
+  if (code === 0) code = playwright(['pool-controls.spec.js', '--workers=1']);
   // The reload spec rewrites this root's config and reloads it, so it runs
   // alone, after the others.
   if (code === 0) {

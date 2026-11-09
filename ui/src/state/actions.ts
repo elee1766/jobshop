@@ -11,7 +11,10 @@ import {
 import { client } from '../lib/api.ts';
 import { errorAtom, selectedAtom, traceAtom } from './live.ts';
 import { store } from './store.ts';
+import { noticeAtom } from './ticketMenu.ts';
 import {
+  pendingAtom,
+  rpcMethodsAtom,
   busyAtom,
   chatHiddenAtom,
   chatOpenAtom,
@@ -260,4 +263,48 @@ export async function closeSession(id: string) {
   } catch (e) {
     setError(e);
   }
+}
+
+// loadRpcMethods reads which methods this Desk allows. A failure leaves the
+// controls hidden; opening the view again tries again.
+export async function loadRpcMethods() {
+  try {
+    const list = await client.get<{ methods: string[] }>('api/rpc');
+    store.set(rpcMethodsAtom, list.methods);
+  } catch {
+    store.set(rpcMethodsAtom, null);
+  }
+}
+
+// pending runs one write, refusing a second while it runs.
+async function pending(key: string, write: () => Promise<string>) {
+  if (store.get(pendingAtom)[key]) return false;
+  store.set(pendingAtom, (prev) => ({ ...prev, [key]: true }));
+  try {
+    store.set(noticeAtom, await write());
+    return true;
+  } catch (e) {
+    setError(e);
+    return false;
+  } finally {
+    store.set(pendingAtom, (prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
+  }
+}
+
+// scalePool sets a pool's desired sessions, or 'auto' to follow ready work.
+// The live stream then brings the new row.
+export function scalePool(pool: string, target: number | 'auto') {
+  return pending('pool:' + pool, async () => {
+    await client.call('pool.scale', target === 'auto' ? { pool, auto: true } : { pool, target });
+    return target === 'auto' ? `${pool}: scaling follows ready work` : `${pool}: desired sessions set to ${target}`;
+  });
+}
+
+// cordonSession takes a session out of rotation (it finishes its ticket and
+// claims nothing new) or puts it back.
+export function cordonSession(id: string, name: string, uncordon: boolean) {
+  return pending('session:' + id, async () => {
+    await client.call('session.cordon', uncordon ? { id, uncordon: true } : { id });
+    return `${name}: ${uncordon ? 'back in rotation' : 'cordoned'}`;
+  });
 }

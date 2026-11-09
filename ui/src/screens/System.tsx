@@ -1,8 +1,10 @@
 import { useAtomValue } from 'jotai';
+import { useEffect } from 'react';
 import { ago } from '../lib/model.ts';
 import { useDeskRoute } from '../lib/route.ts';
 import { disablePush, enablePush, pushStateAtom } from '../lib/push.ts';
-import { closeSession, openAudit, openTrace } from '../state/actions.ts';
+import { CordonControl, ScaleControl, useAllowed } from '../components/PoolControls.tsx';
+import { closeSession, loadRpcMethods, openAudit, openTrace } from '../state/actions.ts';
 import { auditAtom, nowAtom, systemAtom } from '../state/live.ts';
 import { HookAudit } from './HookAudit.tsx';
 
@@ -17,6 +19,13 @@ export function System() {
   const now = useAtomValue(nowAtom);
   const push = useAtomValue(pushStateAtom);
   const route = useDeskRoute();
+  const canScale = useAllowed('pool.scale');
+  const canCordon = useAllowed('session.cordon');
+  // Read again on each visit: desk.rpc can change with a config reload.
+  useEffect(() => {
+    void loadRpcMethods();
+  }, []);
+  const scaled = new Set((system?.pools?.pools || []).map((pool) => pool.name));
   return (
     <>
       <div className="tag">
@@ -36,20 +45,30 @@ export function System() {
                 <th>open / max</th>
                 <th>working</th>
                 <th>idle</th>
+                <th>cordoned</th>
                 <th>desired</th>
+                {canScale && <th>set desired</th>}
               </tr>
             </thead>
             <tbody>
               {(system?.pools?.pools || []).map((pool) => (
                 <tr key={pool.name}>
                   <td>{pool.name}</td>
-                  <td>{system?.pools.quarantined?.[pool.name] ? 'quarantined' : 'ok'}</td>
+                  <td>{system?.pools.quarantined?.[pool.name] ? 'quarantined' : pool.drained ? 'drained' : 'ok'}</td>
                   <td>
                     {pool.open} / {pool.max || 'uncapped'}
                   </td>
                   <td>{pool.working}</td>
                   <td>{pool.idle}</td>
-                  <td>{pool.desired}</td>
+                  <td>{pool.cordoned}</td>
+                  <td>
+                    {pool.desired} <span className="muted">{pool.target === undefined ? 'auto' : 'manual'}</span>
+                  </td>
+                  {canScale && (
+                    <td>
+                      <ScaleControl pool={pool} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -160,7 +179,12 @@ export function System() {
               <button className="mono" onClick={() => openTrace(session.id)}>
                 {session.display_name || session.id}
               </button>{' '}
-              {session.busy ? 'working' : 'idle'} <button onClick={() => void closeSession(session.id)}>close</button>
+              {session.busy ? 'working' : 'idle'}
+              {session.cordon && <span> · cordoned: {session.cordon}</span>}{' '}
+              {canCordon && session.ticket?.pool && scaled.has(session.ticket.pool) && (
+                <CordonControl id={session.id} name={session.display_name || session.id} cordon={session.cordon} />
+              )}{' '}
+              <button onClick={() => void closeSession(session.id)}>close</button>
             </p>
           ))}
         </div>
