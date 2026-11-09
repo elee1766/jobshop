@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.25](https://github.com/elee1766/jobshop/compare/v0.9.24...v0.9.25) (2026-11-09)
+
+
+### Features
+
+* **desk:** open traces in the timeline layout by default ([#1136](https://github.com/elee1766/jobshop/issues/1136)) ([#1137](https://github.com/elee1766/jobshop/issues/1137)) ([a1414d9](https://github.com/elee1766/jobshop/commit/a1414d91e3dbdbf087d717a20375e896af2fb4bd))
+
 ## [0.9.24](https://github.com/elee1766/jobshop/compare/v0.9.23...v0.9.24) (2026-11-09)
 
 
