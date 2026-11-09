@@ -39,7 +39,8 @@ None of that reaches `session`, `acphost.acphost` or the ACP SDK.
   SDK reached through it. The other baseline exceptions stay with their children.
 - `hostspec` is no longer an independent leaf: it moved into `session`, which
   imports acphost and `sandbox` for the other mechanics.
-- The `journalread -> session` exception (was `-> hostspec`) stays for JOB-173.
+- `journalread -> hostspec` was removed by JOB-173 before this landed, so no
+  journal package imports `session`.
 
 ## Not done
 

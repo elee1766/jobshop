@@ -13,8 +13,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/execution/sandbox"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // RunDir is a run's scratch dir for its command steps under root: the

@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Sync handlers (guard hooks, desk commands) run while a caller waits.
