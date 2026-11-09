@@ -78,7 +78,7 @@ the old ones.
 ```sh
 go test ./pkg/config -run DeskEmbeds
 go test ./pkg/transport/desk -run Embeds
-go test ./pkg/control -run TestReloadPublishesStateForDesk
+go test ./pkg/orchestration/control -run TestReloadPublishesStateForDesk
 ```
 
 These cover the rejected cases (scheme, userinfo, secret keys, plain http,

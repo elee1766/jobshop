@@ -10,7 +10,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 )
 
-// The curator gate's judgement (#274), moved out of pkg/control by the
+// The curator gate's judgement (#274), moved out of pkg/orchestration/control by the
 // JOB-155 audit. It reads values only: the controller lists the steps and
 // learnings, passes them in and records the answer with SetResult.
 

@@ -3,7 +3,7 @@
 // store collections (#579), the curator gate's judgement of an edit, and
 // the mechanics of recording, evaluating and restoring an edit.
 //
-// What stays in pkg/control is the decision to curate: who may write
+// What stays in pkg/orchestration/control is the decision to curate: who may write
 // memory, which cap and thresholds apply, when an evaluation is due, and
 // the coordination with tickets and runs. This package is given those
 // values and does the work.

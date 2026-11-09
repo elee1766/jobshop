@@ -55,7 +55,7 @@ func run(args []string) error {
 		return archcheck.WriteInventory(os.Stdout, g, cfg)
 	case *why:
 		if fs.NArg() != 2 {
-			return fmt.Errorf("-why needs two packages, such as ./pkg/hooks github.com/elee1766/acphost/pkg/acphost")
+			return fmt.Errorf("-why needs two packages, such as ./pkg/orchestration/hooks github.com/elee1766/acphost/pkg/acphost")
 		}
 		from, to := expand(g, fs.Arg(0)), expand(g, fs.Arg(1))
 		chain := archcheck.Why(g, from, to)

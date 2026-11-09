@@ -1,7 +1,7 @@
 Jobshop repo notes (packs/selfdev, #592). These hold on every
 elee1766/jobshop turn, alongside AGENTS.md.
 
-- pkg/config and pkg/control change fast: `git fetch` and rebase onto
+- pkg/config and pkg/orchestration/control change fast: `git fetch` and rebase onto
   origin/master before the first push, and reuse helpers master added.
 - After every rebase, rerun the generators even if GitHub shows the PR
   clean: `go run ./pkg/transport/rpc/rpcschema/cmd/deskgen`, then `go test ./...`.
@@ -28,7 +28,7 @@ elee1766/jobshop turn, alongside AGENTS.md.
   --allow-parallel-runners ./...`.
 - Local `-race` failures (dial timeouts) while /proc/loadavg is far above
   the core count are load: rerun the test alone before fixing. In
-  pkg/control tests, wait for every asserted condition in one
+  pkg/orchestration/control tests, wait for every asserted condition in one
   pass/passUntil, and run `pass(t, dir, 1)` before creating state that
   startup (reapOrphans) must not touch.
 - Sandbox and isolation tests skip silently without bwrap, newuidmap,

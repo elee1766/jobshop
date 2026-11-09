@@ -1,6 +1,6 @@
 // Package conversation owns the rules of managed conversations: Desk named
 // chats, escalation chats (#379) and attention chats (#535, #606). It was
-// split out of pkg/control by JOB-147.
+// split out of pkg/orchestration/control by JOB-147.
 //
 // A managed chat is a session ticket in a chat pool whose key says what
 // it is for: desk:<id> (named, started from Desk), escalation:<ticket>

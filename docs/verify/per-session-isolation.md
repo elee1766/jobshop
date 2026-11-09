@@ -10,5 +10,5 @@ Added 2026-11-05. Needs the setup from `isolation.md` first.
 4. `getfattr -n system.posix_acl_access <worktree>` (or `getfacl`)
    lists `user:<map_uid+slot>:rwx`, `group:jobshop:rwx`, `other::---`.
 5. End one session; the third starts and reuses the free slot.
-6. `go test ./pkg/control -run TestPerSessionIsolation -v` as the
+6. `go test ./pkg/orchestration/control -run TestPerSessionIsolation -v` as the
    jobshop user passes (not skipped).

@@ -1,0 +1,116 @@
+package queue_test
+
+import (
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
+	"github.com/elee1766/jobshop/pkg/orchestration/ingest/queue"
+	"github.com/elee1766/jobshop/pkg/support/clock"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
+)
+
+type fakeHost struct {
+	clk   *clock.Fake
+	woken [][]domain.InboxItem
+}
+
+func (h *fakeHost) Clock() clock.Clock               { return h.clk }
+func (h *fakeHost) Store() ingest.InboxStore         { return nil }
+func (h *fakeHost) SpoolPath() string                { return "" }
+func (h *fakeHost) WakeWaits(its []domain.InboxItem) { h.woken = append(h.woken, its) }
+func (h *fakeHost) Drained(_ []domain.InboxItem)     {}
+
+func newService() (*queue.Service, *fakeHost) {
+	h := &fakeHost{clk: clock.NewFake(time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC))}
+	return queue.New(h, slog.New(slog.DiscardHandler)), h
+}
+
+func TestAppendedAdvancesAndWakes(t *testing.T) {
+	t.Parallel()
+	s, h := newService()
+	ch := s.Changed()
+	s.Appended(nil)
+	select {
+	case <-ch:
+		t.Fatal("an empty append is not a change")
+	default:
+	}
+	s.Appended([]domain.InboxItem{{DeliveryID: "d"}})
+	<-ch
+	assert.Len(t, h.woken, 1)
+	res := s.Next(t.Context(), 0, time.Second)
+	assert.True(t, res.Changed)
+	assert.EqualValues(t, 1, res.Seq)
+}
+
+func TestNextReturnsOnTimeout(t *testing.T) {
+	t.Parallel()
+	s, h := newService()
+	done := make(chan rpc.IngestNextResult)
+	go func() { done <- s.Next(t.Context(), 0, time.Second) }()
+	require.True(t, h.clk.WaitFor(1, t.Context().Done()))
+	h.clk.Advance(2 * time.Second)
+	res := <-done
+	assert.False(t, res.Changed)
+}
+
+func TestHeartbeats(t *testing.T) {
+	t.Parallel()
+	s, h := newService()
+	start := h.clk.Now()
+	assert.Equal(t, start, s.LastBeat(start), "no worker: the given start")
+	s.Beat(rpc.IngestClaimParams{Worker: "b", Host: "hb"}, false, false)
+	h.clk.Advance(time.Minute)
+	s.Beat(rpc.IngestClaimParams{Worker: "a"}, true, false)
+	s.Beat(rpc.IngestClaimParams{Worker: "a"}, false, true)
+	ws := s.Workers()
+	require.Len(t, ws, 2)
+	assert.Equal(t, "a", ws[0].ID, "sorted by id")
+	assert.EqualValues(t, 1, ws[0].Admitted)
+	assert.False(t, ws[0].LastClaim.IsZero())
+	assert.True(t, ws[1].LastClaim.IsZero())
+	assert.Equal(t, h.clk.Now(), s.LastBeat(start))
+	assert.EqualValues(t, 1, s.Live(start.Add(30*time.Second)), "b is older than the cutoff")
+}
+
+func TestSettle(t *testing.T) {
+	t.Parallel()
+	run := queue.Run{Event: queue.Event{Payload: []byte(`{"a":1}`)}}
+	st, payload, _ := queue.Settle(run, rpc.GuardResult{}, false)
+	assert.Equal(t, domain.InboxAdmitted, st)
+	assert.JSONEq(t, `{"a":1}`, string(payload))
+
+	run.Asks = []string{"v: unsure"}
+	st, payload, _ = queue.Settle(run, rpc.GuardResult{}, false)
+	assert.Equal(t, domain.InboxHeld, st)
+	assert.Nil(t, payload)
+
+	st, _, rs := queue.Settle(run, rpc.GuardResult{Decision: domain.GuardAllow}, true)
+	assert.Equal(t, domain.InboxAdmitted, st, "a human's allow stands over the hold")
+	assert.Equal(t, "human", rs[len(rs)-1].Name)
+
+	run.Denied = true
+	st, _, _ = queue.Settle(run, rpc.GuardResult{}, false)
+	assert.Equal(t, domain.InboxDenied, st)
+	st, _, _ = queue.Settle(run, rpc.GuardResult{Decision: domain.GuardDeny}, true)
+	assert.Equal(t, domain.InboxDenied, st)
+}
+
+func TestHooksAddsIntake(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{}
+	cfg.Ingest.Admission = []config.AdmissionHook{{Name: "m", Type: config.AdmissionMutating}}
+	cfg.Hooks = []config.Hook{{On: config.HookIntake, Command: "true"}, {On: "guard", Command: "x"}}
+	hs := queue.Hooks(cfg)
+	require.Len(t, hs, 2)
+	assert.Equal(t, "on-intake-1", hs[1].Name)
+	assert.True(t, hs[1].Intake)
+	assert.Greater(t, queue.Lease(hs), time.Minute)
+}
