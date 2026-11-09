@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // lockHolder is who holds tickMu now, set under the lock: the kind (tick,

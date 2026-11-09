@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 func (c *Controller) automationList(ctx context.Context, sc scope, p rpc.AutomationListParams) (any, error) {

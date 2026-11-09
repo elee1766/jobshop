@@ -7,8 +7,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // session.journal (#529): read-only, paged, redacted access to a

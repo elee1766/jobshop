@@ -26,7 +26,7 @@ CSRF header for writes. `ApiError` carries HTTP status and controller code.
 Generated RPC parameter and result types come from `rpc.Specs`:
 
 ```sh
-go run ./pkg/rpc/rpcschema/cmd/deskgen
+go run ./pkg/transport/rpc/rpcschema/cmd/deskgen
 node --test packages/jobshop-client/index.test.js
 ```
 

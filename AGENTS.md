@@ -10,7 +10,7 @@ the pinned decision log issue (#569). Progress: open `target` issues.
   and arbitrary payload data.
 - Every write goes through the controller; the CLI never opens the database.
 - Generate Desk assets first: `npm --prefix ui ci && npm --prefix ui run build`.
-  `pkg/desk/dist` is ignored build output, not committed source. Rebuild it after
+  `pkg/transport/desk/dist` is ignored build output, not committed source. Rebuild it after
   frontend changes, then check:
   `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`,
   plus `nix fmt -- --check $(git ls-files '*.nix')` (CI runs it; `nix fmt` fixes it).

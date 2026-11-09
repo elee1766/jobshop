@@ -21,7 +21,7 @@ let
       ../go.mod
       ../go.sum
       ../cmd
-      (lib.fileset.difference ../pkg (lib.fileset.maybeMissing ../pkg/desk/dist))
+      (lib.fileset.difference ../pkg (lib.fileset.maybeMissing ../pkg/transport/desk/dist))
     ];
   };
   args = {
@@ -33,8 +33,8 @@ let
     ldflags = [
       "-s"
       "-w"
-      "-X github.com/elee1766/jobshop/pkg/cli.version=${binVersion}"
-      "-X github.com/elee1766/jobshop/pkg/cli.commit=${rev}"
+      "-X github.com/elee1766/jobshop/pkg/transport/cli.version=${binVersion}"
+      "-X github.com/elee1766/jobshop/pkg/transport/cli.commit=${rev}"
     ];
 
     # Tests run in CI with -race; the Nix build only produces the binary.
@@ -58,7 +58,7 @@ if builtins ? resolveGoPackages then
       # Module hashes come from go.sum (no lockfile).
       subPackages = [ "./cmd/jobshop" ];
       # Declare generated embeds without building the frontend during evaluation.
-      packageOverrides."github.com/elee1766/jobshop/pkg/desk".srcOverlay =
+      packageOverrides."github.com/elee1766/jobshop/pkg/transport/desk".srcOverlay =
         runCommand "jobshop-desk-source" { }
           ''
             mkdir -p "$out"
@@ -74,7 +74,7 @@ else
     // {
       subPackages = [ "cmd/jobshop" ];
       postPatch = ''
-        cp -r ${deskUi} pkg/desk/dist
+        cp -r ${deskUi} pkg/transport/desk/dist
       '';
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).

@@ -25,8 +25,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/redact"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/support/redact"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Bounds. A list page is 50 rows unless asked for up to 100, a discussion

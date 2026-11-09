@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // ghCallSeq makes activity ids unique within one controller run.

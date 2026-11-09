@@ -23,7 +23,7 @@ var HookPoints = []string{HookClaim, HookAction, HookMerge, HookIntake}
 
 // ActionLinearAPIMutation is the action name `jobshop linear api` guards
 // a mutation with (#546); hooks list it in actions, next to the gh
-// action names (pr-create, merge, comment, ...) in pkg/cli/gh.go.
+// action names (pr-create, merge, comment, ...) in pkg/transport/cli/gh.go.
 const ActionLinearAPIMutation = "linear-api-mutation"
 
 // Hook is a guardrail command run at a fixed point (#188). It gets a JSON

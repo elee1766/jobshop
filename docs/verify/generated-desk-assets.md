@@ -9,13 +9,13 @@ npm --prefix ui ci
 npm --prefix ui run check
 npm --prefix ui run build
 go build ./...
-go test ./pkg/desk
+go test ./pkg/transport/desk
 node --test packages/jobshop-client/index.test.js ui/kit/links.test.js
-git check-ignore pkg/desk/dist/index.html
+git check-ignore pkg/transport/desk/dist/index.html
 ```
 
-`pkg/desk/dist` must contain the generated HTML, assets, fonts and public files,
-but `git ls-files pkg/desk/dist` must be empty. Building the frontend again must
+`pkg/transport/desk/dist` must contain the generated HTML, assets, fonts and public files,
+but `git ls-files pkg/transport/desk/dist` must be empty. Building the frontend again must
 not produce a Git diff. Plain `go install ...@version` is not a supported build:
 it does not generate the embedded frontend. Use release binaries, Nix or the
 source build above followed by `go install ./cmd/jobshop`.
@@ -40,7 +40,7 @@ Use a disposable root and loopback Desk port, not a live instance.
 
 The frontend derivation includes UI source and the shared client, not Go source
 or local `dist` output. Go-only changes must not rebuild it. With the same Node
-version, compare `result-desk-ui` against the locally generated `pkg/desk/dist`.
+version, compare `result-desk-ui` against the locally generated `pkg/transport/desk/dist`.
 `nix build .#desk-ui --rebuild` checks reproducibility. Lockfile changes require
 updating `npmDepsHash` in `nix/desk-ui.nix`.
 

@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/stepexec"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // Command and http steps (#396): the controller claims a ready step that

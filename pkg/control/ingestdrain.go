@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Ingest drain RPCs (#335, #679, docs/notes/679-ingest-queue.md). The

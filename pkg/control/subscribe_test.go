@@ -29,9 +29,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 const subYAML = `projects:

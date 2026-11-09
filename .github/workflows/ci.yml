@@ -47,7 +47,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: desk-ui
-          path: pkg/desk/dist
+          path: pkg/transport/desk/dist
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -92,7 +92,7 @@ jobs:
         run: |
           go test -json -race -tags victorialogs -gcflags='modernc.org/...=-d=checkptr=0' -gcflags='modernc.org/sqlite/lib=-race=false' ./... > test.json 2>&1 || rc=$?
           # Readable log from the JSON stream.
-          go run ./pkg/flaky/cmd/ci-flaky -print -in test.json
+          go run ./pkg/tooling/flaky/cmd/ci-flaky -print -in test.json
           # These packages skip without their service. Here a skip means the
           # service was missing, so fail instead of passing silently.
           skipped=$(jq -rR 'fromjson? | select(.Action == "skip" and .Test != null and (.Package | test("store/postgres|store/storemigrate|journalvl"))) | "\(.Package) \(.Test)"' test.json)
@@ -102,7 +102,7 @@ jobs:
       # The job still fails; failed-tests.json is for the planner.
       - name: rerun failed tests
         if: failure() && steps.test.outcome == 'failure'
-        run: go run ./pkg/flaky/cmd/ci-flaky -in test.json -out failed-tests.json -summary "$GITHUB_STEP_SUMMARY"
+        run: go run ./pkg/tooling/flaky/cmd/ci-flaky -in test.json -out failed-tests.json -summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: failure() && steps.test.outcome == 'failure'
         with:
@@ -177,7 +177,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: desk-ui
-          path: pkg/desk/dist
+          path: pkg/transport/desk/dist
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -233,5 +233,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desk-ui
-          path: pkg/desk/dist
+          path: pkg/transport/desk/dist
           if-no-files-found: error

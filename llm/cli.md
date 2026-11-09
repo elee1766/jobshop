@@ -1,6 +1,6 @@
 # jobshop CLI
 
-Generated from the kong help by `go generate ./pkg/cli`. Do not edit.
+Generated from the kong help by `go generate ./pkg/transport/cli`. Do not edit.
 
 ## jobshop
 

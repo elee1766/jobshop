@@ -19,7 +19,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	"github.com/elee1766/jobshop/pkg/integrations/internal/transport"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // DefaultAPIURL is Linear's GraphQL endpoint.

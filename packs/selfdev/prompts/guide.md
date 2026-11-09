@@ -4,7 +4,7 @@ elee1766/jobshop turn, alongside AGENTS.md.
 - pkg/config and pkg/control change fast: `git fetch` and rebase onto
   origin/master before the first push, and reuse helpers master added.
 - After every rebase, rerun the generators even if GitHub shows the PR
-  clean: `go run ./pkg/rpc/rpcschema/cmd/deskgen`, then `go test ./...`.
+  clean: `go run ./pkg/transport/rpc/rpcschema/cmd/deskgen`, then `go test ./...`.
 - Parallel PRs take the same migration number: before pushing a new
   migration, fetch master, renumber past its highest file in
   `pkg/storage/store/sqlite/migrations` (and `pkg/storage/store/postgres/migrations`).

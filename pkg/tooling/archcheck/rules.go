@@ -17,10 +17,10 @@ func rules() []Rule {
 	return []Rule{
 		{
 			Name:   "control-is-top",
-			Why:    "control owns orchestration. A subsystem, a store, a test support package or a client must not import it, including from a test, or the dependency points the wrong way and a cycle is one import away. Tests reach the controller through controltest.",
+			Why:    "control owns orchestration. A subsystem, a store, a test support package or a client must not import it, including from a test, or the dependency points the wrong way and a cycle is one import away. Tests reach the controller through controltest. cmd/jobshop is the composition root: it passes control.Run to the CLI, so the CLI adapter never links the controller (JOB-174).",
 			Scope:  ProdAndTest,
 			From:   []string{"./pkg/...", "./cmd/..."},
-			Except: slices.Concat(harness, []string{"./pkg/control"}),
+			Except: slices.Concat(harness, []string{"./pkg/control", "./cmd/jobshop"}),
 			To:     []string{"./pkg/control"},
 		},
 		{
@@ -71,7 +71,7 @@ func rules() []Rule {
 				"./pkg/storage/store/writekey", "./pkg/knowledge", "./pkg/knowledge/memory",
 				"./pkg/config", "./pkg/config/tmpl", "./pkg/cron", "./pkg/ids", "./pkg/packcue",
 				"./pkg/integrations/apicall", "./pkg/integrations/github", "./pkg/integrations/linear", "./pkg/integrations/identity",
-				"./pkg/clock", "./pkg/redact", "./pkg/logctx", "./pkg/telemetry",
+				"./pkg/support/clock", "./pkg/support/redact", "./pkg/support/logctx", "./pkg/support/telemetry",
 				"./pkg/execution/automation/...", "./pkg/execution/automation",
 			},
 			To: []string{acphostRuntime, acpSDK},
@@ -150,14 +150,50 @@ func rules() []Rule {
 				"./pkg/config", "./pkg/conversation/question", "./pkg/control/scaleplan",
 				"./pkg/control/waitengine",
 			},
-			To: []string{"./pkg/rpc", "./pkg/storage/store"},
+			To: []string{"./pkg/transport/rpc", "./pkg/storage/store"},
+		},
+		{
+			Name:  "rpc-imports-no-adapter",
+			Why:   "rpc is the wire contract Desk, the CLI and the gateway share. If it imported one of them the contract would depend on its own clients.",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/transport/rpc", "./pkg/transport/rpc/..."},
+			To:    []string{"./pkg/transport/cli", "./pkg/transport/desk", "./pkg/transport/gateway"},
+		},
+		{
+			Name:  "desk-not-from-cli-or-gateway",
+			Why:   "Desk is its own adapter over the admin API. The CLI hosts the `desk` command, so the dependency runs from the CLI to Desk and never back, and Desk does not borrow from the gateway.",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/transport/desk"},
+			To:    []string{"./pkg/transport/cli", "./pkg/transport/gateway"},
+		},
+		{
+			Name:  "gateway-not-from-cli-or-desk",
+			Why:   "The A2A gateway is its own adapter. The CLI hosts the `gateway` command, so the dependency runs from the CLI to the gateway and never back, and the gateway does not borrow from Desk.",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/transport/gateway"},
+			To:    []string{"./pkg/transport/cli", "./pkg/transport/desk"},
+		},
+		{
+			Name:  "transport-reaches-no-runtime",
+			Why:   "rpc, Desk and the gateway carry and render requests. They must not link the controller, a database driver, a store backend or the session host (JOB-174): an adapter that imports SQL or a process runtime to render a response has absorbed a subsystem.",
+			Scope: Closure,
+			From: []string{
+				"./pkg/transport/rpc", "./pkg/transport/rpc/rpcschema",
+				"./pkg/transport/desk", "./pkg/transport/gateway",
+			},
+			To: []string{
+				"./pkg/control", "./pkg/execution/session", "./pkg/hooks",
+				"./pkg/storage/store/sqlite", "./pkg/storage/store/postgres",
+				"modernc.org/sqlite", "github.com/jackc/pgx/v5",
+				"github.com/elee1766/acphost/pkg/acphost",
+			},
 		},
 		{
 			Name:  "hooks-not-from-rpc",
 			Why:   "hooks owns durable hook execution. Its host adapter in control maps the wire envelopes, so hooks takes plain inputs and returns plain results. Reaching rpc also reached the ACP SDK and the sandbox types.",
 			Scope: Closure,
 			From:  []string{"./pkg/hooks"},
-			To:    []string{"./pkg/rpc"},
+			To:    []string{"./pkg/transport/rpc"},
 		},
 		{
 			Name:  "provider-clients-are-siblings",
@@ -192,11 +228,20 @@ func onlyRules() []Only {
 	return []Only{
 		{
 			Name: "independent-leaves",
-			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, knowledge/memory by the CLI and the prompt rule without a database (JOB-170: it imports neither the store nor the learning and edit records in pkg/knowledge), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
+			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, knowledge/memory by the CLI and the prompt rule without a database (JOB-170: it imports neither the store nor the learning and edit records in pkg/knowledge), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, runbook and flaky as development tools with one caller each. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
 			From: []string{
-				"./pkg/clock", "./pkg/cron", "./pkg/logctx", "./pkg/redact", "./pkg/config/tmpl",
+				"./pkg/support/clock", "./pkg/cron", "./pkg/support/logctx", "./pkg/support/redact", "./pkg/config/tmpl",
 				"./pkg/knowledge/memory", "./pkg/packcue", "./pkg/ids", "./pkg/integrations/apicall",
+				"./pkg/tooling/runbook", "./pkg/tooling/flaky",
 			},
+			Std:   true,
+			Third: true,
+		},
+		{
+			Name:  "telemetry-takes-only-logctx",
+			Why:   "telemetry installs the slog bridge and exporters and needs the ids logctx carries (JOB-49). It is a leaf apart from that: the support packages are separate primitives with no umbrella API, so telemetry must not reach the store, config or any adapter it is meant to observe.",
+			From:  []string{"./pkg/support/telemetry"},
+			Allow: []string{"./pkg/support/logctx"},
 			Std:   true,
 			Third: true,
 		},
@@ -207,7 +252,7 @@ func onlyRules() []Only {
 			Allow: []string{
 				"./pkg/integrations/apicall",
 				"./pkg/integrations/internal/transport",
-				"./pkg/telemetry",
+				"./pkg/support/telemetry",
 			},
 			Std:   true,
 			Third: true,

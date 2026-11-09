@@ -13,9 +13,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Ingest dispatch (#442, docs/notes/442-ingest-dispatch.md). Pollers only

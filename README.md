@@ -133,7 +133,7 @@ go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
 go install ./cmd/jobshop
 ```
 
-Rebuild the frontend after UI changes. `pkg/desk/dist` is ignored build output.
+Rebuild the frontend after UI changes. `pkg/transport/desk/dist` is ignored build output.
 `nix build .#jobshop` builds both parts with a cached frontend derivation.
 Contributor rules for people and agents (plain SQL store queries, Desk `dist`, Nix
 `vendorHash`) are in [AGENTS.md](AGENTS.md); PR titles are conventional

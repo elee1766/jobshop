@@ -169,7 +169,7 @@ read (30s timeout), and its stdout is the secret:
 Text leaving the controller (session events, journal reads and shipping,
 command step output, stored comments, reports, learnings, artifacts) and
 `jobshop gh`/`linear` writes are scanned with betterleaks' default rules
-plus jobshop's built-ins (`pkg/redact/rules.toml`). `redact` adds rules
+plus jobshop's built-ins (`pkg/support/redact/rules.toml`). `redact` adds rules
 and turns rules off. Host-only: packs cannot set it.
 
 ```yaml

@@ -16,9 +16,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Linear orchestration lives in pkg/control/linearsvc (JOB-142): the

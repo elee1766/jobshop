@@ -16,7 +16,7 @@ nix fmt -- --check $(git ls-files '*.nix')
 nix build .#jobshop
 ```
 
-Regenerate the client types with `go run ./pkg/rpc/rpcschema/cmd/deskgen`
+Regenerate the client types with `go run ./pkg/transport/rpc/rpcschema/cmd/deskgen`
 before checking the generated diff. Nix CI checks formatting, packaging and
 module evaluation when Nix is unavailable on the development host.
 

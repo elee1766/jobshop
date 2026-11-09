@@ -19,8 +19,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal/vltest"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // shipYAML has two projects, a pool with the journal-search grant and
