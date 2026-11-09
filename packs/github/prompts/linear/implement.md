@@ -51,7 +51,10 @@ carry on),
 linear issue {{.issue}}` again: Canceled or Done means stop (comment
 why, `jobshop close --outcome done`, no PR); check every Expected or
 acceptance line and every comment newer than your first read is met,
-defaults included. Then `git push -u origin HEAD`, then
+defaults included. If the issue has a completion gate, or its acceptance
+list needs more than this PR delivers, this is a slice: say `Part of`
+instead of `Fixes` in the PR body, and name the slice in your comment on
+the issue. Do not report a slice as the finished issue. Then `git push -u origin HEAD`, then
 `gh pr create --base master --title "<type>(<scope>): <summary> ({{.issue}})" --body "Fixes [{{.issue}}](https://linear.app/{{.linear_workspace}}/issue/{{.issue}}). ..."`.
 The PR title is a conventional commit: it becomes the squash commit
 subject. Type is one of feat, fix, perf, refactor, docs, test, ci,
