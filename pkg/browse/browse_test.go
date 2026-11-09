@@ -19,10 +19,10 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // The fixtures in testdata are what Linear and GitHub answered for the four
@@ -49,6 +49,7 @@ func (h *fakeHost) Now() time.Time {
 	defer h.mu.Unlock()
 	return h.now
 }
+
 func (h *fakeHost) advance(d time.Duration) {
 	h.mu.Lock()
 	h.now = h.now.Add(d)
@@ -159,14 +160,14 @@ func TestScopeRejection(t *testing.T) {
 		{Provider: "gitlab", Scope: "x"},
 	} {
 		_, err := r.List(ctx, p)
-		require.ErrorIs(t, err, store.ErrInvalid, "%+v", p)
+		require.ErrorIs(t, err, domain.ErrInvalid, "%+v", p)
 	}
 	_, err := r.Show(ctx, rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "evil/repo#1"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = r.Show(ctx, rpc.BrowseShowParams{Provider: rpc.BrowseLinear, Ref: "OTHER-1"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = r.Catalog(ctx, rpc.BrowseCatalogParams{Team: "OTHER"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	assert.Zero(t, r.calls.Load(), "a refused request never reaches a provider")
 }
 

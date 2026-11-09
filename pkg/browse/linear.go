@@ -10,9 +10,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 var linearID = regexp.MustCompile(`^[0-9a-fA-F-]{8,64}$`)
@@ -135,7 +135,7 @@ func (s *Service) listLinear(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 	}
 	v, ok := linearViews[view]
 	if !ok {
-		return rpc.BrowseListResult{}, fmt.Errorf("%w: view %q is not open, active, backlog, closed or all", store.ErrInvalid, view)
+		return rpc.BrowseListResult{}, fmt.Errorf("%w: view %q is not open, active, backlog, closed or all", domain.ErrInvalid, view)
 	}
 	filter := map[string]any{"team": map[string]any{"key": map[string]any{"eq": p.Scope}}}
 	switch {
@@ -149,7 +149,7 @@ func (s *Service) listLinear(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 		filter["project"] = map[string]any{"null": true}
 	case p.Project != "":
 		if !linearID.MatchString(p.Project) {
-			return rpc.BrowseListResult{}, fmt.Errorf("%w: project must be an id from the catalog", store.ErrInvalid)
+			return rpc.BrowseListResult{}, fmt.Errorf("%w: project must be an id from the catalog", domain.ErrInvalid)
 		}
 		filter["project"] = map[string]any{"id": map[string]any{"eq": p.Project}}
 	}
@@ -158,7 +158,7 @@ func (s *Service) listLinear(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 		filter["assignee"] = map[string]any{"null": true}
 	case p.Owner != "":
 		if !linearID.MatchString(p.Owner) {
-			return rpc.BrowseListResult{}, fmt.Errorf("%w: owner must be an id from the catalog", store.ErrInvalid)
+			return rpc.BrowseListResult{}, fmt.Errorf("%w: owner must be an id from the catalog", domain.ErrInvalid)
 		}
 		filter["assignee"] = map[string]any{"id": map[string]any{"eq": p.Owner}}
 	}
@@ -181,7 +181,7 @@ func (s *Service) listLinear(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 		vars["term"] = term
 	}
 	key := fmt.Sprintf("linear:list:%s|%s|%s|%s|%s|%s|%d|%s", p.Scope, view, p.Project, p.Owner, term, p.Cursor, vars["first"], fmt.Sprint(filter["number"]))
-	res, st := fetch(s, ctx, key, "linear:"+p.Scope, listTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseListResult, error) {
+	res, st := fetch(ctx, s, key, "linear:"+p.Scope, listTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseListResult, error) {
 		cl, err := s.h.Linear(p.Scope)
 		if err != nil {
 			return rpc.BrowseListResult{}, err
@@ -432,13 +432,13 @@ func (s *Service) showLinear(ctx context.Context, p rpc.BrowseShowParams) (rpc.B
 	key := strings.ToUpper(strings.TrimSpace(p.Ref))
 	team, ok := linear.Team(key)
 	if !ok {
-		return rpc.BrowseDetail{}, fmt.Errorf("%w: %q is not a Linear issue key", store.ErrInvalid, p.Ref)
+		return rpc.BrowseDetail{}, fmt.Errorf("%w: %q is not a Linear issue key", domain.ErrInvalid, p.Ref)
 	}
 	if err := s.linearTeam(team); err != nil {
 		return rpc.BrowseDetail{}, err
 	}
 	ck := fmt.Sprintf("linear:show:%s|%s|%t", key, p.Cursor, p.Brief)
-	d, st := fetch(s, ctx, ck, "linear:"+team, detailTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseDetail, error) {
+	d, st := fetch(ctx, s, ck, "linear:"+team, detailTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseDetail, error) {
 		cl, err := s.h.Linear(team)
 		if err != nil {
 			return rpc.BrowseDetail{}, err
@@ -478,7 +478,7 @@ func (s *Service) showLinear(ctx context.Context, p rpc.BrowseShowParams) (rpc.B
 }
 
 func linearDetail(team, key string, i *linearIssue, p rpc.BrowseShowParams) rpc.BrowseDetail {
-	d := rpc.BrowseDetail{Item: i.linearNode.item(team), Threads: []rpc.BrowseThread{}}
+	d := rpc.BrowseDetail{Item: i.item(team), Threads: []rpc.BrowseThread{}}
 	if p.Cursor != "" {
 		// An older page carries only discussion.
 		d.Item = rpc.BrowseItem{Provider: rpc.BrowseLinear, Scope: team, Ref: key, ID: key, Kind: "issue", Labels: []string{}}

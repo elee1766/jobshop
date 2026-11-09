@@ -22,11 +22,11 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Bounds. A list page is 50 rows unless asked for up to 100, a discussion
@@ -153,14 +153,14 @@ func (s *Service) linearTeam(team string) error {
 	if slices.ContainsFunc(s.Scope().Linear, func(x rpc.BrowseLinearScope) bool { return x.Team == team }) {
 		return nil
 	}
-	return fmt.Errorf("%w: linear team %q is not configured for Desk", store.ErrInvalid, team)
+	return fmt.Errorf("%w: linear team %q is not configured for Desk", domain.ErrInvalid, team)
 }
 
 func (s *Service) githubRepo(repo string) error {
 	if slices.ContainsFunc(s.Scope().GitHub, func(x rpc.BrowseGitHubScope) bool { return x.Repo == repo }) {
 		return nil
 	}
-	return fmt.Errorf("%w: github repo %q is not configured for Desk", store.ErrInvalid, repo)
+	return fmt.Errorf("%w: github repo %q is not configured for Desk", domain.ErrInvalid, repo)
 }
 
 // Invalidate marks everything cached for one team or repo as out of date and
@@ -181,7 +181,7 @@ func (s *Service) Revision() int64 { return s.rev.Load() }
 // fetch answers key from the cache or load. block names what a provider
 // failure blocks: every key of one team or repo shares it, so a rate limit
 // stops them all. T is the zero value when the status is an error.
-func fetch[T any](s *Service, ctx context.Context, key, blockKey string, ttl time.Duration, refresh bool, load func(context.Context) (T, error)) (T, rpc.BrowseStatus) {
+func fetch[T any](ctx context.Context, s *Service, key, blockKey string, ttl time.Duration, refresh bool, load func(context.Context) (T, error)) (T, rpc.BrowseStatus) {
 	var zero T
 	now := s.h.Now()
 	s.mu.Lock()
@@ -223,15 +223,14 @@ func fetch[T any](s *Service, ctx context.Context, key, blockKey string, ttl tim
 	var st rpc.BrowseStatus
 	var out T
 	s.mu.Lock()
-	switch {
-	case err == nil:
+	if err == nil {
 		now = s.h.Now()
 		s.seq++
 		s.cache[key] = &entry{value: v, at: now, seq: s.seq, used: now}
 		s.evict(now)
 		delete(s.blocked, blockKey)
 		out, st = v, rpc.BrowseStatus{State: rpc.BrowseFresh, FetchedAt: now}
-	default:
+	} else {
 		now = s.h.Now()
 		c := classify(err, now)
 		if c.block > 0 {
@@ -364,7 +363,7 @@ func bound(limit int) int {
 
 func checkCursor(c string) error {
 	if len(c) > maxCursor {
-		return fmt.Errorf("%w: cursor is too long", store.ErrInvalid)
+		return fmt.Errorf("%w: cursor is too long", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -380,7 +379,7 @@ func (s *Service) List(ctx context.Context, p rpc.BrowseListParams) (rpc.BrowseL
 	case rpc.BrowseGitHub:
 		return s.listGitHub(ctx, p)
 	}
-	return rpc.BrowseListResult{}, fmt.Errorf("%w: provider must be linear or github", store.ErrInvalid)
+	return rpc.BrowseListResult{}, fmt.Errorf("%w: provider must be linear or github", domain.ErrInvalid)
 }
 
 // Show reads one issue or PR with its discussion.
@@ -394,7 +393,7 @@ func (s *Service) Show(ctx context.Context, p rpc.BrowseShowParams) (rpc.BrowseD
 	case rpc.BrowseGitHub:
 		return s.showGitHub(ctx, p)
 	}
-	return rpc.BrowseDetail{}, fmt.Errorf("%w: provider must be linear or github", store.ErrInvalid)
+	return rpc.BrowseDetail{}, fmt.Errorf("%w: provider must be linear or github", domain.ErrInvalid)
 }
 
 // Catalog reads the lists behind a team's property dropdowns.
@@ -402,7 +401,7 @@ func (s *Service) Catalog(ctx context.Context, p rpc.BrowseCatalogParams) (rpc.B
 	if err := s.linearTeam(p.Team); err != nil {
 		return rpc.BrowseCatalogResult{}, err
 	}
-	res, st := fetch(s, ctx, "linear:catalog:"+p.Team, "linear:"+p.Team, catalogTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseCatalogResult, error) {
+	res, st := fetch(ctx, s, "linear:catalog:"+p.Team, "linear:"+p.Team, catalogTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseCatalogResult, error) {
 		cl, err := s.h.Linear(p.Team)
 		if err != nil {
 			return rpc.BrowseCatalogResult{}, err

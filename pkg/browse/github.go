@@ -2,6 +2,7 @@ package browse
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -9,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 var (
@@ -146,11 +147,11 @@ func githubSearch(p rpc.BrowseListParams, kind string) (string, error) {
 		parts = append(parts, "is:closed", "is:unmerged")
 	case "all":
 	default:
-		return "", fmt.Errorf("%w: view %q is not open, merged, closed or all", store.ErrInvalid, p.View)
+		return "", fmt.Errorf("%w: view %q is not open, merged, closed or all", domain.ErrInvalid, p.View)
 	}
 	if p.Author != "" {
 		if !githubLogin.MatchString(p.Author) {
-			return "", fmt.Errorf("%w: author is not a GitHub login", store.ErrInvalid)
+			return "", fmt.Errorf("%w: author is not a GitHub login", domain.ErrInvalid)
 		}
 		a := strings.TrimSuffix(p.Author, "[bot]")
 		if a != p.Author {
@@ -189,7 +190,7 @@ func (s *Service) listGitHub(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 		kind = "pr"
 	}
 	if kind != "pr" && kind != "issue" && kind != "all" {
-		return rpc.BrowseListResult{}, fmt.Errorf("%w: kind must be pr, issue or all", store.ErrInvalid)
+		return rpc.BrowseListResult{}, fmt.Errorf("%w: kind must be pr, issue or all", domain.ErrInvalid)
 	}
 	q, err := githubSearch(p, kind)
 	if err != nil {
@@ -197,7 +198,7 @@ func (s *Service) listGitHub(ctx context.Context, p rpc.BrowseListParams) (rpc.B
 	}
 	first := bound(p.Limit)
 	key := fmt.Sprintf("github:list:%s|%d|%s", q, first, p.Cursor)
-	res, st := fetch(s, ctx, key, "github:"+p.Scope, listTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseListResult, error) {
+	res, st := fetch(ctx, s, key, "github:"+p.Scope, listTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseListResult, error) {
 		cl, err := s.h.GitHub(p.Scope)
 		if err != nil {
 			return rpc.BrowseListResult{}, err
@@ -362,7 +363,7 @@ type ghDetail struct {
 func (s *Service) showGitHub(ctx context.Context, p rpc.BrowseShowParams) (rpc.BrowseDetail, error) {
 	m := githubRef.FindStringSubmatch(strings.TrimSpace(p.Ref))
 	if m == nil {
-		return rpc.BrowseDetail{}, fmt.Errorf("%w: %q is not owner/name#number", store.ErrInvalid, p.Ref)
+		return rpc.BrowseDetail{}, fmt.Errorf("%w: %q is not owner/name#number", domain.ErrInvalid, p.Ref)
 	}
 	repo := m[1]
 	num, _ := strconv.Atoi(m[2])
@@ -373,10 +374,10 @@ func (s *Service) showGitHub(ctx context.Context, p rpc.BrowseShowParams) (rpc.B
 	switch kind {
 	case "", "pr", "issue":
 	default:
-		return rpc.BrowseDetail{}, fmt.Errorf("%w: kind must be pr or issue", store.ErrInvalid)
+		return rpc.BrowseDetail{}, fmt.Errorf("%w: kind must be pr or issue", domain.ErrInvalid)
 	}
 	ck := fmt.Sprintf("github:show:%s#%d|%s|%s|%t", repo, num, kind, p.Cursor, p.Brief)
-	d, st := fetch(s, ctx, ck, "github:"+repo, detailTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseDetail, error) {
+	d, st := fetch(ctx, s, ck, "github:"+repo, detailTTL, p.Refresh, func(ctx context.Context) (rpc.BrowseDetail, error) {
 		cl, err := s.h.GitHub(repo)
 		if err != nil {
 			return rpc.BrowseDetail{}, err
@@ -414,7 +415,7 @@ func (s *Service) showGitHub(ctx context.Context, p rpc.BrowseShowParams) (rpc.B
 		default:
 			// A number is a PR or an issue: a PR first, which is what the
 			// tab is about, then the issue.
-			if det, err = try(githubPRQuery, "pullRequest"); err == errNotFound {
+			if det, err = try(githubPRQuery, "pullRequest"); errors.Is(err, errNotFound) {
 				det, err = try(githubIssueQuery, "issue")
 			}
 		}

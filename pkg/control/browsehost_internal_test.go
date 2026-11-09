@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -36,7 +37,7 @@ func TestBrowseGrantAndScope(t *testing.T) {
 
 	// A repo outside that is refused before any provider is asked.
 	_, err = c.browseList(ctx, scope{admin: true}, rpc.BrowseListParams{Provider: rpc.BrowseGitHub, Scope: "other/repo"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 // A run links to an item only when its meta names it, for the ticket kinds
@@ -44,8 +45,8 @@ func TestBrowseGrantAndScope(t *testing.T) {
 func TestBrowseRunLinks(t *testing.T) {
 	c, _, _ := activityController(t)
 	ctx := t.Context()
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "implement 255", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":255},"linear":{"issue":"JOB-163"}}`)})
-	mkTicket(t, c, store.NewTicket{Kind: store.KindStep, Title: "step", Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`), ParentID: run.ID, Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","pr":"260"}}`)})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "implement 255", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":255},"linear":{"issue":"JOB-163"}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: domain.KindStep, Title: "step", Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`), ParentID: run.ID, Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","pr":"260"}}`)})
 
 	gh := c.browseRuns(ctx, rpc.BrowseItem{Provider: rpc.BrowseGitHub, Ref: "elee1766/jobshop#255", Kind: "issue"})
 	require.Len(t, gh, 1)

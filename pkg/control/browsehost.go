@@ -9,10 +9,10 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/browse"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Desk's read-only Linear and GitHub views (JOB-163, pkg/browse). The
@@ -47,10 +47,6 @@ func (h browseHost) Linear(team string) (*linear.Client, error) {
 func (h browseHost) GitHub(repo string) (*github.Client, error) {
 	return h.c.githubForRepo(h.c.config(), "", repo)
 }
-
-// browseRevision is the revision Desk's live stream sends: it moves when the
-// activity feed or a delivery says Linear or GitHub changed.
-func (c *Controller) browseRevision() int64 { return c.browseService().Revision() }
 
 func (c *Controller) browseScope(_ context.Context, sc scope, _ struct{}) (any, error) {
 	if err := c.requireGrant(sc, grantBrowse, "browse scope"); err != nil {
@@ -122,8 +118,8 @@ func (c *Controller) browseRuns(ctx context.Context, it rpc.BrowseItem) []rpc.Br
 }
 
 // runState is the run's own state when it has one, else its ticket status.
-func runState(t store.Ticket) string {
-	if f, err := store.DecodeFields[store.RunFields](t); err == nil && f.State != "" {
+func runState(t domain.Ticket) string {
+	if f, err := domain.DecodeFields[domain.RunFields](t); err == nil && f.State != "" {
 		return f.State
 	}
 	return fmt.Sprint(t.Status)

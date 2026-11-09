@@ -94,7 +94,7 @@ func TestGraphQLStatusError(t *testing.T) {
 		"502 without a json body": {502, nil, `<html>`, false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				for k, v := range tc.header {
 					w.Header().Set(k, v)
 				}

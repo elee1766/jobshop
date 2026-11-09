@@ -222,7 +222,7 @@ func TestStatusError(t *testing.T) {
 		"html 502":                    {http.StatusBadGateway, nil, `<html>bad gateway</html>`, 502},
 	} {
 		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				for k, v := range tc.header {
 					w.Header().Set(k, v)
 				}
@@ -241,7 +241,7 @@ func TestStatusError(t *testing.T) {
 			}
 		})
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"errors":[{"message":"bad field","extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}`)
 	}))
 	defer srv.Close()
