@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.26](https://github.com/elee1766/jobshop/compare/v0.9.25...v0.9.26) (2026-11-09)
+
+
+### Features
+
+* **desk:** pool scale and session cordon controls (JOB-178) ([#1139](https://github.com/elee1766/jobshop/issues/1139)) ([d780b1d](https://github.com/elee1766/jobshop/commit/d780b1d5aaaafd607bcb8562193232638104de64))
+
 ## [0.9.25](https://github.com/elee1766/jobshop/compare/v0.9.24...v0.9.25) (2026-11-09)
 
 
