@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.18](https://github.com/elee1766/jobshop/compare/v0.9.17...v0.9.18) (2026-11-09)
+
+
+### Features
+
+* **desk:** migrate Desk to React, Jotai, Wouter and Tailwind (JOB-150) ([#1097](https://github.com/elee1766/jobshop/issues/1097)) ([0fea2ef](https://github.com/elee1766/jobshop/commit/0fea2ef1907b056fd076a810572810c91ed14fdb))
+
+
+### Bug fixes
+
+* **packs/github:** linear slices say Part of and do not mark the issue Done ([#1098](https://github.com/elee1766/jobshop/issues/1098)) ([#1099](https://github.com/elee1766/jobshop/issues/1099)) ([254bf7d](https://github.com/elee1766/jobshop/commit/254bf7d80611f3b58dddf4a5e0677ece5fb7c3aa))
+
 ## [0.9.17](https://github.com/elee1766/jobshop/compare/v0.9.16...v0.9.17) (2026-11-09)
 
 
