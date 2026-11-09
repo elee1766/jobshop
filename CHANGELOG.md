@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.19](https://github.com/elee1766/jobshop/compare/v0.9.18...v0.9.19) (2026-11-09)
+
+
+### Features
+
+* **desk:** service-configured iframe tabs (JOB-151) ([#1104](https://github.com/elee1766/jobshop/issues/1104)) ([8a5a6ec](https://github.com/elee1766/jobshop/commit/8a5a6ec6f2ff90ea40504d96a7da601dad29e87b))
+
 ## [0.9.18](https://github.com/elee1766/jobshop/compare/v0.9.17...v0.9.18) (2026-11-09)
 
 
