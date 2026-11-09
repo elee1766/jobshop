@@ -1120,7 +1120,26 @@ type GraphParams struct {
 type GraphRelation struct {
 	From string `json:"from"`
 	To   string `json:"to"`
-	Kind string `json:"kind"` // blocks, waits_for, tracks, parent, or created
+	Kind string `json:"kind"` // blocks, waits_for, tracks, parent, created, or wait
+	// The rest is set for kind wait (#1091): From is the parked ticket, To
+	// a ticket or run, or a GraphExternal id.
+	Type   string `json:"type,omitempty"`   // wait condition type, such as linear.state
+	Reason string `json:"reason,omitempty"` // the wait's reason
+	// State is waiting or met for a live wait, and invalidated, cleared,
+	// met or ended for one that is over.
+	State string    `json:"state,omitempty"`
+	Since time.Time `json:"since,omitzero"` // when the wait was parked
+}
+
+// GraphExternal is something outside the ticket store that a wait names: a
+// Linear issue, a PR, a tag, a deploy. URL is its canonical page, empty
+// when it cannot be built (a Linear key with no known workspace).
+type GraphExternal struct {
+	ID    string    `json:"id"`
+	Type  string    `json:"type"`
+	Label string    `json:"label"`
+	URL   string    `json:"url,omitempty"`
+	At    time.Time `json:"at"` // the earliest wait on it, for placement on the time axis
 }
 
 // GraphNode carries a ticket and links found in its body and comments.
@@ -1134,6 +1153,8 @@ type GraphResult struct {
 	Root      string          `json:"root"`
 	Nodes     []GraphNode     `json:"nodes"`
 	Relations []GraphRelation `json:"relations"`
+	// External lists what wait relations point at outside the store.
+	External  []GraphExternal `json:"external"`
 	Truncated bool            `json:"truncated"`
 }
 

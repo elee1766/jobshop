@@ -514,6 +514,14 @@ export interface EventsSubscribeResult {
   lagged?: boolean;
 }
 
+export interface GraphExternal {
+  id: string;
+  type: string;
+  label: string;
+  url?: string;
+  at: string;
+}
+
 export interface GraphNode {
   id: string;
   project: string;
@@ -550,12 +558,17 @@ export interface GraphRelation {
   from: string;
   to: string;
   kind: string;
+  type?: string;
+  reason?: string;
+  state?: string;
+  since?: string;
 }
 
 export interface GraphResult {
   root: string;
   nodes: GraphNode[];
   relations: GraphRelation[];
+  external: GraphExternal[];
   truncated: boolean;
 }
 
