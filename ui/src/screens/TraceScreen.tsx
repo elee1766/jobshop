@@ -27,13 +27,13 @@ export function Trace() {
                 selected={selected?.id || trace.graph.root}
                 onSelect={inspect}
                 onTrace={openTrace}
-                onGraph={() => setLayout('')}
+                onGraph={() => setLayout('graph')}
               />
             ) : (
               <section aria-label="Ticket timeline" className="ticket-timeline">
                 <div className="tag graph-heading">
                   <h2>timeline</h2>
-                  <button className="push-right" onClick={() => setLayout('')}>
+                  <button className="push-right" onClick={() => setLayout('graph')}>
                     graph
                   </button>
                 </div>
@@ -46,7 +46,7 @@ export function Trace() {
               selected={selected?.id || trace.graph.root}
               onSelect={inspect}
               onWatch={setWatched}
-              onTimeline={() => setLayout('timeline')}
+              onTimeline={() => setLayout('')}
             />
           )}
           <div className={'trace-bottom' + (watched ? ' watching' : '')}>

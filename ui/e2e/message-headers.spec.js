@@ -45,7 +45,7 @@ test('human and agent messages carry sender headers in chat and the session view
     await expect(transcript.locator('.speaker')).toHaveCount(6);
 
     // Same presentation in the read-only viewer.
-    await page.goto('./?view=trace&ref=' + session.id);
+    await page.goto('./?view=trace&layout=graph&ref=' + session.id);
     await page.getByRole('button', { name: 'Inspect ' + session.id, exact: true }).click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer.locator('.speaker-human').first()).toHaveText('you');

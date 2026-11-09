@@ -114,6 +114,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(page.locator(".ticket-overview > h2")).toContainText(
       title + " watched trace",
     );
+    await page.getByRole('region', { name: 'Ticket timeline' }).getByRole('button', { name: 'graph', exact: true }).click();
     await expect(page.locator('.ticket-graph')).toContainText(title + ' watched trace');
     const dependency = await call('ticket.create', {
       title: 'Required evidence',

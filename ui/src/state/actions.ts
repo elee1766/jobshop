@@ -154,9 +154,9 @@ export function inspect(id: string) {
   markTrace();
 }
 
-// setLayout switches the trace between the graph ('') and the timeline.
-// Both keep the ref and the inspected ticket.
-export function setLayout(layout: '' | 'timeline') {
+// setLayout switches the trace between the timeline ('', the default, so no
+// query value) and the graph. Both keep the ref and the inspected ticket.
+export function setLayout(layout: '' | 'graph') {
   setParams({ layout });
 }
 

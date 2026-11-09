@@ -72,6 +72,8 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await expect(page).toHaveURL(new RegExp('ref=' + run.id));
 
     // Trace: cards and relationships carry the same menu with their own id.
+    // The trace opens as the timeline (#1136): the cards are in the graph.
+    await page.getByRole('region', { name: 'Ticket timeline' }).getByRole('button', { name: 'graph', exact: true }).click();
     const card = page.locator(`.graph-card[data-ticket="${child.id}"]`);
     await expect(card).toBeVisible();
     await card.getByRole('button', { name: 'Actions for ' + child.id }).click();

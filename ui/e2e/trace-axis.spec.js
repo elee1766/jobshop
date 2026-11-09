@@ -41,7 +41,7 @@ test('trace axis aligns with cards, labels endpoints and keeps bars compact', as
     const done = await call('ticket.create', { title: key + ' done', parent_id: root.id });
     await call('ticket.close', { id: done.id });
 
-    await page.goto('./?view=trace&ref=' + root.id);
+    await page.goto('./?view=trace&layout=graph&ref=' + root.id);
     const graph = page.getByRole('region', { name: 'Ticket dependency graph', exact: true });
     await expect(graph.locator('.graph-card')).toHaveCount(3);
     const axis = graph.getByRole('group', { name: 'Creation time axis' });
@@ -102,7 +102,7 @@ test('trace axis aligns with cards, labels endpoints and keeps bars compact', as
     await call('ticket.close', { id: child.id });
     await call('ticket.close', { id: root.id });
     open.length = 0;
-    await page.goto('./?view=trace&ref=' + root.id);
+    await page.goto('./?view=trace&layout=graph&ref=' + root.id);
     await expect(axis.locator('.graph-stamp-end')).toContainText('ended ');
     await expect(axis.locator('.graph-stamp-now')).toHaveCount(0);
     for (const delta of await alignment(page)) expect(Math.abs(delta)).toBeLessThanOrEqual(1.5);
