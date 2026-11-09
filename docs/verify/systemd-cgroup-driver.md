@@ -46,7 +46,7 @@ systemd) and a pool with `isolation.limits`, on a build with #944 and
 7. `cat /sys/fs/cgroup/.../jobshop.service/cgroup.subtree_control` is
    empty: the unit enables nothing.
 
-The same check (two restarts) runs in `go test ./pkg/control -run
+The same check (two restarts) runs in `go test ./pkg/orchestration/control -run
 TestSystemdScopeRestart` on a host with a user manager. The test stops
 the controller in-process, so the kill -9 in step 6 is only checked
 here.

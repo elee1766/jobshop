@@ -1,5 +1,5 @@
 // Package question holds what a question ticket carries and how it reads
-// (JOB-101, split out of pkg/control by JOB-147). A worker asks a human
+// (JOB-101, split out of pkg/orchestration/control by JOB-147). A worker asks a human
 // with `report --question`; the controller files a needs-human message
 // ticket whose meta.question names the asked ticket and the asking
 // session, the asker's context and suggested options. This package builds

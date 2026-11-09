@@ -1,9 +1,9 @@
 // Reading session journals for the controller's session.journal,
-// journal.search and recall paths (split out of pkg/control in JOB-140,
+// journal.search and recall paths (split out of pkg/orchestration/control in JOB-140,
 // moved here in JOB-173). The controller decides who may read what
 // (grants, project scope, canReadJournal) and hands in only the result of
 // that decision, an Access for one session or a project filter for a
-// search. Nothing here imports pkg/control, looks at a scope or reads
+// search. Nothing here imports pkg/orchestration/control, looks at a scope or reads
 // config.
 //
 // Journal files are read through acphost's readers, which serve the

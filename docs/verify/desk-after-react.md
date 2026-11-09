@@ -17,7 +17,7 @@ and removes everything. It drops `JOBSHOP_SOCKET`, `JOBSHOP_SESSION` and
 ```sh
 npm --prefix ui ci && npm --prefix ui run build
 go build -o /tmp/dar/jobshop ./cmd/jobshop
-go test -c -o /tmp/dar/control.test ./pkg/control
+go test -c -o /tmp/dar/control.test ./pkg/orchestration/control
 JOBSHOP_BIN=/tmp/dar/jobshop FAKE_AGENT_BIN=/tmp/dar/control.test \
   npm --prefix ui run test:e2e:isolated
 ```

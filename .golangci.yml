@@ -14,7 +14,7 @@ linters:
     forbidigo:
       forbid:
         # Tests must not depend on wall time (#359): wait on events or
-        # run a supervisor pass (pkg/control Options.Pass) instead.
+        # run a supervisor pass (pkg/orchestration/control Options.Pass) instead.
         - pattern: ^time\.Sleep$
           msg: no time.Sleep in tests; wait on an event or run a pass (#359)
       analyze-types: true

@@ -12,7 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
-// The mechanics of curation. pkg/control decides who may write memory,
+// The mechanics of curation. pkg/orchestration/control decides who may write memory,
 // which cap and thresholds apply and when an evaluation runs, works out
 // which pools a learning points at from its tickets, and logs. The calls
 // here take those answers as arguments.

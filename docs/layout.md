@@ -47,35 +47,39 @@ jobshop/
 │   │       ├── compress/     closed-session journal compression (JOB-89)
 │   │       ├── vltest/       a real VictoriaLogs for tests
 │   │       └── journalvl/    tests only: shipping and search against a real VictoriaLogs
-│   ├── control/              controller: tick loop, claims release, lease sweep,
-│   │   │                     session supervision, admin and CLI socket handlers.
-│   │   │                     Wiring and coordination; subsystem engines live in
-│   │   │                     the packages below, which never import it
-│   │   │                     (docs/notes/JOB-155-control-audit.md)
-│   │   ├── activity/         activity feed cache, poller and readers (JOB-149)
-│   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
-│   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
+│   ├── orchestration/        what coordinates work (JOB-168). control is policy, authorization,
+│   │   │                     the supervisor pass and atomic commits; the engines below
+│   │   │                     take typed inputs and never import it
+│   │   ├── control/          controller: tick loop, claims release, lease sweep,
+│   │   │   │                 session supervision, admin and CLI socket handlers
+│   │   │   │                 (docs/notes/JOB-155-control-audit.md)
+│   │   │   └── controltest/  starts a controller for tests outside the package (JOB-47)
+│   │   ├── workflow/         wait evaluation and wake planning, no writes (JOB-144)
+│   │   ├── hooks/            durable hook and callback invocations, audit, replay,
+│   │   │                     transports (JOB-148 audit: the host adapter is in control)
+│   │   ├── ingest/           webhook spool and inbox types (#318)
+│   │   │   └── queue/        spool drain, inbox notifier, worker heartbeats,
+│   │   │                     admission hook runner, ingest work loop (JOB-141)
+│   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
+│   │   │                     checks (JOB-145); the controller still fires
 │   │   ├── stepexec/         command, http and script step attempts: templating, run dir
 │   │   │                     placement, one attempt to a Result (JOB-157); the controller
 │   │   │                     keeps claims, leases, the step record and escalation
-│   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
-│   │   │                     admission hook runner, ingest work loop (JOB-141)
+│   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── slotprovider/     resource slot provider calls, demand, idle release,
 │   │   │                     slot env and prompt (JOB-158)
-│   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
-│   │   │                     checks (JOB-145); the controller still fires
-│   │   ├── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
 │   │   ├── threads/          thread subscriptions: discovery, comment sources,
 │   │   │                     poll plan, reply filters, message text; delivery
 │   │   │                     stays in control (JOB-156)
-│   │   └── controltest/      starts a controller for tests outside the package (JOB-47)
+│   │   ├── activity/         activity feed cache, poller and readers (JOB-149)
+│   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
+│   │   └── browse/           read-only Linear and GitHub browse service behind
+│   │                         browse.*: scope, cache, rate-limit blocking (JOB-163)
 │   ├── conversation/         managed-chat rules (desk, escalation, attention), escalation chat
 │   │   │                     policy, message envelope and addressing, attachment limits and
 │   │   │                     prompt blocks. Never imports control (JOB-171)
 │   │   ├── attention/        attention projection and item choices (JOB-147)
 │   │   └── question/         question ticket content and options (JOB-147)
-│   ├── hooks/                durable hook and callback invocations, audit, replay,
-│   │                         transports (JOB-148 audit: the host adapter is in control)
 │   ├── execution/            what runs a process or a script (JOB-167); never imports
 │   │   │                     control, and command paths reach only automation and sandbox
 │   │   ├── session/          session host start, adopt, stop and liveness, background job
@@ -98,9 +102,6 @@ jobshop/
 │   │   ├── identity/         credentials for configured identities: App tokens,
 │   │   │                     Linear client_credentials (#200), the host's gh token
 │   │   └── internal/transport/  token renewal on 401 and the body limit both clients use
-│   ├── browse/               read-only Linear and GitHub browse service behind
-│   │                         browse.*: scope, cache, rate-limit blocking (JOB-163)
-│   ├── ingest/               webhook spool and inbox types (#318)
 │   ├── knowledge/            learnings (#264) and memory edits (#274, #592) on store
 │   │   │                     collections, the curator gate's metrics and verdict, and
 │   │   │                     the record, measure, settle, write and restore mechanics
@@ -165,9 +166,9 @@ flowchart TD
   control --> store & rpc & config & telemetry & acphost & session & sandbox
   control --> hooks & automation & integrations
   control --> engines
-  subgraph engines[control subpackages]
+  subgraph engines[orchestration packages under control]
     activity & linearsvc
-    scaleplan & ingestqueue & triggers & waitengine & slotprovider
+    scaleplan & queue & triggers & workflow & slotprovider
   end
   control --> conversation
   desk --> conversation
@@ -175,8 +176,8 @@ flowchart TD
   conversation --> store & rpc & config
   engines --> store & rpc & config
   activity --> integrations
-  waitengine --> integrations
-  triggers & ingestqueue --> hooks
+  workflow --> integrations
+  triggers & queue --> hooks
   hooks --> automation & integrations
   session --> acphost & sandbox
   sandbox --> acphost

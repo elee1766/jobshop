@@ -1,5 +1,5 @@
 // Package ship ships session journal frames to VictoriaLogs
-// (#530), split out of pkg/control (JOB-119). Every session's frames go
+// (#530), split out of pkg/orchestration/control (JOB-119). Every session's frames go
 // after a cursor, SessionFields.ShippedSeq. The shipper reads the journal
 // files, not the live ACP stream, so a controller restart or a
 // VictoriaLogs outage only delays rows: the next pass reads on from the

@@ -8,7 +8,7 @@
 // the embed fixture on loopback, runs Playwright and stops everything. It never
 // touches the root, socket or session of the environment it runs in. Build the
 // binaries from the branch under test: `go build -o jobshop ./cmd/jobshop` after
-// `npm run build`, and `go test -c -o control.test ./pkg/control` for the ACP
+// `npm run build`, and `go test -c -o control.test ./pkg/orchestration/control` for the ACP
 // test agent that chat sessions run (docs/verify/desk-after-react.md).
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

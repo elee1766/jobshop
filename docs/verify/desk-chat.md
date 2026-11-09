@@ -7,7 +7,7 @@ gasserver controller down (#223). The root has a `type: chat`,
 Playwright tests passed on desktop and Pixel 7, plus the escalation
 send on desktop.
 
-1. `go test -c -o control.test ./pkg/control`, and a root whose
+1. `go test -c -o control.test ./pkg/orchestration/control`, and a root whose
    jobshop.yaml has that pool (agent `command: <path>/control.test`,
    `args: [fake-agent]`).
 2. `jobshop --root <root> serve`, then

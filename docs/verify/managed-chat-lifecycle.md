@@ -18,7 +18,7 @@ Its type column distinguishes them. Other gateway sessions remain excluded.
 Run the controller regression with:
 
 ```sh
-go test ./pkg/control -run 'TestManagedChatDismissal|TestNamedDeskChatLifecycle' -count=1
+go test ./pkg/orchestration/control -run 'TestManagedChatDismissal|TestNamedDeskChatLifecycle' -count=1
 ```
 
 Against an isolated controller with an `operator` chat pool, an escalation

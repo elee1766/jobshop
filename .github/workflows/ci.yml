@@ -80,7 +80,7 @@ jobs:
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433). The translated C itself
       # (modernc.org/sqlite/lib) is not race-instrumented either: it was
-      # ~40% of pkg/control CPU on the 2-vCPU runner and keeps its state
+      # ~40% of pkg/orchestration/control CPU on the 2-vCPU runner and keeps its state
       # behind its own mutexes. The Go wrapper stays instrumented (JOB-117).
       - name: go test
         id: test
@@ -191,7 +191,7 @@ jobs:
       # The test binary is the ACP test agent that chat sessions run.
       - run: |
           go build -o "$RUNNER_TEMP/jobshop" ./cmd/jobshop
-          go test -c -o "$RUNNER_TEMP/control.test" ./pkg/control
+          go test -c -o "$RUNNER_TEMP/control.test" ./pkg/orchestration/control
       - run: npm --prefix ui ci
       - run: npx playwright install --with-deps chromium
         working-directory: ui

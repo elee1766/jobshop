@@ -1,12 +1,12 @@
 // Package attention projects what waits on a human into rpc.AttentionItem
 // rows and describes the choices each row offers (#185, split out of
-// pkg/control by JOB-147).
+// pkg/orchestration/control by JOB-147).
 //
 // The projection is a read. The controller supplies the tickets and the
 // subsystem rows through Source, and keeps every write: grants, the
 // stale-option check, answering questions, closing and resuming work and
 // the ticket and session mutations an answer causes all stay in
-// pkg/control. Actions only describes choices, so a supervisor read can
+// pkg/orchestration/control. Actions only describes choices, so a supervisor read can
 // never change work.
 package attention
 

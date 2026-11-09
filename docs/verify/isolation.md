@@ -64,7 +64,7 @@ Operator steps (change config, run tests or files a ticket):
   `oom`):
 
   ```sh
-  go test ./pkg/control -run TestIsolatedPool -v
+  go test ./pkg/orchestration/control -run TestIsolatedPool -v
   ```
 
 - Add a pool with `isolation: {user: {uid: 1000, map_uid: <subuid start>,

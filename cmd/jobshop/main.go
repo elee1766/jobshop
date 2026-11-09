@@ -1,6 +1,6 @@
 // Command jobshop is a thin entry point. Commands live in pkg/transport/cli;
 // this file only hands it the controller, so the CLI adapter does not import
-// pkg/control.
+// pkg/orchestration/control.
 package main
 
 import (
@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/execution/session"
+	"github.com/elee1766/jobshop/pkg/orchestration/control"
 	"github.com/elee1766/jobshop/pkg/transport/cli"
 )
 

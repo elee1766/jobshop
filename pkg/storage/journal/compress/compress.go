@@ -1,5 +1,5 @@
 // Package compress compresses closed sessions' journals (#631),
-// split out of pkg/control (JOB-89). A closed session's journal.ndjson
+// split out of pkg/orchestration/control (JOB-89). A closed session's journal.ndjson
 // becomes journal.ndjson.zst journal.compress.after after it closed.
 // Every reader goes through the acphost readers, which serve the .zst and
 // its seq index the same way. See docs/notes/631-journal-compress.md.

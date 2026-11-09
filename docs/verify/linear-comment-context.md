@@ -14,5 +14,5 @@ same full name as A.
 5. As A, edit an older comment. The next delivery has it once as
    `comment (edited)`; a later pass does not repeat it.
 6. Record the GetIssue response for that issue (`jobshop linear api`)
-   and replace `pkg/control/testdata/linear_comments.json` if its shape
+   and replace `pkg/orchestration/control/testdata/linear_comments.json` if its shape
    differs.

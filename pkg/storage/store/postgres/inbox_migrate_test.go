@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
 	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
 )
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 // The Linear and GitHub views (JOB-163). Read only: the live stream and the
 // browse.* calls are mocked with what Linear and GitHub really answered (see
-// pkg/browse/testdata and e2e/fixtures), so this runs against any Desk and
+// pkg/orchestration/browse/testdata and e2e/fixtures), so this runs against any Desk and
 // writes nothing. e2e/browse-live.spec.js reads the real providers.
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');

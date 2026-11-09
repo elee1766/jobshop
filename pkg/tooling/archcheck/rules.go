@@ -20,8 +20,8 @@ func rules() []Rule {
 			Why:    "control owns orchestration. A subsystem, a store, a test support package or a client must not import it, including from a test, or the dependency points the wrong way and a cycle is one import away. Tests reach the controller through controltest. cmd/jobshop is the composition root: it passes control.Run to the CLI, so the CLI adapter never links the controller (JOB-174).",
 			Scope:  ProdAndTest,
 			From:   []string{"./pkg/...", "./cmd/..."},
-			Except: slices.Concat(harness, []string{"./pkg/control", "./cmd/jobshop"}),
-			To:     []string{"./pkg/control"},
+			Except: slices.Concat(harness, []string{"./pkg/orchestration/control", "./cmd/jobshop"}),
+			To:     []string{"./pkg/orchestration/control"},
 		},
 		{
 			Name:   "no-harness-in-production",
@@ -36,14 +36,14 @@ func rules() []Rule {
 			Why:   "A hook, an automation capability or a controller-run step runs a command. It may use process and isolation mechanics, but must not depend on session lifecycle (host adoption, liveness, slots, ACP conversations), directly or through what it imports.",
 			Scope: Closure,
 			From: []string{
-				"./pkg/hooks",
+				"./pkg/orchestration/hooks",
 				"./pkg/execution/automation",
 				"./pkg/execution/automation/...",
 				"./pkg/execution/sandbox",
-				"./pkg/control/stepexec",
+				"./pkg/orchestration/stepexec",
 			},
 			To: []string{
-				"./pkg/control",
+				"./pkg/orchestration/control",
 				"./pkg/execution/session",
 				"./pkg/conversation",
 				"github.com/elee1766/acphost/pkg/acphost",
@@ -54,13 +54,25 @@ func rules() []Rule {
 			Why:   "The ACP SDK is the agent conversation protocol. A hook or capability has no conversation, so reaching the SDK means it imports session-side types by accident.",
 			Scope: Closure,
 			From: []string{
-				"./pkg/hooks",
+				"./pkg/orchestration/hooks",
 				"./pkg/execution/automation",
 				"./pkg/execution/automation/...",
 				"./pkg/execution/sandbox",
-				"./pkg/control/stepexec",
+				"./pkg/orchestration/stepexec",
 			},
 			To: []string{acpSDK},
+		},
+		{
+			Name:  "orchestration-engines-no-session-or-sandbox-runtime",
+			Why:   "The controller starts and supervises sessions. The engines beside it (workflow, ingest, triggers, linearsvc, threads, activity, browse, scaleplan, slotprovider) take typed inputs and return decisions or call a provider, so none may link the session host mechanics or the process sandbox, directly or through what it imports. (The ACP SDK stays out of this rule: rpc carries it for several of them until JOB-174 splits the wire types.) stepexec and hooks run commands and have their own rule.",
+			Scope: Closure,
+			From: []string{
+				"./pkg/orchestration/workflow", "./pkg/orchestration/ingest", "./pkg/orchestration/ingest/queue",
+				"./pkg/orchestration/triggers", "./pkg/orchestration/linearsvc", "./pkg/orchestration/threads",
+				"./pkg/orchestration/activity", "./pkg/orchestration/browse", "./pkg/orchestration/scaleplan",
+				"./pkg/orchestration/slotprovider",
+			},
+			To: []string{"./pkg/execution/session", "./pkg/execution/sandbox"},
 		},
 		{
 			Name:  "lower-layers-no-session-runtime",
@@ -104,7 +116,7 @@ func rules() []Rule {
 			From:  []string{"./pkg/...", "./cmd/..."},
 			Except: []string{
 				"./pkg/storage/store/sqlite",
-				"./pkg/ingest",
+				"./pkg/orchestration/ingest",
 			},
 			To: []string{"modernc.org/sqlite"},
 		},
@@ -147,8 +159,8 @@ func rules() []Rule {
 			Why:   "These packages need ticket, wait, learning and question types, not a persistence interface or the wire protocol. Reaching store or rpc, even through another package, drags SQL builders, the ACP connection and the sandbox types into a consumer of a struct. A package that needs the store itself is not listed.",
 			Scope: Closure,
 			From: []string{
-				"./pkg/config", "./pkg/conversation/question", "./pkg/control/scaleplan",
-				"./pkg/control/waitengine",
+				"./pkg/config", "./pkg/conversation/question", "./pkg/orchestration/scaleplan",
+				"./pkg/orchestration/workflow",
 			},
 			To: []string{"./pkg/transport/rpc", "./pkg/storage/store"},
 		},
@@ -182,7 +194,7 @@ func rules() []Rule {
 				"./pkg/transport/desk", "./pkg/transport/gateway",
 			},
 			To: []string{
-				"./pkg/control", "./pkg/execution/session", "./pkg/hooks",
+				"./pkg/orchestration/control", "./pkg/execution/session", "./pkg/orchestration/hooks",
 				"./pkg/storage/store/sqlite", "./pkg/storage/store/postgres",
 				"modernc.org/sqlite", "github.com/jackc/pgx/v5",
 				"github.com/elee1766/acphost/pkg/acphost",
@@ -192,7 +204,7 @@ func rules() []Rule {
 			Name:  "hooks-not-from-rpc",
 			Why:   "hooks owns durable hook execution. Its host adapter in control maps the wire envelopes, so hooks takes plain inputs and returns plain results. Reaching rpc also reached the ACP SDK and the sandbox types.",
 			Scope: Closure,
-			From:  []string{"./pkg/hooks"},
+			From:  []string{"./pkg/orchestration/hooks"},
 			To:    []string{"./pkg/transport/rpc"},
 		},
 		{
@@ -215,7 +227,7 @@ func rules() []Rule {
 			Scope: ProdAndTest,
 			From:  []string{"./pkg/...", "./cmd/..."},
 			Except: []string{
-				"./pkg/control",
+				"./pkg/orchestration/control",
 				"./pkg/integrations/identity",
 			},
 			To: []string{"./pkg/integrations/identity"},
