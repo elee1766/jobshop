@@ -29,7 +29,7 @@ func searchYAML(vl string) string {
 }
 
 // TestJournalSearchAccess: the grant and the project scope are decided in
-// the controller, and journalread gets only the result: a pool's search
+// the controller, and the journal package gets only the result: a pool's search
 // carries its project as the stream filter, admin's carries none, a pool
 // without the grant never reaches VictoriaLogs.
 func TestJournalSearchAccess(t *testing.T) {

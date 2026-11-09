@@ -19,7 +19,7 @@ var errNoVictoriaLogs = fmt.Errorf("%w: journal search needs journal.victorialog
 // journalSearch runs a LogsQL query on VictoriaLogs (#530). Admin sees
 // every project; a pool with the journal-search grant only its own,
 // enforced by VictoriaLogs' extra_stream_filters, outside the query text.
-// The grant and the project scope are decided here; journalread runs the
+// The grant and the project scope are decided here; the journal package runs the
 // query (JOB-140).
 func (c *Controller) journalSearch(ctx context.Context, sc scope, p rpc.JournalSearchParams) (any, error) {
 	if err := c.requireGrant(sc, grantJournalSearch, "journal search"); err != nil {
