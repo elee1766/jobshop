@@ -69,15 +69,6 @@ type HostRunner interface {
 	Stop(dir string) bool
 }
 
-// HostExits is an optional HostRunner method. A host process that exits
-// closes the controller's connection with it; an in-process host's
-// accepted connection outlives acphost.Main, so the controller closes
-// it when Exited's channel closes, or it never sees the crash (#467).
-// Exited returns nil for a dir the runner does not run.
-type HostExits interface {
-	Exited(dir string) <-chan struct{}
-}
-
 // Options tune a controller. Zero values use defaults.
 type Options struct {
 	Tick time.Duration // lease sweep interval, default 30s
