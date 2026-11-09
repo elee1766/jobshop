@@ -72,6 +72,10 @@ jobs:
           echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
       - run: go build ./...
       - run: go vet -tags victorialogs ./...
+      # Import-graph boundaries (JOB-165): the ownership table and layer rules
+      # in pkg/tooling/archcheck. The same check runs inside go test below as
+      # TestRepository. This step is first so a boundary break reads as one.
+      - run: go run ./pkg/tooling/archcheck/cmd/archcheck
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433). The translated C itself
