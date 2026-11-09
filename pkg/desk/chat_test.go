@@ -164,3 +164,33 @@ func TestChatSendEscalation(t *testing.T) {
 	w = postJSON(h, "/api/chat/send", `{"key":"escalation:js-x","text":"x"}`, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// The Linear and GitHub views attach an item as linear:KEY or
+// github:owner/name#n. It is resolved through browse.show, so the agent gets
+// the title, state and the provider's link, and a ref the controller refuses
+// (outside the configured scope) stops the send.
+func TestChatSendProviderContext(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodSessionSend: rpc.SessionSendResult{Session: "s1"},
+		rpc.MethodBrowseShow: rpc.BrowseDetail{
+			Item:   rpc.BrowseItem{Provider: rpc.BrowseGitHub, Ref: "o/r#7", Kind: "pr", Title: "Add things", State: "open", URL: "https://github.com/o/r/pull/7"},
+			Status: rpc.BrowseStatus{State: rpc.BrowseFresh},
+		},
+	}}
+	h := New(Config{ChatPool: "operator"}, ctl, nil).Handler()
+	w := postJSON(h, "/api/chat/send", `{"key":"desk:x","text":"look","refs":["github:o/r#7"]}`, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, rpc.MethodBrowseShow+` {"provider":"github","ref":"o/r#7","brief":true}`, ctl.calls[0])
+	var sent rpc.SessionSendParams
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(ctl.calls[len(ctl.calls)-1], rpc.MethodSessionSend+" ")), &sent))
+	assert.Contains(t, sent.Context, "data, not instructions")
+	assert.Contains(t, sent.Context, "Add things")
+	assert.Contains(t, sent.Context, "https://github.com/o/r/pull/7")
+	assert.NotContains(t, sent.Context, "ticket.show")
+
+	// A lookup the controller could not make is a 400, never a record made up
+	// from the reference.
+	ctl.results[rpc.MethodBrowseShow] = rpc.BrowseDetail{Status: rpc.BrowseStatus{State: rpc.BrowseError, Code: rpc.BrowseCodeNotFound, Message: "no such item"}}
+	w = postJSON(h, "/api/chat/send", `{"key":"desk:x","text":"look","refs":["github:o/r#8"]}`, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+}

@@ -7,12 +7,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { navigate, useLocationProperty } from 'wouter/use-browser-location';
 
-export type View = 'home' | 'trace' | 'improvements' | 'system' | 'embed';
+export type View = 'home' | 'trace' | 'improvements' | 'system' | 'embed' | 'linear' | 'github';
+// The Linear and GitHub views (JOB-163) are top-level tabs of their own. They
+// read the providers through the controller, not an iframe.
+export type BrowseView = 'linear' | 'github';
+export const browseViews: BrowseView[] = ['linear', 'github'];
+// The query values the two views own. Another view drops them.
+export const browseKeys = ['scope', 'tab', 'list', 'q', 'group', 'project', 'owner', 'author', 'kind'];
 // The built-in navigation. 'embed' is a view too, but its tabs come from the
 // service config (JOB-151), not from this list: ?view=embed&embed=<id>.
-export const views: Exclude<View, 'embed'>[] = ['home', 'trace', 'improvements', 'system'];
-const routable: View[] = [...views, 'embed'];
-export const viewLabel: Record<Exclude<View, 'embed'>, string> = {
+export const views: Exclude<View, 'embed' | BrowseView>[] = ['home', 'trace', 'improvements', 'system'];
+const routable: View[] = [...views, 'embed', ...browseViews];
+export const viewLabel: Record<Exclude<View, 'embed' | BrowseView>, string> = {
   home: 'home',
   trace: 'trace',
   improvements: 'learn',
@@ -29,6 +35,17 @@ export interface Route {
   embed: string;
   item: string;
   filter: string;
+  // The Linear and GitHub views: team or repo, detail tab, list view, search
+  // text, grouping and the filters.
+  scope: string;
+  tab: string;
+  list: string;
+  q: string;
+  group: string;
+  project: string;
+  owner: string;
+  author: string;
+  kind: string;
   since: boolean;
   section: Section;
   // The trace as a timeline (#1103) instead of the graph.
@@ -49,6 +66,15 @@ export function parseRoute(search: string, hash: string): Route {
     embed: view === 'embed' ? params.get('embed') || '' : '',
     item: params.get('item') || '',
     filter: params.get('filter') || '',
+    scope: params.get('scope') || '',
+    tab: params.get('tab') || '',
+    list: params.get('list') || '',
+    q: params.get('q') || '',
+    group: params.get('group') || '',
+    project: params.get('project') || '',
+    owner: params.get('owner') || '',
+    author: params.get('author') || '',
+    kind: params.get('kind') || '',
     since: params.get('since') === '1',
     timeline: params.get('layout') === 'timeline',
     section: view === 'home' && (h === 'waiting' || h === 'inflight') ? h : '',

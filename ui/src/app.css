@@ -1189,3 +1189,354 @@ span.tl-fold { display: inline-block; }
   .tl-scroll { max-height: 56dvh; }
   .ticket-timeline > .graph-heading { flex-wrap: wrap; }
 }
+
+/* Linear and GitHub views (JOB-163). A list pane and a detail pane inside the
+   work column, flat panes with tag bars like the rest of Desk. */
+.browse {
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.browse-list,
+.browse-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.browse-list {
+  border-right: 1px solid var(--column);
+  display: flex;
+  flex-direction: column;
+}
+.browse-list > .tag,
+.browse-detail .tag {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.browse-note {
+  max-width: 70ch;
+}
+.browse-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--page-inset) var(--space-2);
+}
+.browse-search input {
+  flex: 1;
+  min-width: 0;
+  background: var(--paper);
+}
+.browse-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--page-inset);
+  font-size: var(--font-size-compact);
+}
+.browse-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.browse-filters select,
+.browse-list .tag select {
+  min-width: 0;
+  max-width: 14em;
+  background: var(--paper);
+  border: 1px solid var(--column);
+  padding: var(--space-1) var(--space-2);
+}
+.browse-rows {
+  table-layout: fixed;
+}
+.browse-rows th:first-child,
+.browse-rows td:first-child {
+  width: 2.4ch;
+  padding-left: var(--page-inset);
+}
+.browse-rows th:nth-child(2),
+.browse-rows td:nth-child(2) {
+  width: 9ch;
+}
+.browse-rows th:last-child,
+.browse-rows td:last-child {
+  width: 9ch;
+  text-align: right;
+}
+.browse-rows tr {
+  border-bottom: 1px solid var(--rule);
+}
+.browse-rows td {
+  vertical-align: middle;
+}
+.browse-rows tr.chosen {
+  background: var(--hi);
+}
+.browse-group {
+  background: var(--row-alt);
+}
+.browse-group th {
+  padding: 0;
+}
+.browse-group button {
+  width: 100%;
+  padding: var(--space-2) var(--page-inset);
+}
+.browse-title {
+  min-width: 0;
+}
+.browse-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browse-id {
+  white-space: nowrap;
+}
+.browse-end {
+  white-space: nowrap;
+}
+.browse-end .ticket-menu-button {
+  margin-left: var(--space-1);
+}
+.checks-fail {
+  color: var(--warn);
+}
+.checks-run {
+  color: var(--status-running);
+}
+.browse-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding: var(--space-3) var(--page-inset);
+  font-size: var(--font-size-small);
+}
+.browse-hint {
+  font-size: var(--font-size-small);
+  padding-block: 0;
+}
+.browse-status {
+  margin: var(--space-2) var(--page-inset);
+  padding: var(--space-2) var(--control-inset);
+  border: 1px solid var(--tag-border);
+  background: var(--tag);
+  font-size: var(--font-size-compact);
+  overflow-wrap: anywhere;
+}
+.browse-status[data-state="error"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.browse-head .browse-back {
+  display: none;
+}
+.browse-head > .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.browse-title-text {
+  margin: var(--space-4) var(--page-inset) var(--space-3);
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.browse-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: 0 var(--page-inset) var(--space-3);
+}
+.browse-props .prop {
+  border: 1px solid var(--column);
+  background: var(--row-alt);
+  padding: var(--space-2) var(--space-3);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.browse-meta {
+  margin: 0;
+  padding: 0 var(--page-inset) var(--space-3);
+  overflow-wrap: anywhere;
+}
+.add {
+  color: var(--status-closed);
+}
+.del {
+  color: var(--warn);
+}
+.browse-text {
+  overflow-wrap: anywhere;
+}
+.browse-text img {
+  max-width: 100%;
+}
+.browse-tabs {
+  gap: var(--space-3);
+}
+.browse-checks-line {
+  gap: var(--space-4);
+}
+.browse-linked-title {
+  overflow-wrap: anywhere;
+}
+.browse-audit {
+  margin-left: var(--space-3);
+  padding-block: 0;
+  color: var(--muted);
+}
+.check-pass {
+  color: var(--status-closed);
+}
+.check-fail {
+  color: var(--warn);
+  font-weight: bold;
+}
+.check-run {
+  color: var(--status-running);
+}
+.browse-path {
+  overflow-wrap: anywhere;
+}
+/* The discussion: a thread is a message with its replies indented under a
+   rule, the Plan 9 way of showing nesting without boxes. */
+.browse-composer {
+  display: block;
+  width: 100%;
+  background: var(--row-alt);
+  color: var(--muted);
+  resize: none;
+}
+.browse-writes {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--font-size-small);
+}
+.writes-off {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.writes-off:hover {
+  background: transparent;
+}
+.browse-thread {
+  margin: var(--space-4) 0;
+}
+.browse-thread-path {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+}
+.browse-replies {
+  margin-left: var(--space-3);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--column);
+}
+.browse-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.browse-message[data-new="true"] {
+  background: color-mix(in srgb, var(--hi) 45%, transparent);
+}
+.browse-by {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--font-size-small);
+}
+.browse-by b {
+  font-weight: normal;
+  color: var(--ink);
+}
+.browse-new {
+  color: var(--ink);
+}
+.browse-message .markdown {
+  margin: 0;
+}
+.browse-actions {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--font-size-small);
+}
+.browse-actions button {
+  padding: 0;
+}
+.browse-fold {
+  padding: 0 var(--space-2) 0 0;
+}
+.browse-hidden,
+.browse-count {
+  font-size: var(--font-size-small);
+}
+@media (min-width: 600px) and (max-width: 899px) {
+  .browse {
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  }
+}
+/* Phones show one pane: the list, or the item that was opened. */
+@media (max-width: 599px) {
+  .browse {
+    display: block;
+    height: auto;
+    min-height: 100%;
+  }
+  .browse[data-item="open"] .browse-list,
+  .browse[data-item="none"] .browse-detail {
+    display: none;
+  }
+  .browse-list {
+    border-right: 0;
+    min-height: 100%;
+  }
+  .browse-detail {
+    overflow: visible;
+  }
+  .browse-head .browse-back {
+    display: inline-block;
+  }
+  .browse-head .browse-dismiss {
+    display: none;
+  }
+  .browse-open,
+  .browse-group button,
+  .browse-fold {
+    min-height: 40px;
+  }
+  .browse-props .prop {
+    min-height: 40px;
+  }
+  .browse-filters select,
+  .browse-list .tag select {
+    min-height: 36px;
+    max-width: 10em;
+  }
+}
+.browse-search-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+search.browse-search {
+  display: block;
+}
+fieldset.browse-props {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+.browse .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

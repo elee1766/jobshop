@@ -1,4 +1,13 @@
-import { currentRoute, currentURL, go, setParams, type Section, type View } from '../lib/route.ts';
+import {
+  browseKeys,
+  browseViews,
+  currentRoute,
+  currentURL,
+  go,
+  setParams,
+  type Section,
+  type View,
+} from '../lib/route.ts';
 import { client } from '../lib/api.ts';
 import { errorAtom, selectedAtom, traceAtom } from './live.ts';
 import { store } from './store.ts';
@@ -59,6 +68,13 @@ export function navigate(view: View, section: Section = currentRoute().section, 
   url.searchParams.set('view', view);
   // An embed id belongs to the embed view only.
   if (view !== 'embed') url.searchParams.delete('embed');
+  // The Linear and GitHub views own their query values (JOB-163). Moving to
+  // another view drops them, so a group or filter of one provider never leaks
+  // into the other, and an issue key is not read as a waiting item on home.
+  const from = currentRoute().view;
+  if (view !== from && (browseViews.includes(from as never) || browseViews.includes(view as never))) {
+    for (const key of [...browseKeys, 'item']) url.searchParams.delete(key);
+  }
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
@@ -206,6 +222,14 @@ export function triage(ids: string[]) {
     ids,
     'triage ' + new Date().toISOString().slice(0, 19),
   );
+}
+
+// discussProvider starts a named chat with a Linear issue or GitHub PR or issue
+// attached (JOB-163). The reference is provider:ref, which Desk resolves
+// through browse.show when the message is sent.
+export function discussProvider(provider: string, ref: string) {
+  showChat();
+  chatBridge.start?.('', [provider + ':' + ref], ref);
 }
 
 export function attach(refs: string[]) {

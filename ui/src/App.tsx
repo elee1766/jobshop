@@ -5,7 +5,7 @@ import { Embed } from './screens/Embed.tsx';
 import { Home } from './screens/Home.tsx';
 import { LiveOwner, useTabLifecycle } from './components/LiveOwner.tsx';
 import { Notice, TicketMenu } from './components/TicketMenu.tsx';
-import { useDeskRoute, viewLabel, views } from './lib/route.ts';
+import { browseViews, useDeskRoute, viewLabel, views } from './lib/route.ts';
 import { goSection, hideChat, navigate, openTrace, showChat, showSection, toggleSince } from './state/actions.ts';
 import { connectedAtom, embedsAtom, errorAtom, systemAtom, attention } from './state/live.ts';
 import { store } from './state/store.ts';
@@ -40,13 +40,20 @@ function screen(load: () => Promise<ComponentType>) {
 const traceScreen = screen(() => import('./screens/TraceScreen.tsx').then((m) => m.Trace));
 const learnScreen = screen(() => import('./screens/Learn.tsx').then((m) => m.Learn));
 const systemScreen = screen(() => import('./screens/System.tsx').then((m) => m.System));
+// The Linear and GitHub views (JOB-163) share a chunk, loaded when idle like
+// the others so the entry stays inside its budget.
+const linearScreen = screen(() => import('./screens/Browse.tsx').then((m) => m.Linear));
+const githubScreen = screen(() => import('./screens/Browse.tsx').then((m) => m.GitHub));
 const { Screen: Trace } = traceScreen;
 const { Screen: Learn } = learnScreen;
 const { Screen: System } = systemScreen;
+const { Screen: Linear } = linearScreen;
+const { Screen: GitHub } = githubScreen;
 
 function usePreloadScreens() {
   useEffect(() => {
-    const load = () => [traceScreen, learnScreen, systemScreen].forEach((s) => void s.start());
+    const load = () =>
+      [traceScreen, learnScreen, systemScreen, linearScreen, githubScreen].forEach((s) => void s.start());
     if ('requestIdleCallback' in window) {
       const id = requestIdleCallback(load, { timeout: 1500 });
       return () => cancelIdleCallback(id);
@@ -139,6 +146,8 @@ function Desk() {
             {route.view === 'improvements' && <Learn />}
             {route.view === 'system' && <System />}
             {route.view === 'embed' && <Embed />}
+            {route.view === 'linear' && <Linear />}
+            {route.view === 'github' && <GitHub />}
           </Suspense>
         </main>
         <aside className="chat-column" aria-label="Chats">
@@ -173,6 +182,16 @@ function Header() {
             onClick={() => (page === 'home' ? goSection('') : navigate(page))}
           >
             {viewLabel[page]}
+          </button>
+        ))}
+        {browseViews.map((page) => (
+          <button
+            key={page}
+            className={route.view === page ? 'chosen' : undefined}
+            aria-current={route.view === page ? 'page' : undefined}
+            onClick={() => navigate(page)}
+          >
+            {page}
           </button>
         ))}
         {embeds && embeds.length > 0 && (
