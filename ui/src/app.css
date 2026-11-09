@@ -259,7 +259,37 @@ table {
 .top nav {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
+  min-width: 0;
+}
+/* Configured embed tabs (JOB-151) flow in the nav and wrap with it, so a
+   long list never pushes a built-in action out of view. */
+.top nav .embeds {
+  display: contents;
+}
+.top nav .embeds button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.embed-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.embed-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--paper);
+}
+.embed-note {
+  margin: 0;
+  padding: 2px var(--control-inset);
+  font-size: var(--font-size-small);
+  border-top: 1px solid var(--rule);
 }
 .status {
   white-space: nowrap;
@@ -742,9 +772,11 @@ output.block { display: block; margin: 6px 0; }
   .columns {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
-  .top nav button:nth-of-type(4),
-  .divider,
-  .top nav button:last-child {
+  /* The nav drops sys and catch-up to stay on one row. With embed tabs it
+     wraps instead and hides nothing (JOB-151). */
+  .top nav:not(.has-embeds) > button:nth-of-type(4),
+  .top nav:not(.has-embeds) > .divider,
+  .top nav:not(.has-embeds) > button:last-child {
     display: none;
   }
   .status {

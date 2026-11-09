@@ -251,6 +251,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodHead {
 		return
 	}
+	page = s.indexEmbeds(w, r, page)
 	_, _ = io.WriteString(w, page)
 }
 
@@ -288,6 +289,7 @@ func Loopback(addr string) bool {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/whoami", s.json(s.whoami))
+	mux.HandleFunc("GET /api/embeds", s.json(s.embedList))
 	mux.HandleFunc("GET /api/attention", s.json(s.attention))
 	mux.HandleFunc("GET /api/work", s.json(s.work))
 	mux.HandleFunc("GET /api/sessions", s.json(s.sessions))
@@ -341,7 +343,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", baseCSP)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")

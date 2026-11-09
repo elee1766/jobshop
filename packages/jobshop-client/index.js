@@ -148,6 +148,7 @@ export function createClient({
           "system",
           "chats",
           "improvements",
+          "embeds",
           "desk",
           "scheduler",
           "trace",

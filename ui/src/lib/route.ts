@@ -7,9 +7,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { navigate, useLocationProperty } from 'wouter/use-browser-location';
 
-export type View = 'home' | 'trace' | 'improvements' | 'system';
-export const views: View[] = ['home', 'trace', 'improvements', 'system'];
-export const viewLabel: Record<View, string> = { home: 'home', trace: 'trace', improvements: 'learn', system: 'sys' };
+export type View = 'home' | 'trace' | 'improvements' | 'system' | 'embed';
+// The built-in navigation. 'embed' is a view too, but its tabs come from the
+// service config (JOB-151), not from this list: ?view=embed&embed=<id>.
+export const views: Exclude<View, 'embed'>[] = ['home', 'trace', 'improvements', 'system'];
+const routable: View[] = [...views, 'embed'];
+export const viewLabel: Record<Exclude<View, 'embed'>, string> = {
+  home: 'home',
+  trace: 'trace',
+  improvements: 'learn',
+  system: 'sys',
+};
 export type Section = '' | 'waiting' | 'inflight';
 
 export interface Route {
@@ -18,6 +26,7 @@ export interface Route {
   inspect: string;
   audit: string;
   chat: string;
+  embed: string;
   item: string;
   filter: string;
   since: boolean;
@@ -27,7 +36,7 @@ export interface Route {
 export function parseRoute(search: string, hash: string): Route {
   const params = new URLSearchParams(search);
   const raw = params.get('view') || '';
-  const view = (views as string[]).includes(raw) ? (raw as View) : 'home';
+  const view = (routable as string[]).includes(raw) ? (raw as View) : 'home';
   const h = hash.replace(/^#/, '');
   return {
     view,
@@ -35,6 +44,7 @@ export function parseRoute(search: string, hash: string): Route {
     inspect: params.get('inspect') || '',
     audit: params.get('audit') || '',
     chat: params.get('chat') || '',
+    embed: view === 'embed' ? params.get('embed') || '' : '',
     item: params.get('item') || '',
     filter: params.get('filter') || '',
     since: params.get('since') === '1',
