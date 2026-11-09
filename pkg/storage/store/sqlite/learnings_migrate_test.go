@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 )
@@ -43,7 +43,7 @@ func TestLearningsMigrate(t *testing.T) {
 		s, err := sqlite.Open(ctx, path, sqlite.Options{})
 		require.NoError(t, err)
 		defer func() { _ = s.Close() }()
-		l, err := learning.Get(ctx, s, 7)
+		l, err := knowledge.GetLearning(ctx, s, 7)
 		require.NoError(t, err)
 		assert.Equal(t, "workaround", l.Kind)
 		assert.Equal(t, "paste got", l.Fix)
@@ -54,16 +54,16 @@ func TestLearningsMigrate(t *testing.T) {
 		assert.Equal(t, "https://x/pull/1", l.PR)
 		assert.Equal(t, "helped: x", l.Gate)
 		assert.Equal(t, time.UnixMilli(1000).UTC(), l.CreatedAt)
-		hits, err := learning.Recall(ctx, s, "vendorHash", "other", "", 0)
+		hits, err := knowledge.RecallLearnings(ctx, s, "vendorHash", "other", "", 0)
 		require.NoError(t, err)
 		assert.Empty(t, hits, "project of the ticket kept")
-		hits, err = learning.Recall(ctx, s, "flaky", "other", "", 0)
+		hits, err = knowledge.RecallLearnings(ctx, s, "flaky", "other", "", 0)
 		require.NoError(t, err)
 		assert.Len(t, hits, 1, "global learning in every project")
 		idx, err := s.Recall(ctx, store.RecallQuery{Text: "flaky"})
 		require.NoError(t, err)
 		assert.Empty(t, idx, "learning rows left the shared recall index")
-		n, err := learning.Add(ctx, s, domain.Learning{Kind: "failure", Summary: "new", Source: "agent"}, "")
+		n, err := knowledge.AddLearning(ctx, s, domain.Learning{Kind: "failure", Summary: "new", Source: "agent"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, int64(13), n.ID)
 	}

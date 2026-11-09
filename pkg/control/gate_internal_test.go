@@ -10,8 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
-	"github.com/elee1766/jobshop/pkg/memedit"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -40,14 +39,14 @@ func TestCuratorGate(t *testing.T) {
 	const pr = "https://github.com/elee1766/jobshop/pull/900"
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, PR: pr})
 	require.NoError(t, err)
-	edits, err := memedit.List(ctx, c.store, "", 0)
+	edits, err := knowledge.ListEdits(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Empty(t, edits, "a pending PR is not an edit yet")
 
 	merged := clk.now()
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, Status: domain.LearningApplied, MergedAt: merged})
 	require.NoError(t, err)
-	edits, err = memedit.List(ctx, c.store, domain.EditPending, 0)
+	edits, err = knowledge.ListEdits(ctx, c.store, domain.EditPending, 0)
 	require.NoError(t, err)
 	require.Len(t, edits, 1)
 	e := edits[0]
@@ -60,7 +59,7 @@ func TestCuratorGate(t *testing.T) {
 	// Applying again does not record a second edit.
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, Status: domain.LearningApplied})
 	require.NoError(t, err)
-	edits, err = memedit.List(ctx, c.store, "", 0)
+	edits, err = knowledge.ListEdits(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Len(t, edits, 1)
 
@@ -96,7 +95,7 @@ func TestCuratorGate(t *testing.T) {
 	assert.Equal(t, 1, res[0].After.Recurrence)
 	assert.Contains(t, res[0].Reason, "still recurs")
 
-	l, err := learning.Get(ctx, c.store, id1)
+	l, err := knowledge.GetLearning(ctx, c.store, id1)
 	require.NoError(t, err)
 	assert.Contains(t, l.Gate, "not_helped: ")
 	assert.Contains(t, l.Gate, pr)
@@ -136,7 +135,7 @@ func TestCuratorGateAge(t *testing.T) {
 	res := out.([]domain.MemoryEdit)
 	require.Len(t, res, 1)
 	assert.Equal(t, domain.EditHelped, res[0].State)
-	got, err := learning.Get(ctx, c.store, id)
+	got, err := knowledge.GetLearning(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Contains(t, got.Gate, "helped: no steps")
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/memedit"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 )
 
@@ -41,7 +41,7 @@ func TestMemoryEditsMigrate(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
 
-	e, err := memedit.Get(ctx, s, 3)
+	e, err := knowledge.GetEdit(ctx, s, 3)
 	require.NoError(t, err)
 	assert.Equal(t, "https://x/pull/1", e.PR)
 	assert.Equal(t, []int64{7, 8}, e.Learnings)
@@ -54,7 +54,7 @@ func TestMemoryEditsMigrate(t *testing.T) {
 	assert.Equal(t, time.UnixMilli(5000).UTC(), e.EvaluatedAt)
 	assert.Equal(t, time.UnixMilli(900).UTC(), e.CreatedAt)
 
-	w, err := memedit.Get(ctx, s, 5)
+	w, err := knowledge.GetEdit(ctx, s, 5)
 	require.NoError(t, err)
 	assert.Equal(t, "memory/global.md", w.Path)
 	assert.Equal(t, "old text", w.Before)
@@ -62,10 +62,10 @@ func TestMemoryEditsMigrate(t *testing.T) {
 	assert.Equal(t, domain.EditPending, w.State)
 
 	// The PR stays unique and ids continue past the migrated ones.
-	again, err := memedit.AddPR(ctx, s, domain.MemoryEdit{PR: "https://x/pull/1", MergedAt: time.UnixMilli(3000)})
+	again, err := knowledge.AddPREdit(ctx, s, domain.MemoryEdit{PR: "https://x/pull/1", MergedAt: time.UnixMilli(3000)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), again.ID)
-	n, err := memedit.AddWrite(ctx, s, domain.MemoryEdit{Path: "memory/global.md", MergedAt: time.UnixMilli(3000)})
+	n, err := knowledge.AddWriteEdit(ctx, s, domain.MemoryEdit{Path: "memory/global.md", MergedAt: time.UnixMilli(3000)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(6), n.ID)
 }

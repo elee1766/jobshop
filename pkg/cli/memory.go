@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/memory"
+	"github.com/elee1766/jobshop/pkg/knowledge/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 

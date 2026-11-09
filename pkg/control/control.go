@@ -44,6 +44,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal/compress"
@@ -221,9 +222,9 @@ type Controller struct {
 	status      rpc.SystemStatus
 	tickSteps   map[string]float64
 	tickSamples []float64
-	// memMu serializes local memory writes and restores (#592), so a
-	// write's before text is the file it replaced.
-	memMu sync.Mutex
+	// localMemory serializes local memory writes and restores (#592), so
+	// a write's before text is the file it replaced.
+	localMemory knowledge.LocalMemory
 	// cgroup is the delegated sessions cgroup for isolation limits (#388),
 	// set up once on first need.
 	cgroupOnce sync.Once

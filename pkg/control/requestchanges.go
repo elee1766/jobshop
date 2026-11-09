@@ -7,7 +7,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/memedit"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -128,7 +128,7 @@ func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config
 	}
 	if target, err = c.store.Get(ctx, target.ID); err == nil {
 		c.escalatePool(ctx, cfg, &target, "changes requested by "+id)
-		c.record(ctx, domain.LearningCorrection, target, memedit.ReviewFindingPrefix+c.stepName(ctx, target)+": "+findings, "")
+		c.record(ctx, domain.LearningCorrection, target, knowledge.ReviewFindingPrefix+c.stepName(ctx, target)+": "+findings, "")
 	}
 	c.log.InfoContext(ctx, "changes requested", "step", id, "reopened", target.ID, "run", t.ParentID)
 	return t, nil

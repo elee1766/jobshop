@@ -32,7 +32,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -412,7 +412,7 @@ func (e *Engine) learningsHold(ctx context.Context, l config.LearningsWhen, sinc
 		// millisecond belongs to that pass.
 		from = from.Add(time.Millisecond)
 	}
-	n, err := learning.Count(ctx, e.host.Store(), from, domain.LearningCount{
+	n, err := knowledge.CountLearnings(ctx, e.host.Store(), from, domain.LearningCount{
 		Status: domain.LearningOpen, Kinds: l.Kinds, Scopes: l.Scope, Source: l.Source,
 	})
 	if err != nil {

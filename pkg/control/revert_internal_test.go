@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -44,7 +44,7 @@ func mergeItem(id string, n int, at time.Time) rpc.ActivityItem {
 
 func revertLearnings(t *testing.T, c *Controller) []domain.Learning {
 	t.Helper()
-	ls, err := learning.List(t.Context(), c.store, store.LearningFilter{Kind: domain.LearningCorrection})
+	ls, err := knowledge.ListLearnings(t.Context(), c.store, store.LearningFilter{Kind: domain.LearningCorrection})
 	require.NoError(t, err)
 	return ls
 }
