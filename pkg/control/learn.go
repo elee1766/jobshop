@@ -8,7 +8,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -58,7 +58,7 @@ func (c *Controller) addLearning(ctx context.Context, l domain.Learning) (domain
 			project = t.Project
 		}
 	}
-	return learning.Add(ctx, c.store, l, project)
+	return knowledge.AddLearning(ctx, c.store, l, project)
 }
 
 func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListParams) (any, error) {
@@ -81,7 +81,7 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	if p.Since > 0 {
 		f.Since = c.now().Add(-p.Since)
 	}
-	ls, err := learning.List(ctx, c.store, f)
+	ls, err := knowledge.ListLearnings(ctx, c.store, f)
 	if err != nil || !glob {
 		return ls, err
 	}
@@ -111,7 +111,7 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 	}
 	cur := make([]domain.Learning, 0, len(p.IDs))
 	for _, id := range p.IDs {
-		l, err := learning.Get(ctx, c.store, id)
+		l, err := knowledge.GetLearning(ctx, c.store, id)
 		if err != nil {
 			return nil, err
 		}
@@ -132,13 +132,13 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 	merged := map[string][]int64{}
 	var prs []string
 	for i, l := range cur {
-		u, err := learning.Update(ctx, c.store, l.ID, l.Status, l.PR)
+		u, err := knowledge.UpdateLearning(ctx, c.store, l.ID, l.Status, l.PR)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)
 		// memory:<id> is a local write (#592), recorded by memory.write.
-		if p.Status == domain.LearningApplied && u.PR != "" && !strings.HasPrefix(u.PR, "memory:") {
+		if p.Status == domain.LearningApplied && u.PR != "" && !knowledge.IsMemoryRef(u.PR) {
 			if _, ok := merged[u.PR]; !ok {
 				prs = append(prs, u.PR)
 			}

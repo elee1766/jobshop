@@ -2,14 +2,12 @@ package control
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
-	"github.com/elee1766/jobshop/pkg/memedit"
-	"github.com/elee1766/jobshop/pkg/memory"
+	"github.com/elee1766/jobshop/pkg/knowledge"
+	"github.com/elee1766/jobshop/pkg/knowledge/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -34,10 +32,6 @@ func (c *Controller) memoryCap() int {
 	return memory.DefaultCap
 }
 
-// memoryRef is what a local write puts in its learnings' pr field, so the
-// curator's settle pass and `learn list` show where each one went.
-func memoryRef(id int64) string { return fmt.Sprintf("memory:%d", id) }
-
 func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWriteParams) (any, error) {
 	if err := c.requireGrant(sc, "memory-write", "memory write"); err != nil {
 		return nil, err
@@ -49,47 +43,20 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	if strings.TrimSpace(p.Text) == "" {
 		return nil, fmt.Errorf("%w: memory write needs text; to drop a file write one line saying so", domain.ErrInvalid)
 	}
-	cited := make([]domain.Learning, 0, len(p.Learnings))
-	for _, id := range p.Learnings {
-		l, err := learning.Get(ctx, c.store, id)
-		if err != nil {
-			return nil, err
-		}
-		cited = append(cited, l)
-	}
-	dir := c.memoryDir()
-	c.memMu.Lock()
-	defer c.memMu.Unlock()
-	before, existed, err := memory.ReadRaw(dir, rel)
+	cited, err := knowledge.GetLearnings(ctx, c.store, p.Learnings)
 	if err != nil {
 		return nil, err
 	}
 	now := c.now()
-	pools := c.editPools(ctx, cited)
-	base, err := c.measure(ctx, cited, pools, now.Add(-gateBaseline), now, false)
+	out, err := c.localMemory.Write(ctx, c.store, knowledge.LocalWrite{
+		Dir: c.memoryDir(), Rel: rel, Text: p.Text, Cap: c.memoryCap(),
+		Cited: cited, Pools: c.editPools(ctx, cited), Now: now, Baseline: gateBaseline,
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := memory.Write(dir, rel, p.Text, c.memoryCap()); err != nil {
-		if errors.Is(err, memory.ErrOverCap) {
+		if knowledge.IsOverCap(err) {
 			return nil, fmt.Errorf("%w: %w", domain.ErrInvalid, err)
 		}
 		return nil, err
-	}
-	e := domain.MemoryEdit{Path: rel, Before: before, Existed: existed, Pools: pools, MergedAt: now, Baseline: base}
-	for _, l := range cited {
-		e.Learnings = append(e.Learnings, l.ID)
-	}
-	out, err := memedit.AddWrite(ctx, c.store, e)
-	if err != nil {
-		// Keep the file and the record in step: undo the write.
-		_ = memory.Restore(dir, rel, before, existed)
-		return nil, err
-	}
-	for _, id := range out.Learnings {
-		if _, err := learning.Update(ctx, c.store, id, domain.LearningApplied, memoryRef(out.ID)); err != nil {
-			return nil, err
-		}
 	}
 	c.log.InfoContext(ctx, "memory write", "edit", out.ID, "path", rel, "learnings", out.Learnings, "session", sc.session)
 	return out, nil
@@ -128,31 +95,14 @@ func (c *Controller) restoreEdit(ctx context.Context, e domain.MemoryEdit) error
 	if e.Path == "" {
 		return nil
 	}
-	newer, err := memedit.List(ctx, c.store, "", 0)
+	res, err := c.localMemory.Restore(ctx, c.store, c.memoryDir(), e)
 	if err != nil {
 		return err
 	}
-	for _, n := range newer {
-		if n.Path == e.Path && n.ID > e.ID {
-			c.log.WarnContext(ctx, "memory edit not restored: a newer write replaced it", "edit", e.ID, "newer", n.ID, "path", e.Path)
-			return c.rejectCited(ctx, e)
-		}
-	}
-	c.memMu.Lock()
-	err = memory.Restore(c.memoryDir(), e.Path, e.Before, e.Existed)
-	c.memMu.Unlock()
-	if err != nil {
-		return err
+	if res.Newer != 0 {
+		c.log.WarnContext(ctx, "memory edit not restored: a newer write replaced it", "edit", e.ID, "newer", res.Newer, "path", e.Path)
+		return nil
 	}
 	c.log.InfoContext(ctx, "memory edit restored", "edit", e.ID, "path", e.Path, "existed", e.Existed)
-	return c.rejectCited(ctx, e)
-}
-
-func (c *Controller) rejectCited(ctx context.Context, e domain.MemoryEdit) error {
-	for _, id := range e.Learnings {
-		if _, err := learning.Update(ctx, c.store, id, domain.LearningRejected, memoryRef(e.ID)); err != nil {
-			return err
-		}
-	}
 	return nil
 }

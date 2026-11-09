@@ -60,7 +60,7 @@ const (
 	InjectAlways  = "always"
 )
 
-// RuleMemory points a prompt rule at a memory directory (pkg/memory).
+// RuleMemory points a prompt rule at a memory directory (pkg/knowledge/memory).
 type RuleMemory struct {
 	// Dir holds memory/ and skills/. Relative paths resolve against the
 	// root dir. Empty is a no-op, so a pack can default it to "".

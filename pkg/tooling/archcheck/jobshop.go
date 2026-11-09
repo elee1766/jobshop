@@ -86,9 +86,10 @@ func owners() []Owner {
 		{Pkg: "./pkg/storage/journal/journalvl", Target: "storage/journal (tests only)", Family: "journal", Child: "JOB-173", Harness: true},
 
 		// knowledge: memory stays usable without the database-backed records.
-		{Pkg: "./pkg/learning", Target: "knowledge", Family: "knowledge", Child: "JOB-170"},
-		{Pkg: "./pkg/memedit", Target: "knowledge (merged with learning's coordination)", Family: "knowledge", Child: "JOB-170"},
-		{Pkg: "./pkg/memory", Target: "knowledge/memory", Family: "knowledge", Child: "JOB-170"},
+		// learnings, memory edits, the curator gate's judgement and the
+		// curation mechanics (JOB-170). memory is a leaf under it.
+		{Pkg: "./pkg/knowledge", Target: "stay", Family: "knowledge", Child: "-"},
+		{Pkg: "./pkg/knowledge/memory", Target: "stay (leaf: files and skills, no storage)", Family: "knowledge", Child: "-"},
 
 		// config
 		{Pkg: "./pkg/config", Target: "config", Family: "config", Child: "JOB-172"},

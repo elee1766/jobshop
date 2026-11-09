@@ -1,4 +1,4 @@
-package memedit
+package knowledge
 
 import (
 	"fmt"
@@ -15,25 +15,25 @@ import (
 // learnings, passes them in and records the answer with SetResult.
 
 const (
-	// Worse is how much the failure rate may grow before an edit counts
+	// GateWorse is how much the failure rate may grow before an edit counts
 	// as harmful: noise between windows of a few dozen steps.
-	Worse = 1.25
-	// SimilarMin is the word overlap (Jaccard) at which a learning
+	GateWorse = 1.25
+	// GateSimilarMin is the word overlap (Jaccard) at which a learning
 	// repeats a cited one.
-	SimilarMin = 0.5
+	GateSimilarMin = 0.5
 	// ReviewFindingPrefix starts the correction the controller records
 	// when a review sends a step back; the gate counts those as findings.
 	ReviewFindingPrefix = "review resumed "
 )
 
-// Metrics computes the metrics of steps in pools (empty: all) and
+// EditMetrics computes the metrics of steps in pools (empty: all) and
 // learnings recorded in [from, to). Recurrence counts learnings that
 // repeat one of cited (same kind, similar summary). Before the merge
 // (after false) the cited learnings are the problem itself and count.
 // After it (after true) a cited learning is not a recurrence, however
 // it matches: the session that ships the fix records a learning about
 // it later, and that is not the problem coming back (#1061).
-func Metrics(steps []domain.Ticket, ls []domain.Learning, cited []domain.Learning, pools []string, from, to time.Time, after bool) domain.PoolMetrics {
+func EditMetrics(steps []domain.Ticket, ls []domain.Learning, cited []domain.Learning, pools []string, from, to time.Time, after bool) domain.PoolMetrics {
 	m := domain.PoolMetrics{From: from, To: to}
 	inWin := func(t time.Time) bool { return !t.Before(from) && t.Before(to) }
 	runs := map[string]bool{}
@@ -73,7 +73,7 @@ func Metrics(steps []domain.Ticket, ls []domain.Learning, cited []domain.Learnin
 		}
 		w := wordSet(l.Summary)
 		for i, c := range cited {
-			if c.ID == l.ID || (c.Kind == l.Kind && jaccard(words[i], w) >= SimilarMin) {
+			if c.ID == l.ID || (c.Kind == l.Kind && jaccard(words[i], w) >= GateSimilarMin) {
 				m.Recurrence++
 				break
 			}
@@ -82,11 +82,11 @@ func Metrics(steps []domain.Ticket, ls []domain.Learning, cited []domain.Learnin
 	return m
 }
 
-// Decide compares before and after. The edit did not help when the
+// DecideEdit compares before and after. The edit did not help when the
 // cited problem recurs at least as often per step as before, or when
 // retries, escalations and review findings per step grew by more than
-// Worse. No steps after the merge is no evidence: it helped.
-func Decide(base, after domain.PoolMetrics) (string, string) {
+// GateWorse. No steps after the merge is no evidence: it helped.
+func DecideEdit(base, after domain.PoolMetrics) (string, string) {
 	if after.Steps == 0 {
 		return domain.EditHelped, "no steps in the scoped pools since the merge"
 	}
@@ -97,7 +97,7 @@ func Decide(base, after domain.PoolMetrics) (string, string) {
 	}
 	fb := base.Rate(base.Retries + base.Escalations + base.Findings)
 	fa := after.Rate(after.Retries + after.Escalations + after.Findings)
-	if fa > fb*Worse && fa > 0 && after.Retries+after.Escalations+after.Findings > 1 {
+	if fa > fb*GateWorse && fa > 0 && after.Retries+after.Escalations+after.Findings > 1 {
 		return domain.EditNotHelped, fmt.Sprintf("failures per step rose from %.2f to %.2f (retries %d, escalations %d, findings %d in %d steps)",
 			fb, fa, after.Retries, after.Escalations, after.Findings, after.Steps)
 	}

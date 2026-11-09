@@ -3,7 +3,7 @@ package control
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/store"
@@ -42,7 +42,7 @@ func (c *Controller) recall(ctx context.Context, sc scope, p rpc.RecallParams) (
 		sources = append(sources, hits)
 	}
 	if want(store.RecallLearning) {
-		hits, err := learning.Recall(ctx, c.store, p.Query, proj, p.TicketID, limit)
+		hits, err := knowledge.RecallLearnings(ctx, c.store, p.Query, proj, p.TicketID, limit)
 		if err != nil {
 			return nil, err
 		}

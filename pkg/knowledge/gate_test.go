@@ -1,4 +1,4 @@
-package memedit_test
+package knowledge_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/memedit"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 )
 
 var gateT0 = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
@@ -47,7 +47,7 @@ func TestMetrics(t *testing.T) {
 		{ID: 5, Kind: domain.LearningCorrection, Summary: "review resumed step a (s3): missing test", Ticket: "s3", CreatedAt: gateT0.Add(4 * h)},
 		{ID: 6, Kind: domain.LearningCorrection, Summary: "review resumed step a (s4): wrong pool", Ticket: "s4", CreatedAt: gateT0.Add(4 * h)},
 	}
-	m := memedit.Metrics(steps, ls, cited, []string{"dev"}, gateT0, gateT0.Add(24*h), false)
+	m := knowledge.EditMetrics(steps, ls, cited, []string{"dev"}, gateT0, gateT0.Add(24*h), false)
 	assert.Equal(t, 2, m.Runs)
 	assert.Equal(t, 3, m.Steps)
 	assert.Equal(t, 3, m.Retries)
@@ -55,7 +55,7 @@ func TestMetrics(t *testing.T) {
 	assert.Equal(t, 1, m.Findings, "only findings on steps of the scoped pools")
 	assert.Equal(t, 1, m.Recurrence, "same kind and similar summary")
 
-	all := memedit.Metrics(steps, ls, cited, nil, gateT0, gateT0.Add(24*h), false)
+	all := knowledge.EditMetrics(steps, ls, cited, nil, gateT0, gateT0.Add(24*h), false)
 	assert.Equal(t, 4, all.Steps, "no pools: every pool")
 	assert.Equal(t, 2, all.Findings)
 }
@@ -78,27 +78,27 @@ func TestMetricsCitedAfterMerge(t *testing.T) {
 	}
 	ls := []domain.Learning{cited[0], cited[1]}
 
-	got := memedit.Metrics(steps, ls, cited, []string{"dev"}, merged, end, true)
+	got := knowledge.EditMetrics(steps, ls, cited, []string{"dev"}, merged, end, true)
 	assert.Equal(t, 0, got.Recurrence, "cited learnings recorded after the merge")
 	assert.Equal(t, 1, got.Steps)
 
 	// Another cited learning that is similar in wording is not counted either.
 	similar := domain.Learning{ID: 3, Kind: domain.LearningFailure, Summary: text, CreatedAt: merged.Add(3 * h)}
-	got = memedit.Metrics(steps, append(ls, similar), append(cited, similar), []string{"dev"}, merged, end, true)
+	got = knowledge.EditMetrics(steps, append(ls, similar), append(cited, similar), []string{"dev"}, merged, end, true)
 	assert.Equal(t, 0, got.Recurrence, "a third cited learning, similar to the first")
 
 	// The same problem recorded by an uncited learning does count.
 	again := domain.Learning{ID: 4, Kind: domain.LearningFailure, Summary: text, CreatedAt: merged.Add(4 * h)}
-	got = memedit.Metrics(steps, append(ls, again), cited, []string{"dev"}, merged, end, true)
+	got = knowledge.EditMetrics(steps, append(ls, again), cited, []string{"dev"}, merged, end, true)
 	assert.Equal(t, 1, got.Recurrence, "uncited learning that repeats a cited one")
 
 	// Before the merge the cited learnings are the problem: they count.
-	base := memedit.Metrics(steps, ls, cited, []string{"dev"}, merged.Add(-24*h), merged, false)
+	base := knowledge.EditMetrics(steps, ls, cited, []string{"dev"}, merged.Add(-24*h), merged, false)
 	assert.Equal(t, 1, base.Recurrence)
 
 	// The decision for the reported case: no recurrence, so the edit helped.
 	baseline := domain.PoolMetrics{Steps: 1000, Recurrence: 1}
-	state, reason := memedit.Decide(baseline, memedit.Metrics(steps, ls, cited, []string{"dev"}, merged, end, true))
+	state, reason := knowledge.DecideEdit(baseline, knowledge.EditMetrics(steps, ls, cited, []string{"dev"}, merged, end, true))
 	assert.Equal(t, domain.EditHelped, state, reason)
 }
 
@@ -119,11 +119,11 @@ func TestDecide(t *testing.T) {
 		{"failures within noise", domain.PoolMetrics{Steps: 20, Retries: 6, Escalations: 1, Findings: 0}, domain.EditHelped},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, reason := memedit.Decide(base, tc.after)
+			got, reason := knowledge.DecideEdit(base, tc.after)
 			assert.Equal(t, tc.want, got, reason)
 			assert.NotEmpty(t, reason)
 		})
 	}
-	got, _ := memedit.Decide(domain.PoolMetrics{}, domain.PoolMetrics{Steps: 5, Recurrence: 1})
+	got, _ := knowledge.DecideEdit(domain.PoolMetrics{}, domain.PoolMetrics{Steps: 5, Recurrence: 1})
 	assert.Equal(t, domain.EditNotHelped, got, "recurs after none in the baseline")
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/memory"
+	"github.com/elee1766/jobshop/pkg/knowledge/memory"
 )
 
 func TestTarget(t *testing.T) {

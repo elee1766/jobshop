@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
-	"github.com/elee1766/jobshop/pkg/memedit"
-	"github.com/elee1766/jobshop/pkg/memory"
+	"github.com/elee1766/jobshop/pkg/knowledge"
+	"github.com/elee1766/jobshop/pkg/knowledge/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -42,10 +41,10 @@ func TestMemoryWrite(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(dir, "memory", "memory", "global.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "Retry gh on 502.\n", string(b))
-	got, err := learning.Get(ctx, c.store, id)
+	got, err := knowledge.GetLearning(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Equal(t, domain.LearningApplied, got.Status)
-	assert.Equal(t, memoryRef(e.ID), got.PR)
+	assert.Equal(t, knowledge.MemoryRef(e.ID), got.PR)
 
 	// A second write records the first text as before.
 	out, err = c.memoryWrite(ctx, admin, rpc.MemoryWriteParams{Scope: "global", Text: "Retry gh twice on 502.\n"})
@@ -61,7 +60,7 @@ func TestMemoryWrite(t *testing.T) {
 	b, err = os.ReadFile(filepath.Join(dir, "memory", "memory", "global.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "Retry gh twice on 502.\n", string(b))
-	edits, err := memedit.List(ctx, c.store, "", 0)
+	edits, err := knowledge.ListEdits(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Len(t, edits, 2)
 
@@ -127,7 +126,7 @@ func TestMemoryWriteRestore(t *testing.T) {
 	assert.Equal(t, "old line\n", string(b), "previous text restored")
 	_, err = os.Stat(poolFile)
 	assert.ErrorIs(t, err, os.ErrNotExist, "a file the write created is removed")
-	got, err := learning.Get(ctx, c.store, id)
+	got, err := knowledge.GetLearning(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Equal(t, domain.LearningRejected, got.Status)
 	assert.Contains(t, got.Gate, "not_helped: ")

@@ -99,10 +99,13 @@ jobshop/
 │   ├── browse/               read-only Linear and GitHub browse service behind
 │   │                         browse.*: scope, cache, rate-limit blocking (JOB-163)
 │   ├── ingest/               webhook spool and inbox types (#318)
-│   ├── learning/             learnings collection (#264)
-│   ├── memedit/              memory edits collection and the curator gate's
-│   │                         metrics and verdict (#274, JOB-155)
-│   ├── memory/               memory directory reader: files and skills (#266)
+│   ├── knowledge/            learnings (#264) and memory edits (#274, #592) on store
+│   │   │                     collections, the curator gate's metrics and verdict, and
+│   │   │                     the record, measure, settle, write and restore mechanics
+│   │   │                     (JOB-170). Control decides who and when
+│   │   └── memory/           memory directory: files, skills, bounded rendering, scope
+│   │                         targets and file writes (#266). Imports nothing of the
+│   │                         module, so it works without the database
 │   ├── config/               YAML loading, validation, defaults; tmpl/ renders
 │   │                         config templates
 │   ├── packcue/              local CUE package evaluation for packs

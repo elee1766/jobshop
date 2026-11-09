@@ -67,7 +67,7 @@ func rules() []Rule {
 			Scope: Closure,
 			From: []string{
 				"./pkg/storage/store", "./pkg/storage/store/sqlite", "./pkg/storage/store/postgres", "./pkg/storage/store/storerules",
-				"./pkg/storage/store/writekey", "./pkg/learning", "./pkg/memedit", "./pkg/memory",
+				"./pkg/storage/store/writekey", "./pkg/knowledge", "./pkg/knowledge/memory",
 				"./pkg/config", "./pkg/config/tmpl", "./pkg/cron", "./pkg/ids", "./pkg/packcue",
 				"./pkg/integrations/apicall", "./pkg/integrations/github", "./pkg/integrations/linear", "./pkg/integrations/identity",
 				"./pkg/clock", "./pkg/redact", "./pkg/logctx", "./pkg/telemetry",
@@ -191,10 +191,10 @@ func onlyRules() []Only {
 	return []Only{
 		{
 			Name: "independent-leaves",
-			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, memory by the CLI without a database (JOB-164: knowledge/memory stays usable without the database-backed learning machinery), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, hostspec as the spec file format. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
+			Why:  "These packages are used on their own or by many others: clock, cron, logctx, redact and tmpl by most of the module, knowledge/memory by the CLI and the prompt rule without a database (JOB-170: it imports neither the store nor the learning and edit records in pkg/knowledge), packcue as the standalone CUE evaluation, ids and apicall as generator and token mechanics, hostspec as the spec file format. If one imports another package of the module, every consumer takes the cost. Third-party imports are fine.",
 			From: []string{
 				"./pkg/clock", "./pkg/cron", "./pkg/logctx", "./pkg/redact", "./pkg/config/tmpl",
-				"./pkg/memory", "./pkg/packcue", "./pkg/ids", "./pkg/integrations/apicall", "./pkg/hostspec",
+				"./pkg/knowledge/memory", "./pkg/packcue", "./pkg/ids", "./pkg/integrations/apicall", "./pkg/hostspec",
 			},
 			Std:   true,
 			Third: true,

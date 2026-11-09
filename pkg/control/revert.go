@@ -10,7 +10,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -90,7 +90,7 @@ func (c *Controller) checkRevert(ctx context.Context, src github.PullSource, rep
 		return nil
 	}
 	key := revertKey(repo, pr.Number)
-	prior, err := learning.List(ctx, c.store, store.LearningFilter{Ticket: run.ID, Kind: domain.LearningCorrection})
+	prior, err := knowledge.ListLearnings(ctx, c.store, store.LearningFilter{Ticket: run.ID, Kind: domain.LearningCorrection})
 	if err != nil {
 		return err
 	}

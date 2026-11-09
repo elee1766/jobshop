@@ -11,8 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/learning"
-	"github.com/elee1766/jobshop/pkg/memedit"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -65,11 +64,11 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	_, _, err = s.Claim(ctx, f.Step, "sess", lease)
 	require.NoError(t, err)
 
-	l, err := learning.Add(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
+	l, err := knowledge.AddLearning(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
 	require.NoError(t, err)
 	f.Learning = l.ID
 	require.NoError(t, journal.Index(ctx, s, journal.Doc{Session: "sess", Ticket: f.Task, Project: proj, At: c.T, Text: "journal about nftables"}))
-	_, err = memedit.AddWrite(ctx, s, domain.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
+	_, err = knowledge.AddWriteEdit(ctx, s, domain.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
 	require.NoError(t, err)
 	it, _, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
 	require.NoError(t, err)
@@ -120,13 +119,13 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	jhits, err := journal.Recall(ctx, s, "nftables", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, jhits, 1, "journal search after the copy")
-	lhits, err := learning.Recall(ctx, s, "flaky dial", "", "", 0)
+	lhits, err := knowledge.RecallLearnings(ctx, s, "flaky dial", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, lhits, 1, "learning search after the copy")
-	lg, err := learning.Get(ctx, s, f.Learning)
+	lg, err := knowledge.GetLearning(ctx, s, f.Learning)
 	require.NoError(t, err)
 	assert.Equal(t, "rerun alone", lg.Fix)
-	me, err := memedit.List(ctx, s, "", 0)
+	me, err := knowledge.ListEdits(ctx, s, "", 0)
 	require.NoError(t, err)
 	require.Len(t, me, 1)
 	assert.Equal(t, "memory/global.md", me[0].Path)
@@ -152,7 +151,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	c2, err := store.AddComment(ctx, s, "u", f.Task, "after the copy")
 	require.NoError(t, err)
 	assert.Greater(t, c2.ID, cs[0].ID)
-	l2, err := learning.Add(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "x", Source: "agent"}, "")
+	l2, err := knowledge.AddLearning(ctx, s, domain.Learning{Kind: domain.LearningFailure, Summary: "x", Source: "agent"}, "")
 	require.NoError(t, err)
 	assert.Greater(t, l2.ID, f.Learning)
 	it, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})

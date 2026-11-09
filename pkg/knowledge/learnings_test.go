@@ -1,4 +1,4 @@
-package learning_test
+package knowledge_test
 
 import (
 	"path/filepath"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/learning"
+	"github.com/elee1766/jobshop/pkg/knowledge"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 )
@@ -28,7 +28,7 @@ func add(t *testing.T, s *sqlite.Store, l domain.Learning, project string) domai
 	if l.Source == "" {
 		l.Source = domain.LearningSourceAgent
 	}
-	out, err := learning.Add(t.Context(), s, l, project)
+	out, err := knowledge.AddLearning(t.Context(), s, l, project)
 	require.NoError(t, err)
 	return out
 }
@@ -42,7 +42,7 @@ func TestAddListUpdate(t *testing.T) {
 	now := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
 	s := open(t, &now)
 
-	_, err := learning.Add(ctx, s, domain.Learning{Kind: "Bad", Summary: "x", Source: domain.LearningSourceAgent}, "")
+	_, err := knowledge.AddLearning(ctx, s, domain.Learning{Kind: "Bad", Summary: "x", Source: domain.LearningSourceAgent}, "")
 	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	var last domain.Learning
@@ -54,40 +54,40 @@ func TestAddListUpdate(t *testing.T) {
 	now = now.Add(time.Minute)
 	add(t, s, domain.Learning{Kind: domain.LearningWorkaround, Summary: "other"}, "")
 
-	ls, err := learning.List(ctx, s, store.LearningFilter{Kind: domain.LearningFailure})
+	ls, err := knowledge.ListLearnings(ctx, s, store.LearningFilter{Kind: domain.LearningFailure})
 	require.NoError(t, err)
 	require.Len(t, ls, 11)
 	assert.Equal(t, int64(11), ls[0].ID, "same millisecond: highest id first")
-	ls, err = learning.List(ctx, s, store.LearningFilter{Ticket: "js-1", Limit: 2})
+	ls, err = knowledge.ListLearnings(ctx, s, store.LearningFilter{Ticket: "js-1", Limit: 2})
 	require.NoError(t, err)
 	assert.Len(t, ls, 2)
-	ls, err = learning.List(ctx, s, store.LearningFilter{Scope: domain.ScopeGlobal})
+	ls, err = knowledge.ListLearnings(ctx, s, store.LearningFilter{Scope: domain.ScopeGlobal})
 	require.NoError(t, err)
 	require.Len(t, ls, 1)
 	assert.Equal(t, int64(12), ls[0].ID)
 
-	u, err := learning.Update(ctx, s, 3, domain.LearningApplied, " https://x/pull/1 ")
+	u, err := knowledge.UpdateLearning(ctx, s, 3, domain.LearningApplied, " https://x/pull/1 ")
 	require.NoError(t, err)
 	assert.Equal(t, domain.LearningApplied, u.Status)
 	assert.Equal(t, "https://x/pull/1", u.PR)
-	_, err = learning.Update(ctx, s, 3, "done", "")
+	_, err = knowledge.UpdateLearning(ctx, s, 3, "done", "")
 	require.ErrorIs(t, err, domain.ErrInvalid)
-	_, err = learning.Update(ctx, s, 99, domain.LearningApplied, "")
+	_, err = knowledge.UpdateLearning(ctx, s, 99, domain.LearningApplied, "")
 	require.ErrorIs(t, err, domain.ErrNotFound)
-	require.NoError(t, learning.SetGate(ctx, s, 3, "helped: fewer retries"))
-	got, err := learning.Get(ctx, s, 3)
+	require.NoError(t, knowledge.SetLearningGate(ctx, s, 3, "helped: fewer retries"))
+	got, err := knowledge.GetLearning(ctx, s, 3)
 	require.NoError(t, err)
 	assert.Equal(t, "helped: fewer retries", got.Gate)
 	assert.Equal(t, domain.LearningApplied, got.Status)
 
-	byPR, err := learning.ByPR(ctx, s, "https://x/pull/1")
+	byPR, err := knowledge.LearningsByPR(ctx, s, "https://x/pull/1")
 	require.NoError(t, err)
 	require.Len(t, byPR, 1)
-	open, err := learning.List(ctx, s, store.LearningFilter{Status: domain.LearningOpen})
+	open, err := knowledge.ListLearnings(ctx, s, store.LearningFilter{Status: domain.LearningOpen})
 	require.NoError(t, err)
 	assert.Len(t, open, 11)
 
-	between, err := learning.Between(ctx, s, now, now.Add(time.Millisecond))
+	between, err := knowledge.LearningsBetween(ctx, s, now, now.Add(time.Millisecond))
 	require.NoError(t, err)
 	require.Len(t, between, 1)
 	assert.Equal(t, int64(12), between[0].ID)
@@ -114,7 +114,7 @@ func TestCount(t *testing.T) {
 
 	count := func(since time.Time, f domain.LearningCount) int {
 		t.Helper()
-		n, err := learning.Count(ctx, s, since, f)
+		n, err := knowledge.CountLearnings(ctx, s, since, f)
 		require.NoError(t, err)
 		return n
 	}
@@ -138,24 +138,24 @@ func TestRecall(t *testing.T) {
 	g := add(t, s, domain.Learning{Kind: domain.LearningWorkaround, Summary: "nix vendorHash mismatch", Fix: "use lib.fakeHash then paste got"}, "")
 	add(t, s, domain.Learning{Kind: domain.LearningFailure, Summary: "fakeHash in other project", Ticket: "q-1"}, "q")
 
-	hits, err := learning.Recall(ctx, s, "fakeHash", "p", "", 0)
+	hits, err := knowledge.RecallLearnings(ctx, s, "fakeHash", "p", "", 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, store.RecallLearning, hits[0].Kind)
 	assert.Equal(t, strconv.FormatInt(g.ID, 10), hits[0].Ref)
 	assert.Contains(t, hits[0].Snippet, "fakeHash")
 
-	hits, err = learning.Recall(ctx, s, "fakeHash", "", "", 0)
+	hits, err = knowledge.RecallLearnings(ctx, s, "fakeHash", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, hits, 2)
-	hits, err = learning.Recall(ctx, s, "fakeHash", "", "q-1", 0)
+	hits, err = knowledge.RecallLearnings(ctx, s, "fakeHash", "", "q-1", 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, "q", hits[0].Project)
 
 	// An update of the gate keeps the record searchable.
-	require.NoError(t, learning.SetGate(ctx, s, g.ID, "helped: x"))
-	hits, err = learning.Recall(ctx, s, "vendorHash", "", "", 0)
+	require.NoError(t, knowledge.SetLearningGate(ctx, s, g.ID, "helped: x"))
+	hits, err = knowledge.RecallLearnings(ctx, s, "vendorHash", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, hits, 1)
 }
