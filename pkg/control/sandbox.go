@@ -8,12 +8,12 @@ import (
 	"github.com/elee1766/acphost/pkg/cgroup"
 	"github.com/elee1766/acphost/pkg/sandbox"
 
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
+	execsandbox "github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
-// The sandbox spec is built by sessionrt.BuildSandbox from config; the
+// The sandbox spec is built by execsandbox.BuildSandbox from config; the
 // methods here read the live config and pass it in.
 
 // sandboxFor computes the session's sandbox from config, or nil when the
@@ -28,13 +28,13 @@ func (c *Controller) sandboxFor(t domain.Ticket, exe, cwd, home string) (*sandbo
 // poolSandbox is pool's sandbox for a process whose own writable dir is
 // own (a session dir, or a command step's dir) and which runs in cwd.
 func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*sandbox.Sandbox, error) {
-	return sessionrt.BuildSandbox(c.config(), pool, own, exe, cwd, home)
+	return execsandbox.BuildSandbox(c.config(), pool, own, exe, cwd, home)
 }
 
 // sandboxKey is what of the sandbox config feeds EnvHash (see
-// sessionrt.SandboxKey).
+// execsandbox.Key).
 func (c *Controller) sandboxKey(pool string) []string {
-	return sessionrt.SandboxKey(c.config(), pool)
+	return execsandbox.Key(c.config(), pool)
 }
 
 // checkSandboxDNS runs the pool's pasta DNS check once per setting.
@@ -77,7 +77,7 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
 		res.Error = err.Error()
 	} else if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
-		if err := sessionrt.ApplySlot(&spec.Spec, *u, f.Slot); err != nil {
+		if err := execsandbox.ApplySlot(spec.User, *u, f.Slot); err != nil {
 			res.Error = err.Error()
 		}
 	}

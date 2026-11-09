@@ -18,7 +18,7 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 
 	"github.com/elee1766/jobshop/pkg/domain"
@@ -236,7 +236,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	pid1, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	hasEnv := func(kv string) bool {
-		s, err := hostspec.Read(sdir)
+		s, err := session.Read(sdir)
 		return err == nil && slices.Contains(s.Env, kv)
 	}
 	require.True(t, hasEnv("DEPLOY=one"))

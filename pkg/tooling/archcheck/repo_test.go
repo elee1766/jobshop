@@ -39,9 +39,9 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 	}{
 		{"store imports control", "pkg/storage/store", "pkg/control", false, "[control-is-top] " + m + "pkg/storage/store imports " + m + "pkg/control"},
 		{"journal test imports control", "pkg/storage/journal", "pkg/control", true, "[control-is-top] " + m + "pkg/storage/journal imports in a test file " + m + "pkg/control"},
-		{"hooks imports sessionrt", "pkg/hooks", "pkg/control/sessionrt", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/control/sessionrt"},
-		{"hooks imports hostspec", "pkg/hooks", "pkg/hostspec", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/hostspec"},
-		{"automation imports conversation", "pkg/automation/command", "pkg/conversation", false, "[command-paths-no-session] " + m + "pkg/automation/command imports " + m + "pkg/conversation"},
+		{"hooks imports session", "pkg/hooks", "pkg/execution/session", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/execution/session"},
+		{"sandbox imports session", "pkg/execution/sandbox", "pkg/execution/session", false, "[command-paths-no-session] " + m + "pkg/execution/sandbox imports " + m + "pkg/execution/session"},
+		{"automation imports conversation", "pkg/execution/automation/command", "pkg/conversation", false, "[command-paths-no-session] " + m + "pkg/execution/automation/command imports " + m + "pkg/conversation"},
 		{"memory imports store", "pkg/knowledge/memory", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/knowledge/memory imports " + m + "pkg/storage/store"},
 		{"memory imports knowledge", "pkg/knowledge/memory", "pkg/knowledge", false, "[independent-leaves] " + m + "pkg/knowledge/memory imports " + m + "pkg/knowledge"},
 		{"linear imports hooks", "pkg/integrations/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/integrations/linear imports " + m + "pkg/hooks"},

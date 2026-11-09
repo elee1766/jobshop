@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/automation"
+	"github.com/elee1766/jobshop/pkg/execution/automation"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 

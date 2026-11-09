@@ -9,7 +9,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -97,7 +97,7 @@ type root struct {
 func Main(args []string) int {
 	// acphost's isolation helpers re-exec this binary (acphost#157), and
 	// so does the controller to start a detached session host (#904).
-	host.MaybeChild(hostspec.HostOptions("")...)
+	host.MaybeChild(session.HostOptions("")...)
 	if len(args) > 0 && args[0] == "gh" {
 		// Before kong: gh's own flags must reach gh unparsed (#349).
 		g := &Globals{Root: os.Getenv("JOBSHOP_ROOT"), Socket: os.Getenv("JOBSHOP_SOCKET")}

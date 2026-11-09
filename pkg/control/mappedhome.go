@@ -2,26 +2,26 @@ package control
 
 import (
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 )
 
-// The mapped uid, home and ACL work lives in sessionrt (see
-// sessionrt/home.go for why a mapped user gets a home of its own). The
+// The mapped uid, home and ACL work lives in execution/session and execution/sandbox (see
+// execution/session/home.go for why a mapped user gets a home of its own). The
 // controller keeps what needs config and the durable session fields: which
 // pool user applies, the slot, and whether the ticket is closed.
 
 // mappedUser is the host uid and gids a session's agent runs as, or ok
 // false when its pool has no isolation.user.
 func (c *Controller) mappedUser(pool string, slot *int) (uid int, gids []int, ok bool, err error) {
-	return sessionrt.MappedUser(c.config().IsolationFor(pool).User, slot)
+	return session.MappedUser(c.config().IsolationFor(pool).User, slot)
 }
 
 // homes is the mapped users' homes under the controller root.
-func (c *Controller) homes() sessionrt.Homes {
-	return sessionrt.Homes{Root: c.root.Dir, Log: c.log}
+func (c *Controller) homes() session.Homes {
+	return session.Homes{Root: c.root.Dir, Log: c.log}
 }
 
 // mappedHomeDir is the home for pool's mapped user: one per pool, or one
@@ -54,7 +54,7 @@ func (c *Controller) sessionMappedHome(t domain.Ticket, f domain.SessionFields) 
 // removeSlotHome deletes a closed per_session session's home (JOB-28).
 // Per-pool homes are shared by design and kept. The decision (closed
 // session, per_session pool, a slot on the row) is the controller's; the
-// deletion is sessionrt's.
+// deletion is execution/session's.
 func (c *Controller) removeSlotHome(cfg *config.Config, t domain.Ticket) {
 	u := cfg.IsolationFor(t.Pool).User
 	if t.Kind != domain.KindSession || t.Status != domain.StatusClosed || u == nil || u.Slots() == 0 {

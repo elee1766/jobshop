@@ -33,12 +33,12 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/ingest"
@@ -133,7 +133,7 @@ type Options struct {
 	Version, Commit string
 	// ShellProbe lists the commands an agent's tool shell must find on
 	// its PATH before a host is spawned (JOB-67); a miss quarantines the
-	// pool. The serve command passes sessionrt.DefaultShellProbe; nil skips it, as
+	// pool. The serve command passes session.DefaultShellProbe; nil skips it, as
 	// test hosts are not named jobshop.
 	ShellProbe []string
 }
@@ -191,7 +191,7 @@ type Controller struct {
 	poolQuarantined map[string]string
 	// dnsChecks holds the pool and DNS settings whose sandbox DNS check
 	// passed (JOB-20); it has its own lock.
-	dnsChecks sessionrt.DNSChecks
+	dnsChecks sandbox.DNSChecks
 	// configErr is the pack load error the controller started past,
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
@@ -228,7 +228,7 @@ type Controller struct {
 	// cgroup is the delegated sessions cgroup for isolation limits (#388),
 	// set up once on first need.
 	cgroupOnce sync.Once
-	cgroup     sessionrt.Delegation
+	cgroup     sandbox.Delegation
 	// hostsMoved is set once live hosts were moved out of the controller's
 	// cgroup into the sessions cgroup (JOB-91).
 	hostsMoved atomic.Bool

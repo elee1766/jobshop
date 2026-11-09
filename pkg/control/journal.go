@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 )
@@ -55,7 +55,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 // session ownership (JOB-173).
 func sessionEnv(dir string) []string {
 	env := os.Environ()
-	if s, err := hostspec.Read(dir); err == nil {
+	if s, err := session.Read(dir); err == nil {
 		env = append(env, s.Env...)
 	}
 	return env

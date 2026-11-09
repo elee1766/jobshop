@@ -57,11 +57,6 @@ jobshop/
 │   │   │                     (docs/notes/JOB-155-control-audit.md)
 │   │   ├── activity/         activity feed cache, poller and readers (JOB-149)
 │   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
-│   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe,
-│   │   │                     background job scan, mapped homes, slot
-│   │   │                     allocation, sandbox spec, isolated command, host
-│   │   │                     connect, ACP client and traffic
-│   │   │                     (JOB-146, JOB-152, JOB-153, JOB-154, JOB-155)
 │   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── stepexec/         command, http and script step attempts: templating, run dir
 │   │   │                     placement, one attempt to a Result (JOB-157); the controller
@@ -84,7 +79,17 @@ jobshop/
 │   │   └── question/         question ticket content and options (JOB-147)
 │   ├── hooks/                durable hook and callback invocations, audit, replay,
 │   │                         transports (JOB-148 audit: the host adapter is in control)
-│   ├── automation/           trusted Starlark hook engine; api/ is the shared
+│   ├── execution/            what runs a process or a script (JOB-167); never imports
+│   │   │                     control, and command paths reach only automation and sandbox
+│   │   ├── session/          session host start, adopt, stop and liveness, background job
+│   │   │                     scan, shell probe, mapped homes, slot allocation, host
+│   │   │                     connect, ACP client and traffic, and spec.json on acphost
+│   │   │                     (an older conv_export field is ignored, #530)
+│   │   ├── sandbox/          process isolation and resource mechanics: sandbox spec, mapped
+│   │   │                     user, ACLs and mount checks, cgroups and the delegated
+│   │   │                     setup, one isolated command run. No session lifecycle;
+│   │   │                     hook, step and Desk commands use it as sessions do
+│   │   └── automation/       trusted Starlark hook engine; api/ is the shared
 │   │                         contract, command/ github/ http/ jev/ linear/ tickets/
 │   │                         are the bounded host capabilities
 │   ├── integrations/         provider clients and credentials (JOB-169); no shared
@@ -109,8 +114,6 @@ jobshop/
 │   ├── config/               YAML loading, validation, defaults; tmpl/ renders
 │   │                         config templates
 │   ├── packcue/              local CUE package evaluation for packs
-│   ├── hostspec/             jobshop's spec.json on acphost (an older
-│   │                         conv_export field is ignored, #530)
 │   ├── gateway/              A2A gateway: escalation chats to another agent (#547)
 │   ├── desk/                 Jobshop Desk HTTP server over the admin API;
 │   │                         dist/ is the built UI, embedded
@@ -144,15 +147,15 @@ Dependency direction (an arrow means "may import"):
 ```mermaid
 flowchart TD
   cmd[cmd/jobshop] --> cli
-  cli --> control & acphost & hostspec & desk & gateway
+  cli --> control & acphost & session & desk & gateway
   cli --> rpc & config
   config --> cron
-  control --> store & rpc & config & telemetry & acphost & hostspec
+  control --> store & rpc & config & telemetry & acphost & session & sandbox
   control --> hooks & automation & integrations
   control --> engines
   subgraph engines[control subpackages]
     activity & linearsvc
-    sessionrt & scaleplan & ingestqueue & triggers & waitengine & slotprovider
+    scaleplan & ingestqueue & triggers & waitengine & slotprovider
   end
   control --> conversation
   desk --> conversation
@@ -163,7 +166,8 @@ flowchart TD
   waitengine --> integrations
   triggers & ingestqueue --> hooks
   hooks --> automation & integrations
-  hostspec --> acphost & telemetry
+  session --> acphost & sandbox
+  sandbox --> acphost
   sqlite[storage/store/sqlite] & postgres[storage/store/postgres] --> store[storage/store]
   storetest[storage/store/storetest] --> store
   ship[storage/journal/ship] & compress[storage/journal/compress] --> journal[storage/journal]

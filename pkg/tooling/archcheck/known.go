@@ -16,14 +16,6 @@ func known() []Known {
 			Why: "Two desk tests (push_test, systemautomation_test) build control.Options directly. They move to controltest's option helpers when Desk moves under transport.",
 		},
 		{
-			Rule: "command-paths-no-session", From: "./pkg/control/stepexec", To: "./pkg/control/sessionrt", Issue: "JOB-167",
-			Why: "stepexec takes sessionrt.GitCommonDir to place a step's run dir. JOB-167 moves that path helper to the process and isolation mechanics a command may use, then the session lifecycle is out of the command path.",
-		},
-		{
-			Rule: "command-paths-no-acp", From: "./pkg/control/stepexec", To: "github.com/coder/acp-go-sdk", Issue: "JOB-167",
-			Why: "Reached through sessionrt (see the command-paths-no-session entry). It goes with that edge.",
-		},
-		{
 			Rule: "cue-only-in-packcue", From: "./pkg/hooks", To: "cuelang.org/go/...", Issue: "JOB-172",
 			Why: "hooks/schema.go compiles a CUE schema for hook input and imports CUE directly. JOB-172 gives pack/cue the one evaluation API and hooks calls it.",
 		},

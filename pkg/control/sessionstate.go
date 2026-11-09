@@ -7,8 +7,8 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -27,7 +27,7 @@ const endedBackfillBatch = 100
 // hostEnded reads a stopped host's state from its session directory.
 func (c *Controller) hostEnded(id string) domain.SessionEnded {
 	dir := c.root.SessionDir(id)
-	e := domain.SessionEnded{HostPid: sessionrt.HostPid(dir)}
+	e := domain.SessionEnded{HostPid: session.HostPid(dir)}
 	if ex, ok := host.ReadExit(dir); ok {
 		e.Exit = ex.Reason
 	}

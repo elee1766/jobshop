@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/automation"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 

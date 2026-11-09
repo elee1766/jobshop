@@ -34,12 +34,16 @@ func families() []Family {
 		{Name: "integrations", May: []string{"support", "config", "domain"}},
 		{Name: "automation", May: []string{"integrations", "domain"}},
 		{Name: "wire", May: []string{"support", "config", "store", "domain"}},
-		{Name: "session", May: []string{"support", "config", "wire", "domain"}},
+		// sandbox is process isolation and resource mechanics: it takes a
+		// config and a process spec and knows nothing of sessions, so a
+		// command path can use it (JOB-167).
+		{Name: "sandbox", May: []string{"support", "config", "domain"}},
+		{Name: "session", May: []string{"support", "config", "sandbox", "wire", "domain"}},
 		{Name: "journal", May: []string{"support", "store", "wire", "config", "domain"}},
 		{Name: "conversation", May: []string{"support", "config", "store", "wire", "domain"}},
 		{Name: "orchestration", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
-			"automation", "wire", "session", "journal", "conversation", "pack", "domain",
+			"automation", "wire", "sandbox", "session", "journal", "conversation", "pack", "domain",
 		}},
 		{Name: "transport", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
@@ -106,10 +110,13 @@ func owners() []Owner {
 		{Pkg: "./pkg/integrations/internal/transport", Target: "stay (token renewal and body limit both clients share)", Family: "integrations", Child: "-"},
 
 		// execution
-		{Pkg: "./pkg/automation/...", Target: "execution/automation/...", Family: "automation", Child: "JOB-167"},
-		{Pkg: "./pkg/automation", Target: "execution/automation", Family: "automation", Child: "JOB-167"},
-		{Pkg: "./pkg/control/sessionrt", Target: "execution/session + execution/sandbox (split by file)", Family: "session", Child: "JOB-167"},
-		{Pkg: "./pkg/hostspec", Target: "execution/session", Family: "session", Child: "JOB-167"},
+		// JOB-167: Starlark runtime and its capabilities, process isolation
+		// and resource mechanics, and the session host mechanics, each in
+		// its own package under pkg/execution.
+		{Pkg: "./pkg/execution/automation/...", Target: "stay", Family: "automation", Child: "-"},
+		{Pkg: "./pkg/execution/automation", Target: "stay", Family: "automation", Child: "-"},
+		{Pkg: "./pkg/execution/sandbox", Target: "stay (isolation, cgroups, ACLs, mounts, isolated command; no session lifecycle)", Family: "sandbox", Child: "-"},
+		{Pkg: "./pkg/execution/session", Target: "stay (host start, adopt, stop, liveness, slots, homes, ACP client, spec.json)", Family: "session", Child: "-"},
 
 		// wire
 		{Pkg: "./pkg/rpc", Target: "transport/rpc", Family: "wire", Child: "JOB-174"},

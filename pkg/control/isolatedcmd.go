@@ -9,7 +9,7 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -38,7 +38,7 @@ type isolatedCmd struct {
 }
 
 // errSetup is a sandbox or isolation failure: the command never ran.
-var errSetup = sessionrt.ErrSetup
+var errSetup = sandbox.ErrSetup
 
 // runIsolated runs ic and returns its exit. err is a start failure, a
 // setup failure (wrapping errSetup) or a wait error; a non-zero exit is
@@ -59,7 +59,7 @@ func (c *Controller) runIsolated(ctx context.Context, ic isolatedCmd) (proc.Exit
 func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.Exit, error) {
 	spec := proc.Spec{Command: ic.argv[0], Args: ic.argv[1:], Dir: ic.dir, Env: ic.env}
 	if ic.pool != "" {
-		cleanup, err := sessionrt.IsolateSpec(&spec, sessionrt.CommandSetup{
+		cleanup, err := sandbox.IsolateSpec(&spec, sandbox.CommandSetup{
 			Cfg: ic.cfg, Pool: ic.pool, Own: ic.own, Name: ic.name,
 			TmpDir: filepath.Join(c.root.Dir, "tmp"),
 			Exe:    c.hostExe,
@@ -72,7 +72,7 @@ func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.E
 			return proc.Exit{}, fmt.Errorf("%w: %w", errSetup, err)
 		}
 	}
-	return sessionrt.Run(ctx, spec, sessionrt.Streams{Stdin: ic.stdin, Stdout: ic.stdout, Stderr: ic.stderr})
+	return sandbox.Run(ctx, spec, sandbox.Streams{Stdin: ic.stdin, Stdout: ic.stdout, Stderr: ic.stderr})
 }
 
 // shArgv is sh -c command.

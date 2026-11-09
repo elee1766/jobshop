@@ -27,7 +27,7 @@ These commands build and write tool caches, so they are not unattended
 read-only host blocks. Run in the source checkout:
 
 ```sh
-go test ./pkg/config ./pkg/packcue ./pkg/automation/... ./pkg/hooks/... ./pkg/cli
+go test ./pkg/config ./pkg/packcue ./pkg/execution/automation/... ./pkg/hooks/... ./pkg/cli
 go test ./pkg/control -run 'TestCUE|TestAutomation|TestHook|TestConfigWatch'
 go run ./cmd/jobshop config check --file pkg/config/testdata/cue-starlark-example/jobshop.yaml
 go run ./cmd/jobshop config resolve --file pkg/config/testdata/cue-starlark-example/jobshop.yaml | jq -e '.pools["demo-dev"].max_sessions == 0'
@@ -47,7 +47,7 @@ matches no tests is not evidence of acceptance coverage.
 | Boundary | Checked-in acceptance | What it does not establish |
 | --- | --- | --- |
 | Native CUE config | `TestCUEPack` in [cuepack_test.go](../../pkg/config/cuepack_test.go) loads the actual example module | A healthy controller or remote service |
-| Callback API examples | `TestDocumentedHookExamples` in [examples_test.go](../../pkg/automation/examples_test.go) invokes the actual workflow/event files | Persisted scheduling, ingress or exactly-once effects |
+| Callback API examples | `TestDocumentedHookExamples` in [examples_test.go](../../pkg/execution/automation/examples_test.go) invokes the actual workflow/event files | Persisted scheduling, ingress or exactly-once effects |
 | Capability examples | `TestDocumentedCapabilityExamples` in the same file exercises default-deny, local HTTP/Jev and an actual shell executable when present | Production credentials, public APIs or a service grant |
 | Persisted controller transitions | Hook integration tests in [automation_test.go](../../pkg/control/automation_test.go) exercise recorded output routing, restart and whole-batch rejection | Production source-policy parity or operator rollout |
 
