@@ -19,6 +19,10 @@ export interface RpcMethods {
   "batch.list": { params: BatchListParams; result: Ticket[] };
   "batch.show": { params: IDParams; result: BatchResult };
   "batch.start": { params: BatchStartParams; result: BatchResult };
+  "browse.catalog": { params: BrowseCatalogParams; result: BrowseCatalogResult };
+  "browse.list": { params: BrowseListParams; result: BrowseListResult };
+  "browse.scope": { params: Record<string, never>; result: BrowseScopeResult };
+  "browse.show": { params: BrowseShowParams; result: BrowseDetail };
   "chat.manage": { params: ChatManageParams; result: SessionInfo };
   "claim": { params: ClaimParams; result: ClaimResult };
   "comment.add": { params: CommentParams; result: Comment };
@@ -328,6 +332,193 @@ export interface BatchStartParams {
   order?: string[];
   workflow?: string;
   project?: string;
+}
+
+export interface BrowseCatalogParams {
+  team: string;
+  refresh?: boolean;
+}
+
+export interface BrowseCatalogResult {
+  states: BrowseOption[];
+  projects: BrowseOption[];
+  users: BrowseOption[];
+  labels: BrowseOption[];
+  status: BrowseStatus;
+}
+
+export interface BrowseCheck {
+  name: string;
+  state: string;
+  url?: string;
+  started_at?: string;
+  seconds?: number;
+}
+
+export interface BrowseComment {
+  id: string;
+  author: string;
+  bot?: boolean;
+  at: string;
+  edited_at?: string;
+  url?: string;
+  body: string;
+  truncated?: boolean;
+  reply_to?: string;
+  reply_to_author?: string;
+  state?: string;
+}
+
+export interface BrowseDetail {
+  item: BrowseItem;
+  body: string;
+  body_truncated?: boolean;
+  props: BrowseProps;
+  linked: BrowseLinked[];
+  threads: BrowseThread[];
+  older?: string;
+  files: BrowseFile[];
+  files_total?: number;
+  checks: BrowseCheck[];
+  checks_total?: number;
+  status: BrowseStatus;
+}
+
+export interface BrowseFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  change: string;
+}
+
+export interface BrowseGitHubScope {
+  repo: string;
+}
+
+export interface BrowseItem {
+  provider: string;
+  scope: string;
+  ref: string;
+  id: string;
+  kind: string;
+  title: string;
+  state: string;
+  state_type: string;
+  owner?: string;
+  owner_bot?: boolean;
+  checks?: string;
+  review?: string;
+  project?: string;
+  priority?: string;
+  labels: string[];
+  updated_at?: string;
+  url: string;
+}
+
+export interface BrowseLimits {
+  page_size: number;
+  max_page_size: number;
+  thread_page: number;
+}
+
+export interface BrowseLinearScope {
+  team: string;
+  workspace: string;
+}
+
+export interface BrowseLinked {
+  kind: string;
+  ref: string;
+  title?: string;
+  state?: string;
+  url?: string;
+  relation: string;
+}
+
+export interface BrowseListParams {
+  provider: string;
+  scope: string;
+  kind?: string;
+  view?: string;
+  project?: string;
+  owner?: string;
+  author?: string;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  refresh?: boolean;
+}
+
+export interface BrowseListResult {
+  items: BrowseItem[];
+  next?: string;
+  has_more: boolean;
+  total?: number;
+  status: BrowseStatus;
+}
+
+export interface BrowseOption {
+  id: string;
+  name: string;
+  type?: string;
+}
+
+export interface BrowseProps {
+  assignee?: string;
+  priority?: string;
+  priority_value?: number;
+  project?: string;
+  labels: string[];
+  author?: string;
+  base?: string;
+  head?: string;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  mergeable?: string;
+  created_at?: string;
+}
+
+export interface BrowseScopeResult {
+  revision: number;
+  linear: BrowseLinearScope[];
+  github: BrowseGitHubScope[];
+  writes: BrowseWrites;
+  limits: BrowseLimits;
+}
+
+export interface BrowseShowParams {
+  provider: string;
+  ref: string;
+  kind?: string;
+  cursor?: string;
+  brief?: boolean;
+  refresh?: boolean;
+}
+
+export interface BrowseStatus {
+  state: string;
+  code?: string;
+  message?: string;
+  fetched_at?: string;
+  retry_at?: string;
+}
+
+export interface BrowseThread {
+  id: string;
+  kind: string;
+  path?: string;
+  line?: number;
+  resolved?: boolean;
+  outdated?: boolean;
+  url?: string;
+  comments: BrowseComment[];
+  hidden?: number;
+}
+
+export interface BrowseWrites {
+  enabled: boolean;
+  reason: string;
 }
 
 export interface Cgroup {

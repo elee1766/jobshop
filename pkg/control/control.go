@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 
+	"github.com/elee1766/jobshop/pkg/browse"
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
@@ -301,6 +302,10 @@ type Controller struct {
 	activitySrc  activity.Source
 	activity     *activity.Service
 	activityOnce sync.Once
+	// browse is Desk's read-only Linear and GitHub views (JOB-163); see
+	// browseService().
+	browse     *browse.Service
+	browseOnce sync.Once
 	// ship is journal shipping to VictoriaLogs (#530); see shipper().
 	ship     *journalship.Shipper
 	shipOnce sync.Once
@@ -976,6 +981,10 @@ func init() {
 		rpc.MethodArtifactAck:       bind((*Controller).artifactAck),
 		rpc.MethodActivityList:      bind((*Controller).activityList),
 		rpc.MethodActivityRecord:    bind((*Controller).activityRecord),
+		rpc.MethodBrowseScope:       bind((*Controller).browseScope),
+		rpc.MethodBrowseList:        bind((*Controller).browseList),
+		rpc.MethodBrowseShow:        bind((*Controller).browseShow),
+		rpc.MethodBrowseCatalog:     bind((*Controller).browseCatalog),
 		rpc.MethodLearnAdd:          bind((*Controller).learnAdd),
 		rpc.MethodLearnList:         bind((*Controller).learnList),
 		rpc.MethodLearnUpdate:       bind((*Controller).learnUpdate),

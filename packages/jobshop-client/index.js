@@ -150,6 +150,7 @@ export function createClient({
           "chats",
           "improvements",
           "embeds",
+          "browse",
           "desk",
           "scheduler",
           "trace",

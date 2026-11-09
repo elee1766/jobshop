@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,14 +95,44 @@ func (r *Response) Next() string {
 }
 
 // StatusError is a response outside 2xx (and 304 when an ETag was sent).
+// A GraphQL rate limit or authentication failure is one too, with the
+// status that means.
 type StatusError struct {
 	Method, Path string
 	Status       int
 	Body         string
+	// RetryAt is when GitHub says to ask again: Retry-After, or the reset
+	// time of an exhausted rate limit. Zero when it says nothing.
+	RetryAt time.Time
 }
 
 func (e *StatusError) Error() string {
 	return fmt.Sprintf("github %s %s: %d %s: %s", e.Method, e.Path, e.Status, http.StatusText(e.Status), e.Body)
+}
+
+// RateLimited reports whether the response is GitHub's rate limit: a 429,
+// or a 403 that says the limit is used up (any other 403 is a permission).
+func (e *StatusError) RateLimited() bool {
+	if e.Status == http.StatusTooManyRequests {
+		return true
+	}
+	body := strings.ToLower(e.Body)
+	return e.Status == http.StatusForbidden && (strings.Contains(body, "rate limit") || strings.Contains(body, "abuse") || !e.RetryAt.IsZero())
+}
+
+// retryAt reads when GitHub allows the next request from a response's
+// headers: Retry-After (seconds), else the rate limit reset when none is
+// left.
+func retryAt(h http.Header, now time.Time) time.Time {
+	if s, err := strconv.Atoi(h.Get("Retry-After")); err == nil && s >= 0 {
+		return now.Add(time.Duration(s) * time.Second)
+	}
+	if h.Get("X-RateLimit-Remaining") == "0" {
+		if sec, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil && sec > 0 {
+			return time.Unix(sec, 0)
+		}
+	}
+	return time.Time{}
 }
 
 // IsNotFound reports a 404 from the API.
@@ -118,7 +149,7 @@ func (c *Client) Do(ctx context.Context, r Request) (*Response, error) {
 		return nil, err
 	}
 	if resp.Status/100 != 2 && (!resp.NotModified() || r.ETag == "") {
-		return nil, &StatusError{Method: r.method(), Path: r.Path, Status: resp.Status, Body: strings.TrimSpace(string(resp.Body[:min(len(resp.Body), 300)]))}
+		return nil, &StatusError{Method: r.method(), Path: r.Path, Status: resp.Status, Body: strings.TrimSpace(string(resp.Body[:min(len(resp.Body), 300)])), RetryAt: retryAt(resp.Header, time.Now())}
 	}
 	return resp, nil
 }
@@ -291,10 +322,15 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 	var r struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {
+			Type    string `json:"type"`
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
+	at := retryAt(resp.Header, time.Now())
 	if err := json.Unmarshal(resp.Body, &r); err != nil {
+		if resp.Status != http.StatusOK {
+			return &StatusError{Method: http.MethodPost, Path: "/graphql", Status: resp.Status, RetryAt: at}
+		}
 		return fmt.Errorf("github graphql: HTTP %d: invalid JSON response", resp.Status)
 	}
 	if len(r.Errors) > 0 {
@@ -302,9 +338,17 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 		for i, e := range r.Errors {
 			msgs[i] = e.Message
 		}
+		// GraphQL reports a used-up rate limit as a 200 with a RATE_LIMITED
+		// error type.
+		if r.Errors[0].Type == "RATE_LIMITED" {
+			return &StatusError{Method: http.MethodPost, Path: "/graphql", Status: http.StatusTooManyRequests, Body: strings.Join(msgs, "; "), RetryAt: at}
+		}
 		return fmt.Errorf("github graphql: %s", strings.Join(msgs, "; "))
 	}
 	if resp.Status != http.StatusOK || len(r.Data) == 0 || string(r.Data) == "null" {
+		if resp.Status != http.StatusOK {
+			return &StatusError{Method: http.MethodPost, Path: "/graphql", Status: resp.Status, RetryAt: at}
+		}
 		return fmt.Errorf("github graphql: HTTP %d", resp.Status)
 	}
 	return json.Unmarshal(r.Data, out)

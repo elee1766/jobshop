@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,31 +210,66 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 	var r struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {
-			Message string `json:"message"`
+			Message    string `json:"message"`
+			Extensions struct {
+				Code string `json:"code"`
+			} `json:"extensions"`
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
-		return &StatusError{Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body))}
+		return &StatusError{Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body)), RetryAfter: retryAfter(resp)}
 	}
 	if len(r.Errors) > 0 {
 		msgs := make([]string, len(r.Errors))
 		for i, e := range r.Errors {
 			msgs[i] = e.Message
 		}
+		// Linear answers a rate limit as a 400 with a RATELIMITED code, so
+		// the code, not the status, says so.
+		if code := r.Errors[0].Extensions.Code; code == "RATELIMITED" || code == "AUTHENTICATION_ERROR" || resp.StatusCode == http.StatusTooManyRequests {
+			return &StatusError{Code: statusFor(code, resp.StatusCode), Status: resp.Status, Body: strings.Join(msgs, "; "), RetryAfter: retryAfter(resp)}
+		}
 		return fmt.Errorf("linear: %s", strings.Join(msgs, "; "))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return &StatusError{Code: resp.StatusCode, Status: resp.Status}
+		return &StatusError{Code: resp.StatusCode, Status: resp.Status, RetryAfter: retryAfter(resp)}
 	}
 	return json.Unmarshal(r.Data, out)
 }
 
+// statusFor maps a GraphQL error code to the status it stands for.
+func statusFor(code string, status int) int {
+	switch code {
+	case "RATELIMITED":
+		return http.StatusTooManyRequests
+	case "AUTHENTICATION_ERROR":
+		return http.StatusUnauthorized
+	}
+	return status
+}
+
+// retryAfter is when Linear says to try again: Retry-After in seconds, or
+// X-RateLimit-Requests-Reset in epoch milliseconds. Zero when it says nothing.
+func retryAfter(resp *http.Response) time.Time {
+	if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s >= 0 {
+		return time.Now().Add(time.Duration(s) * time.Second)
+	}
+	if ms, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Requests-Reset"), 10, 64); err == nil && ms > 0 {
+		return time.UnixMilli(ms)
+	}
+	return time.Time{}
+}
+
 // StatusError is a response that carries no GraphQL errors to report:
-// a non-200 status, or a body that is not JSON.
+// a non-200 status, or a body that is not JSON. It also stands for a
+// rate limit or authentication failure Linear reported as a GraphQL error,
+// with the status that means.
 type StatusError struct {
 	Code   int
 	Status string
 	Body   string
+	// RetryAfter is when to ask again, zero when Linear did not say.
+	RetryAfter time.Time
 }
 
 func (e *StatusError) Error() string {
