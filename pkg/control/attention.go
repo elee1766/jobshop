@@ -13,7 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// The attention projection lives in pkg/control/attention (JOB-147).
+// The attention projection lives in pkg/conversation/attention (JOB-147).
 // This file is the controller's side: the grant, and the Source that
 // hands the projection the tickets and the subsystem rows.
 

@@ -25,7 +25,7 @@ import (
 const (
 	reportMetaPack   = "report"
 	questionMetaPack = domain.MetaQuestion
-	// The question ticket's content lives in pkg/control/question (JOB-147).
+	// The question ticket's content lives in pkg/conversation/question (JOB-147).
 	resolutionAnswered = question.Resolution
 	answerTitlePrefix  = question.AnswerTitlePrefix
 	questionTo         = question.To

@@ -16,7 +16,7 @@ import (
 )
 
 // chatManage keeps lifecycle and name uniqueness in the controller. What
-// each kind of chat may do is in pkg/control/chatlife (JOB-147); the
+// each kind of chat may do is in pkg/conversation (JOB-147); the
 // writes, the chat mutex and the live session calls stay here. Archive
 // and resolve close the session, resolve first closes the escalation
 // ticket the chat answered for, and neither touches the journal, so the

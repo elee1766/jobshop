@@ -13,7 +13,7 @@ import (
 )
 
 // Escalation chat (#379). The rules (which holds get a chat, the cause
-// and prompt, the meta.escalation shape) are in pkg/control/chatlife
+// and prompt, the meta.escalation shape) are in pkg/conversation
 // (JOB-147). This file opens the session, writes meta.escalation with a
 // conditional update, so a restart or a repeated sweep never opens a
 // second chat, and sends the final message when the ticket closes.

@@ -27,7 +27,7 @@ import (
 // attention.
 //
 // The rules (keys, prompt, which chats ended, read-only limits) are in
-// pkg/control/chatlife and pkg/control/attention. This file starts,
+// pkg/conversation and pkg/conversation/attention. This file starts,
 // resumes, suspends and closes the sessions, and writes the meta.
 
 const (
