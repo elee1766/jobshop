@@ -36,8 +36,13 @@ failed attempt; a plain release is one).
    controller reports no build commit, run the check by hand: still not
    live after an hour of green CI, comment what you saw and
    `jobshop close -r failed`.
-3. Both good: comment on the issue that it shipped in <sha> (and is
-   deployed, if step 2 applies):
+3. Both good: re-read the issue (`jobshop linear issue {{.issue}}`). If its
+   completion gate or acceptance list is not met by what has merged (this
+   PR was a slice), do not move it to {{.linear_done_state}}: comment what
+   shipped in <sha> and what remains, keep the issue open and the run's
+   follow-up work tracked (a wait or a new run, per the issue), then
+   `jobshop close`. Otherwise comment on the issue that it shipped in
+   <sha> (and is deployed, if step 2 applies):
    `jobshop linear comment {{.issue}} "Shipped in <sha>"`, move it to
    {{.linear_done_state}} with
    `jobshop linear state {{.issue}} "{{.linear_done_state}}"`, then
