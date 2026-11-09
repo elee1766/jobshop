@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { GraphResult, ShowResult, Ticket } from '../../../packages/jobshop-client/rpc.js';
 import { Markdown } from '../components/Markdown.tsx';
 import { StatusLetter } from '../components/StatusLetter.tsx';
+import { ticketMenuRef, TicketMenuButton } from '../components/TicketMenu.tsx';
 import { TitleAction } from '../components/TitleAction.tsx';
 import { TitleText } from '../components/TitleText.tsx';
 import { linkLabel, relationshipText, safeLinks, stateDetail } from '../lib/trace.ts';
@@ -9,6 +10,13 @@ import { TicketHistory } from './TicketHistory.tsx';
 
 const priority = ['blocked by', 'blocks', 'waits for', 'waited on by', 'children'];
 const rank = (kind: string) => (priority.indexOf(kind) < 0 ? 99 : priority.indexOf(kind));
+
+// What the ticket menu acts on: any ticket in this graph can be inspected.
+const menuTarget = (t: Ticket) => ({
+  id: t.id,
+  session: t.holder || (t.kind === 'session' ? t.id : ''),
+  inspectable: true,
+});
 
 interface Fields {
   wait?: { reason?: string };
@@ -63,14 +71,18 @@ export function TicketDetails({
       >
         {other.title && <small className="mono muted">{other.id}</small>}
       </TitleAction>
+      <TicketMenuButton target={menuTarget(other)} />
     </>
   );
 
   return (
     <div className="inspector" aria-label="Ticket details">
-      <header className="ticket-overview">
+      <header className="ticket-overview" ref={ticketMenuRef(menuTarget(ticket))}>
         {ticket.parent_id && (
-          <div className="ticket-parent">
+          <div
+            className="ticket-parent"
+            ref={ticketMenuRef(parent ? menuTarget(parent) : { id: ticket.parent_id, inspectable: true })}
+          >
             <span className="muted">child of</span>
             {parent ? (
               link(parent)
@@ -109,6 +121,7 @@ export function TicketDetails({
             </a>
           ))}
           <button onClick={() => onTrace(ticket.id)}>open as graph root</button>
+          <TicketMenuButton target={menuTarget(ticket)} />
           {ticket.holder && (
             <button className="watch-session" title={ticket.holder} onClick={() => onWatch(ticket.holder!)}>
               view running session ↗
@@ -142,7 +155,9 @@ export function TicketDetails({
               </h3>
               <ul className="rows">
                 {others.map((other) => (
-                  <li key={other.id}>{link(other)}</li>
+                  <li key={other.id} ref={ticketMenuRef(menuTarget(other))}>
+                    {link(other)}
+                  </li>
                 ))}
               </ul>
             </section>

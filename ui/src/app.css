@@ -980,3 +980,89 @@ output.block { display: block; margin: 6px 0; }
 .popup-positioner { z-index: 20; }
 .dialog-backdrop { position: fixed; inset: 0; background: #0004; z-index: 30; }
 .paste-document { position: fixed; z-index: 31; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; }
+/* Ticket context menu (JOB-136). The ⋯ button is the visible way in; right
+   click, the context-menu key and Shift+F10 open the same menu. */
+.ticket-menu-button {
+  color: var(--muted);
+  min-height: calc(1em * var(--line-height));
+  padding-block: 0;
+  text-align: center;
+  line-height: var(--line-height);
+}
+.ticket-menu-button:hover,
+.ticket-menu-button:focus-visible {
+  color: inherit;
+}
+.ticket-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-width: min(320px, calc(100vw - 2 * var(--space-3)));
+  font-size: var(--font-size-compact);
+  border: 1px solid var(--column);
+  background: var(--paper);
+  color: inherit;
+}
+.ticket-menu:focus-visible {
+  outline: none;
+}
+.ticket-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--control-inset);
+  cursor: pointer;
+  user-select: none;
+}
+.ticket-menu-item[data-highlighted] {
+  background: var(--hi);
+}
+.ticket-menu-item:focus-visible {
+  outline: 2px solid var(--tag-border);
+  outline-offset: -2px;
+}
+/* The exact id, selectable, apart from the actions. */
+.ticket-menu-id {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--control-inset);
+  border-top: 1px solid var(--tag-border);
+  background: var(--tag);
+  font-size: var(--font-size-small);
+}
+.ticket-menu-id code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+@media (pointer: coarse) {
+  .ticket-menu-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .ticket-menu-item {
+    min-height: 44px;
+  }
+}
+/* Confirmation of a copy, above the phone nav on narrow screens. */
+.notice {
+  position: fixed;
+  z-index: 25;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  max-width: calc(100vw - 2 * var(--space-3));
+  padding: var(--space-1) var(--control-inset);
+  border: 1px solid var(--tag-border);
+  background: var(--tag);
+  font-size: var(--font-size-compact);
+  overflow-wrap: anywhere;
+}
+.notice:empty {
+  display: none;
+}
+@media (max-width: 599px) {
+  .notice {
+    bottom: 56px;
+  }
+}

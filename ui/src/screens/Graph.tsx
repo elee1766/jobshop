@@ -12,6 +12,7 @@ import type { GraphResult } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { Markdown } from '../components/Markdown.tsx';
 import { StatusLetter } from '../components/StatusLetter.tsx';
+import { ticketMenuRef, TicketMenuButton } from '../components/TicketMenu.tsx';
 import { TitleText } from '../components/TitleText.tsx';
 import { useSize } from '../lib/useSize.ts';
 import {
@@ -377,6 +378,11 @@ export function Graph({
             const wait = (node.fields as { wait?: { reason?: string } } | undefined)?.wait;
             const detail = stateDetail(node);
             const step = stepName(node.fields);
+            const target = {
+              id: node.id,
+              session: node.holder || (node.kind === 'session' ? node.id : ''),
+              inspectable: true,
+            };
             return (
               <article
                 key={node.id}
@@ -389,6 +395,7 @@ export function Graph({
                 }}
                 data-ticket={node.id}
                 data-status={node.status}
+                ref={ticketMenuRef(target)}
               >
                 <div className="graph-select hosted">
                   <button
@@ -435,6 +442,7 @@ export function Graph({
                   </div>
                 )}
                 <div className="graph-links">
+                  <TicketMenuButton target={target} />
                   {(node.holder || node.kind === 'session') && (
                     <button title={node.holder || node.id} onClick={() => onWatch(node.holder || node.id)}>
                       view session ↗
