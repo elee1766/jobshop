@@ -563,9 +563,8 @@ td pre {
   overflow-wrap: anywhere;
 }
 .operator {
-  background: var(--hi);
-  margin: 0 0 8px;
-  padding: 0 2px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
   white-space: pre-wrap;
 }
 .chat-state.working { color: var(--ink); background: var(--hi); }
@@ -598,6 +597,29 @@ td pre {
 .transcript-row.after-tools { padding-top: var(--space-3); }
 .transcript-row > .tool > summary { padding-block: var(--space-1); }
 .transcript-row > .tool > pre { margin: 0 0 var(--space-2); }
+/* Sender headers and gutter (JOB-137). Every row has a thin gutter rule whose
+   color follows its speaker, and a turn starts with a compact label bar: the
+   label says who, the color only reinforces it. Same column for both, no
+   bubbles or offsets. */
+.transcript-row { padding-left: var(--space-3); border-left: 3px solid var(--rule); }
+.transcript-row.role-human { border-left-color: var(--ink); }
+.transcript-row.role-human, .transcript-row.lead { padding-top: var(--space-4); }
+.speaker {
+  display: flex;
+  align-items: center;
+  min-height: calc(1em * var(--line-height));
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-small);
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+.speaker-human { background: var(--tag); border-bottom: 1px solid var(--tag-border); }
+.speaker-agent { color: var(--muted); border-bottom: 1px solid var(--rule); }
+.transcript-row > .markdown { padding: 0 var(--space-2); }
+.speaker + .markdown { padding-top: var(--space-2); }
+.speaker + .tool { margin-top: var(--space-2); }
+/* The disclosures belong to the message above them. */
+.operator ~ .controller-context, .operator ~ .raw-prompt, .message ~ .controller-context, .message ~ .raw-prompt { margin-top: var(--space-1); }
 @media (pointer: coarse) {
   .transcript-row > .tool > summary { padding-block: var(--space-2); }
 }

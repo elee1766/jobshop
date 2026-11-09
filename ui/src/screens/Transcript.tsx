@@ -53,6 +53,23 @@ function build(frames: SessionEvent[], pending: PendingMessage[], rowKeys: Map<n
 
 const dataURL = (image: { mime_type: string; data: string }) => 'data:' + image.mime_type + ';base64,' + image.data;
 
+// Who a row belongs to (JOB-137). A turn_start with an operator message is
+// the human's; one with only controller context (or a legacy prompt) is the
+// controller's; every other row is the agent's.
+type Role = 'human' | 'agent' | 'controller';
+const roleOf = (message: Message): Role =>
+  message.pending
+    ? 'human'
+    : message.type === 'turn_start'
+      ? message.raw_prompt && message.messages?.length
+        ? 'human'
+        : 'controller'
+      : 'agent';
+
+// The sender label of an operator message. Desk users and the admin CLI are
+// the operator, so `you`; another sender keeps its own name.
+const senderOf = (from: string) => (!from || from === 'admin' || from.startsWith('desk:') ? 'you' : from);
+
 // A virtualized transcript with variable-height rows, anchored to the end:
 // it follows new rows while the reader is at the bottom and keeps the place
 // when older history loads above (TanStack Virtual's anchorTo and
@@ -62,11 +79,14 @@ export function Transcript({
   frames,
   viewport,
   pending = [],
+  agent = 'agent',
   onOlder,
 }: {
   frames: SessionEvent[];
   viewport: HTMLDivElement | null;
   pending?: PendingMessage[];
+  // The agent's label in its sender header: its pool or agent name.
+  agent?: string;
   onOlder: (older: SessionEvent[]) => void;
 }) {
   const rowKeys = useRef(new Map<number, string>());
@@ -199,12 +219,19 @@ export function Transcript({
         const message = messages[row.index];
         if (!message) return null;
         const afterTool = !!messages[row.index - 1]?.tool;
+        const role = roleOf(message);
+        const prior = messages[row.index - 1];
+        // An agent turn is labeled once, on its first row: the rows after it
+        // (text, tools, more text) belong to the same speaker.
+        const lead = role === 'agent' && (!prior || roleOf(prior) !== 'agent');
         return (
           <div
             key={row.key}
             ref={virtualizer.measureElement}
             className={
-              'transcript-row' +
+              'transcript-row role-' +
+              role +
+              (lead ? ' lead' : '') +
               (afterTool && message.tool ? ' tool-next' : '') +
               (afterTool && !message.tool ? ' after-tools' : '')
             }
@@ -212,7 +239,7 @@ export function Transcript({
             data-row-key={message.key}
             style={{ transform: 'translateY(' + row.start + 'px)' }}
           >
-            <Row message={message} expanded={expanded} remember={remember} />
+            <Row message={message} expanded={expanded} remember={remember} lead={lead} agent={agent} />
           </div>
         );
       })}
@@ -224,10 +251,14 @@ const Row = memo(function Row({
   message,
   expanded,
   remember,
+  lead,
+  agent,
 }: {
   message: Message;
   expanded: ReadonlySet<string>;
   remember: (key: string, open: boolean) => void;
+  lead: boolean;
+  agent: string;
 }) {
   const details = (suffix: string) => ({
     open: expanded.has(message.key + suffix),
@@ -241,62 +272,99 @@ const Row = memo(function Row({
   if (message.pending) {
     const p = message.pending;
     return (
-      <div className="operator" data-message={p.id}>
-        {p.text}
-        {p.attachments.length > 0 && <small>{p.attachments.join(', ')}</small>}
-        <output className="message-delivery muted">{p.state === 'sending' ? 'sending…' : 'queued'}</output>
-      </div>
+      <>
+        <Speaker label="you" side="human" />
+        <div className="operator" data-message={p.id}>
+          {p.text}
+          {p.attachments.length > 0 && <small>{p.attachments.join(', ')}</small>}
+          <output className="message-delivery muted">{p.state === 'sending' ? 'sending…' : 'queued'}</output>
+        </div>
+      </>
     );
   }
   if (message.type === 'turn_start') {
     return (
       <>
-        {message.context && (
-          <details className="controller-context" {...details(':context')}>
-            <summary>controller context</summary>
-            <div className="markdown" dangerouslySetInnerHTML={{ __html: md(message.context) }} />
-          </details>
-        )}
+        {/* Controller context and the raw prompt follow the human message they
+            came with and stay muted disclosures with no sender header, so they
+            do not read as a turn of their own. A turn with no human message
+            (controller work) shows only its disclosures, and the agent reply
+            after it carries the header. */}
         {message.raw_prompt ? (
           <>
             {(message.messages || []).map((original) => (
-              <div className="operator" key={original.id} data-message={original.id} title={'from ' + original.from}>
-                {original.text}
+              <div key={original.id} className="message">
+                <Speaker label={senderOf(original.from)} side="human" title={'from ' + original.from} />
+                <div className="operator" data-message={original.id}>
+                  {original.text}
+                </div>
               </div>
             ))}
+            {message.context && (
+              <details className="controller-context" {...details(':context')}>
+                <summary>controller context</summary>
+                <div className="markdown" dangerouslySetInnerHTML={{ __html: md(message.context) }} />
+              </details>
+            )}
             <details className="raw-prompt" {...details(':raw')}>
               <summary>raw model prompt</summary>
               <pre>{message.raw_prompt}</pre>
             </details>
           </>
-        ) : message.text ? (
-          <details className="controller-context legacy-prompt" {...details(':legacy')}>
-            <summary>legacy prompt</summary>
-            <pre>{message.text}</pre>
-          </details>
-        ) : null}
+        ) : (
+          <>
+            {message.context && (
+              <details className="controller-context" {...details(':context')}>
+                <summary>controller context</summary>
+                <div className="markdown" dangerouslySetInnerHTML={{ __html: md(message.context) }} />
+              </details>
+            )}
+            {message.text && (
+              <details className="controller-context legacy-prompt" {...details(':legacy')}>
+                <summary>legacy prompt</summary>
+                <pre>{message.text}</pre>
+              </details>
+            )}
+          </>
+        )}
         {images('User attachment')}
       </>
     );
   }
   if (message.tool) {
     return (
-      <details className="tool mono" {...details(':tool')}>
-        <summary>
-          {message.tool.intent || message.tool.title || 'tool'} · {message.tool.status}
-        </summary>
-        <pre>{[message.tool.target, message.tool.input, message.tool.output].filter(Boolean).join('\n')}</pre>
-        {images('Tool output')}
-      </details>
+      <>
+        {lead && <Speaker label={agent} side="agent" />}
+        <details className="tool mono" {...details(':tool')}>
+          <summary>
+            {message.tool.intent || message.tool.title || 'tool'} · {message.tool.status}
+          </summary>
+          <pre>{[message.tool.target, message.tool.input, message.tool.output].filter(Boolean).join('\n')}</pre>
+          {images('Tool output')}
+        </details>
+      </>
     );
   }
   return (
-    <div className={'markdown' + (message.error ? ' error' : '')}>
-      <span
-        style={{ display: 'contents' }}
-        dangerouslySetInnerHTML={{ __html: md(message.text || message.error || '') }}
-      />
-      {images('Agent output')}
-    </div>
+    <>
+      {lead && <Speaker label={agent} side="agent" />}
+      <div className={'markdown' + (message.error ? ' error' : '')}>
+        <span
+          style={{ display: 'contents' }}
+          dangerouslySetInnerHTML={{ __html: md(message.text || message.error || '') }}
+        />
+        {images('Agent output')}
+      </div>
+    </>
   );
 });
+
+// The sender header: a compact label bar above a turn. The label carries the
+// meaning, the gutter and bar colors only reinforce it.
+function Speaker({ label, side, title }: { label: string; side: Role; title?: string }) {
+  return (
+    <div className={'speaker speaker-' + side} title={title}>
+      {label}
+    </div>
+  );
+}
