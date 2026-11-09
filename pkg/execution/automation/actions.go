@@ -38,6 +38,19 @@ type Action struct {
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
 	RetryPool    string         `json:"retry_pool,omitempty"`
 	Needs        []string       `json:"needs,omitempty"`
+	// NeedsResources are resource keys the step holds while in progress,
+	// like a workflow step's needs_resources (#400). Placement replaces
+	// pool and needs_resources with weighted pool options (#409).
+	NeedsResources []string         `json:"needs_resources,omitempty"`
+	Placement      *ActionPlacement `json:"placement,omitempty"`
+	// RetryAfter (Go duration) is the wait after a script step returns
+	// result(not_yet=True).
+	RetryAfter string `json:"retry_after,omitempty"`
+	// MaxReviewRounds caps the request_changes closes of the step (nil:
+	// the default). OnRequestChanges is the step such a close reopens, one
+	// of Needs.
+	MaxReviewRounds  *int   `json:"max_review_rounds,omitempty"`
+	OnRequestChanges string `json:"on_request_changes,omitempty"`
 	// create_ticket and comment: Body is the ticket body or comment text,
 	// Ticket the ticket commented on. Labels, Priority and Parent are for
 	// create_ticket.
@@ -65,6 +78,12 @@ func cloneAction(a Action) Action {
 	}
 	a.Needs = slices.Clone(a.Needs)
 	a.Labels = slices.Clone(a.Labels)
+	a.NeedsResources = slices.Clone(a.NeedsResources)
+	a.Placement = clonePlacement(a.Placement)
+	if a.MaxReviewRounds != nil {
+		n := *a.MaxReviewRounds
+		a.MaxReviewRounds = &n
+	}
 	if a.Priority != nil {
 		p := *a.Priority
 		a.Priority = &p
@@ -99,13 +118,15 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 	var inputs, output, outputSchema *starlark.Dict
 	var needs *starlark.List
 	var labels *starlark.List
-	var script starlark.Value
+	var needsResources *starlark.List
+	var placement *starlark.Dict
+	var script, maxReviewRounds starlark.Value
 	var err error
 	switch a.Kind {
 	case "start_run":
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "workflow", &a.Workflow, "key", &a.Key, "inputs?", &inputs, "title?", &a.Title, "reason?", &a.Reason)
 	case "start_step":
-		err = starlark.UnpackArgs(a.Kind, args, kwargs, "id", &a.ID, "pool", &a.Pool, "prompt?", &a.Prompt, "prompt_file?", &a.PromptFile, "script?", &script, "worktree?", &a.Worktree, "timeout?", &a.Timeout, "inputs?", &inputs, "title?", &a.Title, "retries?", &a.Retries, "retry_pool?", &a.RetryPool, "needs?", &needs, "output_schema?", &outputSchema, "reason?", &a.Reason)
+		err = starlark.UnpackArgs(a.Kind, args, kwargs, "id", &a.ID, "pool?", &a.Pool, "prompt?", &a.Prompt, "prompt_file?", &a.PromptFile, "script?", &script, "worktree?", &a.Worktree, "timeout?", &a.Timeout, "inputs?", &inputs, "title?", &a.Title, "retries?", &a.Retries, "retry_pool?", &a.RetryPool, "needs?", &needs, "output_schema?", &outputSchema, "needs_resources?", &needsResources, "retry_after?", &a.RetryAfter, "placement?", &placement, "max_review_rounds?", &maxReviewRounds, "on_request_changes?", &a.OnRequestChanges, "reason?", &a.Reason)
 	case "finish_run":
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "outcome", &a.Outcome, "output?", &output, "reason?", &a.Reason)
 	case "create_ticket":
@@ -128,11 +149,18 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		}
 	}
 	required := map[string]string{}
+	limit := 1 << 20
+	if inv, _ := t.Local("invocation").(*invocation); inv != nil {
+		limit = inv.engine.options.Limits.DataBytes
+	}
 	switch a.Kind {
 	case "start_run":
 		required["workflow"], required["key"] = a.Workflow, a.Key
 	case "start_step":
-		required["id"], required["pool"] = a.ID, a.Pool
+		required["id"] = a.ID
+		if placement == nil {
+			required["pool"] = a.Pool
+		}
 		if script != nil && script != starlark.None {
 			engine, _ := t.Local("engine").(*Engine)
 			if engine == nil {
@@ -163,6 +191,9 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		if a.Retries < 0 || a.Retries > 100 {
 			return nil, errors.New("start_step: retries must be between 0 and 100")
 		}
+		if err := a.checkStepFields(placement, needsResources, maxReviewRounds, limit); err != nil {
+			return nil, err
+		}
 	case "finish_run":
 		required["outcome"] = a.Outcome
 	case "create_ticket":
@@ -187,10 +218,6 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 			return nil, fmt.Errorf("%s: %s must be nonempty", a.Kind, name)
 		}
 	}
-	limit := 1 << 20
-	if inv, _ := t.Local("invocation").(*invocation); inv != nil {
-		limit = inv.engine.options.Limits.DataBytes
-	}
 	for _, pair := range []struct {
 		dict   *starlark.Dict
 		target *map[string]any
@@ -213,6 +240,10 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 			a.Needs = append(a.Needs, dependency)
 		}
 	}
+	if a.OnRequestChanges != "" && !slices.Contains(a.Needs, a.OnRequestChanges) {
+		// A direct need: the reviewer reopens blocked behind it.
+		return nil, fmt.Errorf("start_step: on_request_changes %q must be a step this agent step needs directly", a.OnRequestChanges)
+	}
 	data, err := json.Marshal(a)
 	if err != nil {
 		return nil, err
@@ -234,6 +265,7 @@ func (e *Engine) result(value starlark.Value) (Result, error) {
 	if v, ok := value.(*resultValue); ok {
 		result.Output = cloneData(v.output).(map[string]any)
 		result.Outcome = v.outcome
+		result.NotYet = v.notYet
 		value = v.actions
 	}
 	actions, batch, err := actionBatch(value)

@@ -21,7 +21,7 @@ import (
 
 // ScriptConfig is a script step's static settings, from its fields.
 func ScriptConfig(sf domain.StepFields) config.Step {
-	s := config.Step{ID: sf.Step, Type: domain.StepScript, Pool: sf.ScriptPool, Worktree: sf.Worktree, Timeout: sf.Timeout}
+	s := config.Step{ID: sf.Step, Type: domain.StepScript, Pool: sf.ScriptPool, Worktree: sf.Worktree, Timeout: sf.Timeout, RetryAfter: sf.RetryAfter}
 	// The script owns its retries through start_step; a restart reruns it.
 	s.OnRestart = config.OnRestartRetry
 	return s
@@ -62,6 +62,11 @@ func (e Executor) script(ctx context.Context, cfg *config.Config, t domain.Ticke
 	}
 	if len(out.Actions) > 0 {
 		res.Result, res.Err = ResultFailed, "a step function returns result(outcome=..., output=...), not actions"
+		return res
+	}
+	if out.NotYet {
+		// Not a failure: the controller defers the step by its retry_after.
+		res.Result = ResultNotYet
 		return res
 	}
 	if err := packcue.CheckSchema(sf.OutputSchema, out.Output, true); err != nil {

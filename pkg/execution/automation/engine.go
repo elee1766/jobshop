@@ -55,7 +55,10 @@ type Result struct {
 	Metadata ResultMetadata `json:"metadata"`
 	Output   map[string]any `json:"output"`
 	// Outcome is result(outcome=...), the routing word of a step function.
-	Outcome   string     `json:"outcome,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
+	// NotYet is result(not_yet=True): a step function asks to run again
+	// after its retry_after, without counting a failure.
+	NotYet    bool       `json:"not_yet,omitempty"`
 	Actions   []Action   `json:"actions"`
 	Logs      string     `json:"logs"`
 	Decisions []Decision `json:"decisions"`

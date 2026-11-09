@@ -317,6 +317,8 @@ type StepFields struct {
 	ScriptHook string `json:"script_hook,omitempty"`
 	Worktree   bool   `json:"worktree,omitempty"`
 	Timeout    string `json:"timeout,omitempty"`
+	// RetryAfter is a script step's wait after result(not_yet=True).
+	RetryAfter string `json:"retry_after,omitempty"`
 	// Command is the last attempt's filled command line or "METHOD url",
 	// Output its bounded, redacted stdout or response body, Outcome the
 	// outcome word it set, and Result ok, not_yet or failed.
