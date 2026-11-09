@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.27](https://github.com/elee1766/jobshop/compare/v0.9.26...v0.9.27) (2026-11-09)
+
+
+### Features
+
+* **automation:** start_step accepts needs_resources, placement, retry_after, review fields (JOB-182) ([#1141](https://github.com/elee1766/jobshop/issues/1141)) ([6811077](https://github.com/elee1766/jobshop/commit/681107736517eb0bd5857f754205ba2951e0c08a))
+
 ## [0.9.26](https://github.com/elee1766/jobshop/compare/v0.9.25...v0.9.26) (2026-11-09)
 
 
