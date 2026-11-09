@@ -1,4 +1,4 @@
-// Package chatlife owns the rules of managed conversations: Desk named
+// Package conversation owns the rules of managed conversations: Desk named
 // chats, escalation chats (#379) and attention chats (#535, #606). It was
 // split out of pkg/control by JOB-147.
 //
@@ -16,7 +16,7 @@
 // closing the ticket an escalation chat answers for, the revision-checked
 // session and meta updates, the supervisor pass and the grants. Those
 // paths are listed in docs/notes/JOB-147-attention-chat.md.
-package chatlife
+package conversation
 
 import (
 	"encoding/json"
@@ -28,8 +28,8 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
-	"github.com/elee1766/jobshop/pkg/control/attention"
-	"github.com/elee1766/jobshop/pkg/control/question"
+	"github.com/elee1766/jobshop/pkg/conversation/attention"
+	"github.com/elee1766/jobshop/pkg/conversation/question"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )

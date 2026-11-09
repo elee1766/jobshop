@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -20,7 +20,7 @@ import (
 
 const (
 	grantQuestionAnswer = "question-answer"
-	questionChatPrefix  = chatlife.QuestionChatPrefix
+	questionChatPrefix  = conversation.QuestionChatPrefix
 )
 
 // noteOperator keeps the human who wrote to an attention chat, so the

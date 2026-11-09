@@ -71,11 +71,13 @@ jobshop/
 │   │   ├── threads/          thread subscriptions: discovery, comment sources,
 │   │   │                     poll plan, reply filters, message text; delivery
 │   │   │                     stays in control (JOB-156)
-│   │   ├── attention/        attention projection and item choices (JOB-147)
-│   │   ├── question/         question ticket content and options (JOB-147)
-│   │   ├── chatlife/         managed-chat rules: desk, escalation, attention (JOB-147)
 │   │   ├── controltest/      starts a controller for tests outside the package (JOB-47)
 │   │   └── journalvl/        tests only: journal shipping against a real VictoriaLogs
+│   ├── conversation/         managed-chat rules (desk, escalation, attention), escalation chat
+│   │   │                     policy, message envelope and addressing, attachment limits and
+│   │   │                     prompt blocks. Never imports control (JOB-171)
+│   │   ├── attention/        attention projection and item choices (JOB-147)
+│   │   └── question/         question ticket content and options (JOB-147)
 │   ├── hooks/                durable hook and callback invocations, audit, replay,
 │   │                         transports (JOB-148 audit: the host adapter is in control)
 │   ├── automation/           trusted Starlark hook engine; api/ is the shared
@@ -143,8 +145,11 @@ flowchart TD
   subgraph engines[control subpackages]
     activity & journalship & journalcompress & journalread & linearsvc
     sessionrt & scaleplan & ingestqueue & triggers & waitengine & slotprovider
-    chatlife --> attention --> question
   end
+  control --> conversation
+  desk --> conversation
+  conversation --> attention --> question
+  conversation --> store & rpc & config
   engines --> store & rpc & config
   activity --> github & linear
   waitengine --> github & linear

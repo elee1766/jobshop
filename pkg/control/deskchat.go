@@ -9,14 +9,14 @@ import (
 	"math"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // chatManage keeps lifecycle and name uniqueness in the controller. What
-// each kind of chat may do is in pkg/control/chatlife (JOB-147); the
+// each kind of chat may do is in pkg/conversation (JOB-147); the
 // writes, the chat mutex and the live session calls stay here. Archive
 // and resolve close the session, resolve first closes the escalation
 // ticket the chat answered for, and neither touches the journal, so the
@@ -28,27 +28,27 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 	c.chatMu.Lock()
 	defer c.chatMu.Unlock()
 	var name string
-	if chatlife.NeedsName(p.Action) {
+	if conversation.NeedsName(p.Action) {
 		var err error
-		if name, err = chatlife.NormalizeName(p.Name); err != nil {
+		if name, err = conversation.NormalizeName(p.Name); err != nil {
 			return nil, err
 		}
 		list, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Limit: math.MaxInt32})
 		if err != nil {
 			return nil, err
 		}
-		if err := chatlife.CheckNameFree(list, p.ID, name); err != nil {
+		if err := conversation.CheckNameFree(list, p.ID, name); err != nil {
 			return nil, err
 		}
 	}
-	if p.Action == chatlife.ActionNew {
-		if err := validateAttachments(p.Attachments); err != nil {
+	if p.Action == conversation.ActionNew {
+		if err := conversation.ValidateAttachments(p.Attachments); err != nil {
 			return nil, err
 		}
-		if err := chatlife.CheckNew(p); err != nil {
+		if err := conversation.CheckNew(p); err != nil {
 			return nil, err
 		}
-		sess, _, err := c.keyedSession(ctx, c.config(), sc, p.Pool, chatlife.DeskPrefix+strings.ToLower(rand.Text()[:12]))
+		sess, _, err := c.keyedSession(ctx, c.config(), sc, p.Pool, conversation.DeskPrefix+strings.ToLower(rand.Text()[:12]))
 		if err != nil {
 			return nil, err
 		}
@@ -64,26 +64,26 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 	if err != nil {
 		return nil, err
 	}
-	f, err := chatlife.Target(t)
+	f, err := conversation.Target(t)
 	if err != nil {
 		return nil, err
 	}
 	switch p.Action {
-	case chatlife.ActionConvert:
-		if err := chatlife.CheckConvert(t, f); err != nil {
+	case conversation.ActionConvert:
+		if err := conversation.CheckConvert(t, f); err != nil {
 			return nil, err
 		}
 		// The stable routing key keeps pending messages and source references valid.
-		if err := c.updateSessionFields(ctx, t.ID, func(f *domain.SessionFields) { chatlife.Convert(f, name) }); err != nil {
+		if err := c.updateSessionFields(ctx, t.ID, func(f *domain.SessionFields) { conversation.Convert(f, name) }); err != nil {
 			return nil, err
 		}
-	case chatlife.ActionRename:
+	case conversation.ActionRename:
 		if err := c.setDisplayName(ctx, sc.actor, t.ID, name); err != nil {
 			return nil, err
 		}
-	case chatlife.ActionArchive, chatlife.ActionResolve:
-		if p.Action == chatlife.ActionResolve {
-			id, err := chatlife.ResolveTarget(f)
+	case conversation.ActionArchive, conversation.ActionResolve:
+		if p.Action == conversation.ActionResolve {
+			id, err := conversation.ResolveTarget(f)
 			if err != nil {
 				return nil, err
 			}
@@ -91,11 +91,11 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 			if err != nil {
 				return nil, err
 			}
-			if err := chatlife.CheckCurrent(target, t.ID); err != nil {
+			if err := conversation.CheckCurrent(target, t.ID); err != nil {
 				return nil, err
 			}
 			if target.Status != domain.StatusClosed {
-				if _, err := c.closeTicketIn(ctx, c.config(), sc, rpc.CloseParams{ID: id, Resolution: "done", Comment: chatlife.ResolveComment}); err != nil && !errors.Is(err, domain.ErrClosed) {
+				if _, err := c.closeTicketIn(ctx, c.config(), sc, rpc.CloseParams{ID: id, Resolution: "done", Comment: conversation.ResolveComment}); err != nil && !errors.Is(err, domain.ErrClosed) {
 					return nil, err
 				}
 			}
@@ -109,7 +109,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		if err := c.updateSessionFields(ctx, t.ID, func(f *domain.SessionFields) { f.Archived = &at }); err != nil {
 			return nil, err
 		}
-	case chatlife.ActionRestore:
+	case conversation.ActionRestore:
 		if t.Status != domain.StatusClosed {
 			return c.sessionInfo(ctx, t.ID)
 		}
@@ -125,7 +125,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 			return nil, err
 		}
 		// Keep the ACP conversation id and journal, then load on the next send.
-		chatlife.Restore(&f)
+		conversation.Restore(&f)
 		fields, err := json.Marshal(f)
 		if err != nil {
 			return nil, err
@@ -163,10 +163,10 @@ func (c *Controller) deskCommand(ctx context.Context, sc scope, p rpc.DeskComman
 	if err != nil {
 		return nil, fmt.Errorf("%w: desk commands require a named chat", domain.ErrInvalid)
 	}
-	if err := chatlife.CheckViewTarget(f); err != nil {
+	if err := conversation.CheckViewTarget(f); err != nil {
 		return nil, err
 	}
-	if err := chatlife.CheckView(p); err != nil {
+	if err := conversation.CheckView(p); err != nil {
 		return nil, err
 	}
 	ev := rpc.Event{Kind: "desk", Op: p.Action, Session: t.ID, Args: p.Args, Time: c.now(), Actor: sc.actor}

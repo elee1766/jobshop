@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// The attention projection lives in pkg/control/attention (JOB-147).
+// The attention projection lives in pkg/conversation/attention (JOB-147).
 // This file is the controller's side: the grant, and the Source that
 // hands the projection the tickets and the subsystem rows.
 

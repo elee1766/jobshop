@@ -6,13 +6,13 @@ import (
 	"slices"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/control/attention"
+	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// attentionActions describes an item's choices (pkg/control/attention).
+// attentionActions describes an item's choices (pkg/conversation/attention).
 // It only reads, so supervisor reads cannot mutate work.
 func (c *Controller) attentionActions(ctx context.Context, it rpc.AttentionItem) []attention.Action {
 	return attention.Actions(ctx, attentionSource{c: c}, it)

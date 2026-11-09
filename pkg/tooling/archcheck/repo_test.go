@@ -41,7 +41,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 		{"journal test imports control", "pkg/journal", "pkg/control", true, "[control-is-top] " + m + "pkg/journal imports in a test file " + m + "pkg/control"},
 		{"hooks imports sessionrt", "pkg/hooks", "pkg/control/sessionrt", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/control/sessionrt"},
 		{"hooks imports hostspec", "pkg/hooks", "pkg/hostspec", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/hostspec"},
-		{"automation imports chatlife", "pkg/automation/command", "pkg/control/chatlife", false, "[command-paths-no-session] " + m + "pkg/automation/command imports " + m + "pkg/control/chatlife"},
+		{"automation imports conversation", "pkg/automation/command", "pkg/conversation", false, "[command-paths-no-session] " + m + "pkg/automation/command imports " + m + "pkg/conversation"},
 		{"memory imports store", "pkg/memory", "pkg/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/store"},
 		{"linear imports hooks", "pkg/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/linear imports " + m + "pkg/hooks"},
 		{"sqlite imports postgres", "pkg/store/sqlite", "pkg/store/postgres", false, "[store-backends-are-siblings] " + m + "pkg/store/sqlite imports " + m + "pkg/store/postgres"},
@@ -52,7 +52,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 		{"domain test imports rpc", "pkg/domain", "pkg/rpc", true, "[domain-is-a-leaf] " + m + "pkg/domain imports in a test file " + m + "pkg/rpc"},
 		{"domain imports a third party", "pkg/domain", "github.com/stretchr/testify/assert", false, "[family-domain] " + m + "pkg/domain imports github.com/stretchr/testify/assert"},
 		{"config imports rpc", "pkg/config", "pkg/rpc", false, "[types-not-from-store-or-rpc] " + m + "pkg/config imports " + m + "pkg/rpc"},
-		{"question imports store", "pkg/control/question", "pkg/store", false, "[types-not-from-store-or-rpc] " + m + "pkg/control/question imports " + m + "pkg/store"},
+		{"question imports store", "pkg/conversation/question", "pkg/store", false, "[types-not-from-store-or-rpc] " + m + "pkg/conversation/question imports " + m + "pkg/store"},
 		{"hooks imports rpc", "pkg/hooks", "pkg/rpc", false, "[hooks-not-from-rpc] " + m + "pkg/hooks imports " + m + "pkg/rpc"},
 	}
 	for _, tc := range cases {

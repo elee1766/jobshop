@@ -51,7 +51,7 @@ for packages that do not exist yet (`domain`, `pack`, `storage`) arrive with the
 child that creates them. Domain independence is an `Only` rule (`From: domain`,
 std only) that JOB-166 adds with the package.
 
-## Baseline exceptions (9 entries, each owned by a child)
+## Baseline exceptions (9 entries, 7 left after JOB-171, each owned by a child)
 
 | Edge | Removed by |
 |---|---|
@@ -61,7 +61,7 @@ std only) that JOB-166 adds with the package.
 | `hooks -> rpc -> acp-go-sdk` (guard decisions, automation result, ID params) | JOB-166 |
 | `hooks -> cuelang.org/go` (`schema.go`) | JOB-172 |
 | `journalread -> hostspec` (`Env` reads spec.json) | JOB-173 |
-| `chatlife -> attention`, `chatlife -> question` | JOB-171 |
+| `chatlife -> attention`, `chatlife -> question` | JOB-171 (removed: they moved under `conversation` as its own leaves) |
 
 Findings that are not edges to remove, kept here so no child rediscovers them:
 `config -> automation` (`hookcheck.go` compiles hook programs at load) is

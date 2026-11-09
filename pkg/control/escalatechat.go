@@ -7,13 +7,13 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Escalation chat (#379). The rules (which holds get a chat, the cause
-// and prompt, the meta.escalation shape) are in pkg/control/chatlife
+// and prompt, the meta.escalation shape) are in pkg/conversation
 // (JOB-147). This file opens the session, writes meta.escalation with a
 // conditional update, so a restart or a repeated sweep never opens a
 // second chat, and sends the final message when the ticket closes.
@@ -25,24 +25,24 @@ import (
 const escalationMetaPack = domain.MetaEscalation
 
 // escalationKeyPrefix starts every escalation chat session key.
-const escalationKeyPrefix = chatlife.EscalationPrefix
+const escalationKeyPrefix = conversation.EscalationPrefix
 
 // EscalationMeta is meta.escalation.
-type EscalationMeta = chatlife.Escalation
+type EscalationMeta = conversation.Escalation
 
 func metaMap(raw json.RawMessage) map[string]json.RawMessage { return domain.MetaMap(raw) }
 
-func escalationMeta(t domain.Ticket) (EscalationMeta, bool) { return chatlife.EscalationOf(t) }
+func escalationMeta(t domain.Ticket) (EscalationMeta, bool) { return conversation.EscalationOf(t) }
 
 // holdTicket reports whether t is a hold that wants an escalation chat.
-func holdTicket(t domain.Ticket) bool { return chatlife.Hold(t) }
+func holdTicket(t domain.Ticket) bool { return conversation.Hold(t) }
 
 // escalationChat returns the chat pool and the rendered prompt for hold
 // ticket t, or ok false when t gets no chat: no policy for its cause, or
 // a pool quarantine of the chat pool itself.
-func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t domain.Ticket) (pool, prompt string, x chatlife.Cause, ok bool) {
-	x = chatlife.ClassifyHold(ctx, c.store, t)
-	pool, prompt, ok, err := chatlife.Policy(cfg, t, x)
+func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t domain.Ticket) (pool, prompt string, x conversation.Cause, ok bool) {
+	x = conversation.ClassifyHold(ctx, c.store, t)
+	pool, prompt, ok, err := conversation.Policy(cfg, t, x)
 	if err != nil {
 		c.log.WarnContext(ctx, "escalation prompt", "ticket", t.ID, "cause", x.Kind, "err", err)
 		return "", "", x, false
@@ -170,7 +170,7 @@ func (c *Controller) escalationClosed(ctx context.Context, t domain.Ticket) {
 	if err != nil {
 		return // the chat already ended
 	}
-	msg := chatlife.FinalMessage(t.ID, cur.Resolution)
+	msg := conversation.FinalMessage(t.ID, cur.Resolution)
 	if err := c.sendMessage(ctx, sess, msg, ""); err != nil {
 		c.log.WarnContext(ctx, "escalation final", "ticket", t.ID, "err", err)
 	}
@@ -211,7 +211,7 @@ func (c *Controller) sweepEscalationChats(ctx context.Context, cfg *config.Confi
 	if c.draining() {
 		return
 	}
-	if !chatlife.Configured(cfg) {
+	if !conversation.Configured(cfg) {
 		return
 	}
 	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {

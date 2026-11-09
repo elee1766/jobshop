@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -324,7 +325,7 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		body = PromptPart{Source: "ticket", Text: ticketPromptText("", *t, comments)}
 	} else {
 		ts.poolPrompt = pool.Chat() && delivered.IsZero()
-		body = PromptPart{Source: "messages", Text: messagesPlaceholder}
+		body = PromptPart{Source: "messages", Text: conversation.EnvelopePlaceholder}
 	}
 	parts := c.assemble(ctx, ts, body)
 	var sent map[string]string

@@ -13,6 +13,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalread"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -31,7 +32,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if err := requireAdmin(sc, "session send"); err != nil {
 		return nil, err
 	}
-	if err := validateAttachments(p.Attachments); err != nil {
+	if err := conversation.ValidateAttachments(p.Attachments); err != nil {
 		return nil, err
 	}
 	// An attach send with no text only checks that rw attach is allowed.
@@ -83,7 +84,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	stored := false
 	defer func() {
 		if !stored && len(attachments) > 0 {
-			_ = os.RemoveAll(filepath.Join(c.attachmentDir(sess.ID), id))
+			conversation.RemoveAttachments(c.attachmentDir(sess.ID), id)
 		}
 	}()
 	fields, err := json.Marshal(domain.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context), Attachments: attachments})

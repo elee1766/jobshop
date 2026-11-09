@@ -8,6 +8,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -22,24 +23,13 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []domain.Ticket 
 	if err != nil {
 		return nil
 	}
-	to := map[string]bool{r.id: true}
-	if r.pool != "" {
-		to["pool:"+r.pool] = true
-	}
+	var key string
 	if t, err := r.c.store.Get(ctx, r.id); err == nil {
-		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Key != "" {
-			to[f.Key] = true
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
+			key = f.Key
 		}
 	}
-	var out []domain.Ticket
-	for _, m := range msgs {
-		f, err := domain.DecodeFields[domain.MessageFields](m)
-		if err != nil || !to[f.To] || (interruptOnly && !f.Interrupt) {
-			continue
-		}
-		out = append(out, m)
-	}
-	return out
+	return conversation.Addressed(msgs, conversation.Recipients(r.id, r.pool, key), interruptOnly)
 }
 
 // deliver takes waiting messages and sends them as one prompt. Each is
@@ -56,7 +46,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 		for _, a := range f.Attachments {
 			size += a.Size
 		}
-		if len(claimed) > 0 && attachmentBytes+size > rpc.MaxAttachmentBytes {
+		if !conversation.FitsBudget(len(claimed), attachmentBytes, size) {
 			break
 		}
 		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.leaseDur())
@@ -79,7 +69,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	presentation := &rpc.PromptPresentation{Version: 1}
 	for _, m := range claimed {
 		f, _ := domain.DecodeFields[domain.MessageFields](m)
-		attached, content, err := r.messageAttachments(m, f)
+		attached, content, err := conversation.PromptAttachments(r.c.attachmentDir(r.id), r.c.root.SessionDir(r.id), m, f.Attachments)
 		if err != nil {
 			return err
 		}
@@ -97,7 +87,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 			text += "\n" + m.Body
 		}
 		text += attached
-		elements = append(elements, messageElement(f.From, m.ID, text))
+		elements = append(elements, conversation.MessageElement(f.From, m.ID, text))
 		// Desk shows the original text, never the envelope.
 		original := strings.TrimSpace(strings.Join([]string{m.Title, m.Body}, "\n") + attached)
 		if f.From == "controller" {
@@ -109,7 +99,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	// Chat sessions claim no tickets, so the pool prompt would never reach
 	// them; it leads their first message turn (again after a respawn).
 	poolPrompt := r.c.config().Pools[r.pool].Chat() && r.delivered.IsZero()
-	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: messagesEnvelope(elements)}))
+	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: conversation.Envelope(elements)}))
 	text := joinParts(parts)
 	var background []PromptPart
 	for _, part := range parts {

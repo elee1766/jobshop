@@ -44,7 +44,7 @@ func rules() []Rule {
 			To: []string{
 				"./pkg/control",
 				"./pkg/control/sessionrt",
-				"./pkg/control/chatlife",
+				"./pkg/conversation",
 				"./pkg/hostspec",
 				"github.com/elee1766/acphost/pkg/acphost",
 			},
@@ -146,7 +146,7 @@ func rules() []Rule {
 			Why:   "These packages need ticket, wait, learning and question types, not a persistence interface or the wire protocol. Reaching store or rpc, even through another package, drags SQL builders, the ACP connection and the sandbox types into a consumer of a struct. A package that needs the store itself is not listed.",
 			Scope: Closure,
 			From: []string{
-				"./pkg/config", "./pkg/control/question", "./pkg/control/scaleplan",
+				"./pkg/config", "./pkg/conversation/question", "./pkg/control/scaleplan",
 				"./pkg/control/waitengine",
 			},
 			To: []string{"./pkg/rpc", "./pkg/store"},

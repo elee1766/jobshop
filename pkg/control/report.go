@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/control/question"
+	"github.com/elee1766/jobshop/pkg/conversation/question"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -25,7 +25,7 @@ import (
 const (
 	reportMetaPack   = "report"
 	questionMetaPack = domain.MetaQuestion
-	// The question ticket's content lives in pkg/control/question (JOB-147).
+	// The question ticket's content lives in pkg/conversation/question (JOB-147).
 	resolutionAnswered = question.Resolution
 	answerTitlePrefix  = question.AnswerTitlePrefix
 	questionTo         = question.To
