@@ -21,7 +21,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Host is what the service needs from the controller.

@@ -16,7 +16,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // hookHost exposes controller policy and graph mechanics without exporting it.

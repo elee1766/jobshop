@@ -8,7 +8,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Question chats (JOB-52) work like escalation chats: the operator talks

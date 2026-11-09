@@ -6,7 +6,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // escalatePool moves a step to its retry_pool (JOB-59) when it has one

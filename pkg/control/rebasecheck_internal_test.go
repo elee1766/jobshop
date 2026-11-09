@@ -10,7 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // TestRebaseMergeState: a rebase close on a step whose run's PR is dirty

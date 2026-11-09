@@ -14,7 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Host is what the engine needs from the controller.

@@ -5,17 +5,17 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/journal/compress"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // compressor is the journal compression sweeper (#631,
-// pkg/control/journalcompress), made on first use so controllers built
+// pkg/storage/journal/compress), made on first use so controllers built
 // without Run get one too.
-func (c *Controller) compressor() *journalcompress.Sweeper {
+func (c *Controller) compressor() *compress.Sweeper {
 	c.compressOnce.Do(func() {
-		c.compress = journalcompress.New(compressHost{c}, c.log)
+		c.compress = compress.New(compressHost{c}, c.log)
 	})
 	return c.compress
 }
@@ -25,7 +25,7 @@ func (c *Controller) maybeCompressJournals(_ context.Context, passCfg *config.Co
 	c.compressor().Maybe(passCfg.Journal.Compress)
 }
 
-// compressHost is the controller as journalcompress.Host.
+// compressHost is the controller as compress.Host.
 type compressHost struct{ c *Controller }
 
 func (h compressHost) Now() time.Time              { return h.c.now() }

@@ -13,7 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Intake hooks (#288): Linear issue text is untrusted. Before it reaches

@@ -13,7 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // intakePages bounds one Linear read (250 issues a page).

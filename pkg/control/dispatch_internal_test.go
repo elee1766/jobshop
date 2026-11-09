@@ -14,7 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // dispatchController is a subController with admission hooks, a working

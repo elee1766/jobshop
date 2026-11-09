@@ -14,8 +14,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 )
 
 // inboxStore opens a store whose clock the test moves.

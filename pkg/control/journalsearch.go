@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/control/journalread"
-	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/storage/journal"
+	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
 )
 
 // grantJournalSearch lets a pool search its own project's journals.
@@ -19,21 +19,21 @@ var errNoVictoriaLogs = fmt.Errorf("%w: journal search needs journal.victorialog
 // journalSearch runs a LogsQL query on VictoriaLogs (#530). Admin sees
 // every project; a pool with the journal-search grant only its own,
 // enforced by VictoriaLogs' extra_stream_filters, outside the query text.
-// The grant and the project scope are decided here; journalread runs the
+// The grant and the project scope are decided here; the journal package runs the
 // query (JOB-140).
 func (c *Controller) journalSearch(ctx context.Context, sc scope, p rpc.JournalSearchParams) (any, error) {
 	if err := c.requireGrant(sc, grantJournalSearch, "journal search"); err != nil {
 		return nil, err
 	}
-	cl := journalship.Client(c.config())
+	cl := ship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}
-	s := journalread.Search{Client: cl, Now: c.now(), JournalSearchParams: p}
+	s := journal.Search{Client: cl, Now: c.now(), JournalSearchParams: p}
 	if !sc.admin {
 		s.Project = sc.project
 	}
-	res, err := journalread.Run(ctx, s)
+	res, err := journal.RunSearch(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (c *Controller) journalBackfill(ctx context.Context, sc scope, p rpc.Journa
 	if !sc.admin {
 		return nil, forbidden("journal backfill needs the admin socket")
 	}
-	cl := journalship.Client(c.config())
+	cl := ship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}

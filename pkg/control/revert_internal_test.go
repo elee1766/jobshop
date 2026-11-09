@@ -14,7 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // fakeReverts is fakeActivity plus the PR reads revert detection needs.

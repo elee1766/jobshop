@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Keyed GitHub writes (#415). GitHub has no idempotency key, so the key

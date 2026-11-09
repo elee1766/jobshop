@@ -16,7 +16,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // TestMemoryWrite: memory.write writes under <root>/memory, records the

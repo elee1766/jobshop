@@ -27,17 +27,25 @@ jobshop/
 │   │                         Edge, Comment, kinds and their typed fields, waits,
 │   │                         learnings, resources and slots, inbox items, guard
 │   │                         decisions, question options (JOB-166)
-│   ├── store/                Store interface, its filters and update shapes, collections,
-│   │   │                     the tracing wrapper. Types live in domain
-│   │   ├── storerules/       I/O-free rules both backends apply alike (JOB-40)
-│   │   ├── storetest/        conformance suite every backend runs
-│   │   ├── storemigrate/     SQLite to Postgres copy (#632)
-│   │   ├── sqlite/           modernc.org/sqlite backend (JOB-42)
-│   │   │   ├── migrations/   goose *.sql files, embedded
-│   │   │   └── sqldb/        hand-written SQL
-│   │   └── postgres/         Postgres backend (JOB-41)
-│   │       ├── migrations/   goose *.sql files, embedded
-│   │       └── pgdb/         hand-written SQL
+│   ├── storage/              namespace, no universal Storage interface (JOB-173)
+│   │   ├── store/            Store interface, its filters and update shapes, collections,
+│   │   │   │                 the tracing wrapper. Types live in domain
+│   │   │   ├── storerules/   I/O-free rules both backends apply alike (JOB-40)
+│   │   │   ├── storetest/    conformance suite every backend runs
+│   │   │   ├── storemigrate/ SQLite to Postgres copy (#632)
+│   │   │   ├── writekey/     idempotency keys for tracker writes (#280)
+│   │   │   ├── sqlite/       modernc.org/sqlite backend (JOB-42)
+│   │   │   │   ├── migrations/ goose *.sql files, embedded
+│   │   │   │   └── sqldb/    hand-written SQL
+│   │   │   └── postgres/     Postgres backend (JOB-41)
+│   │   │       ├── migrations/ goose *.sql files, embedded
+│   │   │       └── pgdb/     hand-written SQL
+│   │   └── journal/          journal rows, the VictoriaLogs client, paging, search and
+│   │       │                 recall summaries (#530, JOB-140)
+│   │       ├── ship/         journal shipping to VictoriaLogs (JOB-119)
+│   │       ├── compress/     closed-session journal compression (JOB-89)
+│   │       ├── vltest/       a real VictoriaLogs for tests
+│   │       └── journalvl/    tests only: shipping and search against a real VictoriaLogs
 │   ├── rpc/                  JSON-RPC method names, request/response types,
 │   │   │                     client over the acp-go-sdk connection
 │   │   └── rpcschema/        JSON schema and TypeScript for Desk (#542);
@@ -48,9 +56,6 @@ jobshop/
 │   │   │                     the packages below, which never import it
 │   │   │                     (docs/notes/JOB-155-control-audit.md)
 │   │   ├── activity/         activity feed cache, poller and readers (JOB-149)
-│   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
-│   │   ├── journalcompress/  closed-session journal compression (JOB-89)
-│   │   ├── journalread/      journal paging, search and recall summaries (JOB-140)
 │   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
 │   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe,
 │   │   │                     background job scan, mapped homes, slot
@@ -71,8 +76,7 @@ jobshop/
 │   │   ├── threads/          thread subscriptions: discovery, comment sources,
 │   │   │                     poll plan, reply filters, message text; delivery
 │   │   │                     stays in control (JOB-156)
-│   │   ├── controltest/      starts a controller for tests outside the package (JOB-47)
-│   │   └── journalvl/        tests only: journal shipping against a real VictoriaLogs
+│   │   └── controltest/      starts a controller for tests outside the package (JOB-47)
 │   ├── conversation/         managed-chat rules (desk, escalation, attention), escalation chat
 │   │   │                     policy, message envelope and addressing, attachment limits and
 │   │   │                     prompt blocks. Never imports control (JOB-171)
@@ -99,7 +103,6 @@ jobshop/
 │   ├── memedit/              memory edits collection and the curator gate's
 │   │                         metrics and verdict (#274, JOB-155)
 │   ├── memory/               memory directory reader: files and skills (#266)
-│   ├── writekey/             idempotency keys for tracker writes (#280)
 │   ├── config/               YAML loading, validation, defaults; tmpl/ renders
 │   │                         config templates
 │   ├── packcue/              local CUE package evaluation for packs
@@ -113,7 +116,6 @@ jobshop/
 │   ├── clock/                time source the controller reads, fake in tests (#362)
 │   ├── redact/               secret redaction for journal reads, shipping
 │   │                         and command step output (betterleaks, env values)
-│   ├── journal/              journal rows and the VictoriaLogs client (#530)
 │   ├── runbook/              docs/verify runbook parser and runner (#635)
 │   ├── flaky/                `go test -json` flake classifier; cmd/ci-flaky (#510)
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
@@ -146,7 +148,7 @@ flowchart TD
   control --> hooks & automation & integrations
   control --> engines
   subgraph engines[control subpackages]
-    activity & journalship & journalcompress & journalread & linearsvc
+    activity & linearsvc
     sessionrt & scaleplan & ingestqueue & triggers & waitengine & slotprovider
   end
   control --> conversation
@@ -159,8 +161,10 @@ flowchart TD
   triggers & ingestqueue --> hooks
   hooks --> automation & integrations
   hostspec --> acphost & telemetry
-  sqlite[store/sqlite] & postgres[store/postgres] --> store
-  storetest[store/storetest] --> store
+  sqlite[storage/store/sqlite] & postgres[storage/store/postgres] --> store[storage/store]
+  storetest[storage/store/storetest] --> store
+  ship[storage/journal/ship] & compress[storage/journal/compress] --> journal[storage/journal]
+  control --> ship & compress & journal
   rpc --> store
 ```
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/conversation/question"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // questionContext is the asker's context followed by the links and

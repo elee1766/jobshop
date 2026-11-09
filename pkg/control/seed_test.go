@@ -8,8 +8,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
-	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 )
 
 // seedStore opens root's database while no controller runs on it and

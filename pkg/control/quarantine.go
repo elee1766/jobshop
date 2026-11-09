@@ -12,7 +12,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 
 	"github.com/elee1766/jobshop/pkg/domain"
 )

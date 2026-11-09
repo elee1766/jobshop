@@ -12,7 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/conversation/question"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Structured worker reports (#186). A session reports the state of the

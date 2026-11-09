@@ -31,8 +31,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
-	"github.com/elee1766/jobshop/pkg/control/journalcompress"
-	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
@@ -48,11 +46,13 @@ import (
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/postgres"
-	"github.com/elee1766/jobshop/pkg/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/storage/journal/compress"
+	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
+	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
 	"github.com/elee1766/jobshop/pkg/telemetry"
-	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
 // DefaultLease is the claim lease when the config sets none.
@@ -307,10 +307,10 @@ type Controller struct {
 	browse     *browse.Service
 	browseOnce sync.Once
 	// ship is journal shipping to VictoriaLogs (#530); see shipper().
-	ship     *journalship.Shipper
+	ship     *ship.Shipper
 	shipOnce sync.Once
 	// compress is the journal compression sweeper (#631); see compressor().
-	compress     *journalcompress.Sweeper
+	compress     *compress.Sweeper
 	compressOnce sync.Once
 	wg           sync.WaitGroup
 	hooksOnce    sync.Once

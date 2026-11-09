@@ -3,10 +3,12 @@ package control
 import (
 	"context"
 	"fmt"
+	"os"
 
-	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/storage/journal"
 )
 
 // session.journal (#529): read-only, paged, redacted access to a
@@ -15,9 +17,9 @@ import (
 // session dir exists. It takes the session id only, so a later
 // multi-controller setup can forward it to the owner unchanged.
 //
-// The reading lives in pkg/control/journalread (JOB-140). This file is
+// The reading lives in pkg/storage/journal/read (JOB-140). This file is
 // the access boundary: it finds the ticket, decides with canReadJournal
-// and hands the reader an authorized journalread.Access.
+// and hands the reader an authorized journal.Access.
 
 // grantSessionJournal lets a pool read journals in its project.
 const grantSessionJournal = "session-journal"
@@ -26,7 +28,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 	if p.ID == "" {
 		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
-	if err := journalread.ValidatePage(p); err != nil {
+	if err := journal.ValidatePage(p); err != nil {
 		return nil, err
 	}
 	t, err := c.store.Get(ctx, p.ID)
@@ -40,11 +42,23 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 		return nil, err
 	}
 	dir := c.root.SessionDir(t.ID)
-	res, err := journalread.Page(journalread.Access{Dir: dir, Redact: c.redactor(journalread.Env(dir))}, p)
+	res, err := journal.Page(journal.Access{Dir: dir, Redact: c.redactor(sessionEnv(dir))}, p)
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+// sessionEnv is the env the session's agent ran with, for redacting its
+// secret values: this controller's inherited env plus the spec's. The
+// controller reads the spec so the journal package does not import
+// session ownership (JOB-173).
+func sessionEnv(dir string) []string {
+	env := os.Environ()
+	if s, err := hostspec.Read(dir); err == nil {
+		env = append(env, s.Env...)
+	}
+	return env
 }
 
 // canReadJournal: admin; a session for itself; a pool with the

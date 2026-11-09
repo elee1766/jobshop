@@ -14,7 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 const slotYAML = `projects:

@@ -12,7 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Curator gate (#274). A memory edit is recorded with a baseline: the

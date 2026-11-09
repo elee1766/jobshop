@@ -18,7 +18,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Waits (#381). A task or step with fields.wait is out of the ready

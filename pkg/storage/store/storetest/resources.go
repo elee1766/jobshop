@@ -1,0 +1,119 @@
+package storetest
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+)
+
+// testResources: a step whose resource is full is neither ready nor
+// claimable, and its slot frees on close, release, lease expiry and a
+// dead holder (#400). Keyed keys count separately; unknown keys are
+// unlimited.
+func testResources(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	require.NoError(t, setCaps(ctx, s, map[string]int{"emu": 1, "pr": 1}))
+	runID, err := s.NewID(proj)
+	require.NoError(t, err)
+	nts := []store.NewTicket{{
+		ID: runID, Project: proj, Kind: domain.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
+	}}
+	step := func(id string, res ...string) {
+		b, err := json.Marshal(res)
+		require.NoError(t, err)
+		nts = append(nts, store.NewTicket{
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: runID,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":%s}`, runID, id, b)),
+		})
+	}
+	step("js-a", "emu")
+	step("js-b", "emu")
+	step("js-c", "pr:x#1")
+	step("js-d", "pr:x#1")
+	step("js-e", "pr:x#2")
+	step("js-f", "other")
+	step("js-g", "other")
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: nts, Edges: nil})
+	require.NoError(t, err)
+
+	ready := func() []string {
+		t.Helper()
+		r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
+		require.NoError(t, err)
+		return ids(r)
+	}
+	req := func(h string) store.ClaimNext {
+		return store.ClaimNext{Project: proj, Pool: "dev", Holder: h, Lease: lease}
+	}
+
+	_, ca, err := s.Claim(ctx, "js-a", "s1", lease)
+	require.NoError(t, err)
+	_, cc, err := s.Claim(ctx, "js-c", "s2", lease)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"js-e", "js-f", "js-g"}, ready(), "emu and pr:x#1 full; pr:x#2 and uncapped free")
+
+	_, _, err = s.Claim(ctx, "js-b", "s3", lease)
+	require.ErrorIs(t, err, domain.ErrNoWork, "claim by id respects the cap")
+	_, _, err = s.Claim(ctx, "js-a", "s1", lease)
+	require.NoError(t, err, "the holder re-claims its own ticket")
+
+	use, err := resourceUse(ctx, s)
+	require.NoError(t, err)
+	assert.Contains(t, use, domain.ResourceUse{Key: "emu", Capacity: 1, Held: 1, Waiting: 1})
+	assert.Contains(t, use, domain.ResourceUse{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1})
+	assert.Contains(t, use, domain.ResourceUse{Key: "other", Held: 0, Waiting: 2})
+
+	// Waits (#408): only the full keys, in claim order.
+	waits, err := resourceWaits(ctx, s)
+	require.NoError(t, err)
+	assert.Equal(t, []domain.ResourceWait{
+		{Ticket: "js-b", Key: "emu", Ahead: 0, Held: 1, Capacity: 1},
+		{Ticket: "js-d", Key: "pr:x#1", Ahead: 0, Held: 1, Capacity: 1},
+	}, waits)
+
+	// Close frees the slot.
+	_, err = store.Close(ctx, s, "s1", "js-a", &ca, "done")
+	require.NoError(t, err)
+	got, cb, err := s.ClaimNext(ctx, req("s3"))
+	require.NoError(t, err)
+	assert.Equal(t, "js-b", got.ID, "the waiting emu step is claimable once the slot frees")
+
+	// Release frees it.
+	_, err = s.Release(ctx, "", cb.TicketID, &cb, store.Outcome{Reason: "x"})
+	require.NoError(t, err)
+	assert.Contains(t, ready(), "js-b")
+	_, cb, err = s.Claim(ctx, "js-b", "s3", lease)
+	require.NoError(t, err)
+
+	// A dead holder frees it.
+	_, err = s.Expire(ctx, "controller", "s3", "session died")
+	require.NoError(t, err)
+	assert.Contains(t, ready(), "js-b")
+	_, err = s.Heartbeat(ctx, cb, lease)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
+
+	// Lease expiry frees it.
+	assert.NotContains(t, ready(), "js-d")
+	c.Advance(lease + time.Minute)
+	_, err = s.Expire(ctx, "controller", "", "")
+	require.NoError(t, err)
+	assert.Contains(t, ready(), "js-d", "the expired pr:x#1 claim frees the key")
+	_, err = s.Heartbeat(ctx, cc, lease)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
+
+	// No cap: unlimited.
+	require.NoError(t, setCaps(ctx, s, nil))
+	_, _, err = s.Claim(ctx, "js-c", "s4", lease)
+	require.NoError(t, err)
+	assert.Contains(t, ready(), "js-d", "caps removed: no limit")
+
+	require.ErrorIs(t, setCaps(ctx, s, map[string]int{"x": 0}), domain.ErrInvalid)
+}
