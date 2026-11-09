@@ -43,7 +43,7 @@ func families() []Family {
 		}},
 		{Name: "transport", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
-			"wire", "session", "journal", "orchestration", "tooling", "domain",
+			"wire", "session", "journal", "conversation", "orchestration", "tooling", "domain",
 		}},
 		{Name: "tooling", May: []string{"wire"}},
 		{Name: "content", May: []string{"config", "store", "wire", "orchestration", "domain"}},
@@ -113,15 +113,15 @@ func owners() []Owner {
 		{Pkg: "./pkg/rpc/rpcschema", Target: "transport/rpc/rpcschema", Family: "wire", Child: "JOB-174"},
 
 		// conversation
-		{Pkg: "./pkg/control/chatlife", Target: "conversation", Family: "conversation", Child: "JOB-171"},
+		{Pkg: "./pkg/conversation", Target: "stay (managed chat rules, escalation chat policy, message envelope, attachments)", Family: "conversation", Child: "JOB-171"},
+		{Pkg: "./pkg/conversation/attention", Target: "stay (attention projection and item choices, a leaf of conversation)", Family: "conversation", Child: "JOB-171"},
+		{Pkg: "./pkg/conversation/question", Target: "stay (question ticket content, a leaf of conversation)", Family: "conversation", Child: "JOB-171"},
 
 		// orchestration
 		{Pkg: "./pkg/control", Target: "orchestration/control", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/controltest", Target: "orchestration/control/controltest", Family: "orchestration", Child: "JOB-168", Harness: true},
 		{Pkg: "./pkg/control/activity", Target: "orchestration/activity", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/browse", Target: "orchestration/browse (reads Linear and GitHub for Desk)", Family: "orchestration", Child: "JOB-168"},
-		{Pkg: "./pkg/control/attention", Target: "orchestration/attention", Family: "orchestration", Child: "JOB-168"},
-		{Pkg: "./pkg/control/question", Target: "orchestration/question", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/ingestqueue", Target: "orchestration/ingest", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/ingest", Target: "orchestration/ingest", Family: "orchestration", Child: "JOB-168"},
 		{Pkg: "./pkg/control/linearsvc", Target: "orchestration/linearsvc", Family: "orchestration", Child: "JOB-168"},

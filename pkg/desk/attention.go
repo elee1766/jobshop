@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -119,7 +120,7 @@ func (s *Server) attentionAck(r *http.Request) (any, error) {
 	})
 	if err == nil {
 		// An acknowledged item's chat is done (#606).
-		s.closeAttentionChat(r, "attention:"+k)
+		s.closeAttentionChat(r, attention.Key(b.Kind, b.ID))
 	}
 	return map[string]bool{"ok": err == nil}, err
 }

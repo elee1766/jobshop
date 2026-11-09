@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/attention"
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/conversation"
+	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -31,7 +31,7 @@ import (
 // resumes, suspends and closes the sessions, and writes the meta.
 
 const (
-	attentionKeyPrefix = chatlife.AttentionPrefix
+	attentionKeyPrefix = conversation.AttentionPrefix
 	deskMetaPack       = domain.MetaDesk
 )
 
@@ -170,7 +170,7 @@ func (c *Controller) recordAttentionSummary(ctx context.Context, session, said s
 	if err != nil {
 		return
 	}
-	id, s, ok := chatlife.Summarize(f.Key, said)
+	id, s, ok := conversation.Summarize(f.Key, said)
 	if !ok {
 		return
 	}
@@ -215,7 +215,7 @@ func (c *Controller) updateDeskMeta(ctx context.Context, id, field, value string
 
 // attentionPrompt is the context of a resolving chat's first turn.
 func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, why string, t domain.Ticket) string {
-	p := chatlife.AttentionPrompt{Item: it, Why: why, Ticket: t, Actions: c.attentionActions(ctx, it)}
+	p := conversation.AttentionPrompt{Item: it, Why: why, Ticket: t, Actions: c.attentionActions(ctx, it)}
 	if it.Kind == rpc.AttentionRun && t.Kind == domain.KindRun {
 		if run, err := c.runResult(ctx, t); err == nil {
 			p.Run = &run
@@ -245,7 +245,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config
 		return
 	}
 	// Answered is not settled: a question's chat follows the asker (JOB-52).
-	left, prestarted := chatlife.Sweep(items, open, func(s domain.Ticket, f domain.SessionFields) bool { return c.questionChatOpen(ctx, s, f) })
+	left, prestarted := conversation.Sweep(items, open, func(s domain.Ticket, f domain.SessionFields) bool { return c.questionChatOpen(ctx, s, f) })
 	for _, l := range left {
 		c.closeAttentionChat(ctx, cfg, l.Session, l.Item)
 	}
@@ -330,9 +330,9 @@ func (c *Controller) isReadOnly(id string) bool {
 }
 
 // checkReadOnly refuses a write from a read-only session. Which methods
-// count as reads is chatlife.ReadOnlyMethods.
+// count as reads is conversation.ReadOnlyMethods.
 func (c *Controller) checkReadOnly(sc scope, method string) error {
-	if sc.admin || sc.session == "" || !c.isReadOnly(sc.session) || chatlife.ReadOnlyMethod(method) {
+	if sc.admin || sc.session == "" || !c.isReadOnly(sc.session) || conversation.ReadOnlyMethod(method) {
 		return nil
 	}
 	return forbidden("session %s is read-only until the operator sends a message (%s)", sc.session, method)

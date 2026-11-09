@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -83,7 +84,7 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 			return nil, err
 		}
 		fields, err := domain.DecodeFields[domain.SessionFields](shown.Ticket)
-		managed := strings.HasPrefix(b.Key, "desk:") || strings.HasPrefix(b.Key, escalationKeyPrefix) || strings.HasPrefix(b.Key, "attention:")
+		managed := conversation.Managed(b.Key)
 		if err != nil || shown.Ticket.Kind != domain.KindSession || fields.Key != b.Key || !managed {
 			return nil, fmt.Errorf("%w: session is not the selected managed chat", errBadRequest)
 		}
@@ -194,9 +195,6 @@ func (s *Server) chatCancel(r *http.Request) (any, error) {
 	return res, nil
 }
 
-// escalationKeyPrefix keys the controller's escalation chats (#379).
-const escalationKeyPrefix = "escalation:"
-
 // keyPool is the pool a keyed send goes to: an escalation:<ticket> key
 // goes to the chat pool recorded on the ticket, others to Desk's chat
 // pool.
@@ -214,7 +212,7 @@ func (s *Server) keyPool(r *http.Request, key string) (string, error) {
 			return session.Ticket.Pool, nil
 		}
 	}
-	if id, ok := strings.CutPrefix(key, escalationKeyPrefix); ok {
+	if id, ok := strings.CutPrefix(key, conversation.EscalationPrefix); ok {
 		var res rpc.ShowResult
 		if err := s.ctl.Call(r.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &res); err != nil {
 			return "", err
@@ -252,7 +250,7 @@ func (s *Server) chatNew(r *http.Request) (any, error) {
 	if s.cfg.ChatPool == "" {
 		return nil, fmt.Errorf("%w: no chat pool configured (--chat-pool)", errBadRequest)
 	}
-	key := "desk:" + strings.ToLower(rand.Text()[:12])
+	key := conversation.DeskPrefix + strings.ToLower(rand.Text()[:12])
 	var res rpc.SessionSendResult
 	p := rpc.SessionSendParams{Pool: s.cfg.ChatPool, Key: key, Text: b.Text}
 	if err := s.ctl.Call(r.Context(), rpc.MethodSessionSend, p, &res); err != nil {
@@ -297,7 +295,7 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 			continue
 		}
 		f, _ := domain.DecodeFields[domain.SessionFields](*si.Ticket)
-		if !strings.HasPrefix(f.Key, "desk:") && !strings.HasPrefix(f.Key, escalationKeyPrefix) && !strings.HasPrefix(f.Key, "attention:") {
+		if !conversation.Managed(f.Key) {
 			continue
 		}
 		state := "idle"

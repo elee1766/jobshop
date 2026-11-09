@@ -28,9 +28,9 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/logctx"
@@ -1866,7 +1866,7 @@ func (r *runner) client() *sessionrt.Client {
 		Traffic: &r.traffic,
 		TurnEnd: r.turnEnd,
 		Refuse: func(kind *acp.ToolKind) bool {
-			return r.c.isReadOnly(r.id) && !chatlife.ReadOnlyTool(kind)
+			return r.c.isReadOnly(r.id) && !conversation.ReadOnlyTool(kind)
 		},
 	}
 }

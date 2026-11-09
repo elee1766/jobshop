@@ -31,13 +31,5 @@ func known() []Known {
 			Rule: "family-journal", From: "./pkg/control/journalread", To: "./pkg/hostspec", Issue: "JOB-173",
 			Why: "journalread.Env reads spec.json to add a session's env for redaction. JOB-173 passes the env in from the controller so the journal family does not import session ownership.",
 		},
-		{
-			Rule: "family-conversation", From: "./pkg/control/chatlife", To: "./pkg/control/attention", Issue: "JOB-171",
-			Why: "chatlife builds attention chats from an attention row. JOB-171 decides whether the row type moves to domain or chatlife takes the minimal fields.",
-		},
-		{
-			Rule: "family-conversation", From: "./pkg/control/chatlife", To: "./pkg/control/question", Issue: "JOB-171",
-			Why: "chatlife builds question chats from question ticket fields. Same decision as the attention edge.",
-		},
 	}
 }

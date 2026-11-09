@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -153,7 +153,7 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, chatlife.Reason(steps))
+	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, conversation.Reason(steps))
 	if len(f.Vars) > 0 {
 		fmt.Fprintf(&b, "Vars: %v\n", f.Vars)
 	}
