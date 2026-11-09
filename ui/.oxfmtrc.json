@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "singleQuote": true,
+  "ignorePatterns": ["package-lock.json", "public", "test-results", "playwright-report", "e2e", "perf", "kit", "*.css"]
+}

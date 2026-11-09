@@ -109,7 +109,7 @@ jobshop/
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   └── ids/                  ticket ids: per-project prefix + sonyflake base32
 ├── docs/                     plan.md, data-model.md, layout.md
-├── ui/                       Desk UI source (Svelte 5, Vite); builds into pkg/desk/dist
+├── ui/                       Desk UI source (React, Vite); builds into pkg/desk/dist
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
 │   ├── package.nix           go2nix build, buildGo127Module fallback
@@ -189,7 +189,7 @@ Subcommands:
 | `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction | `github.com/betterleaks/betterleaks/v2` (`scan`, `config`) (2026-11-05, #578): gitleaks' successor, about twice the rules, 9 modules instead of 63, no viper global state. Pinned to an rc until v2.0.0 is out | v2.0.0-rc.7 |
-| Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |
+| Desk UI (build-time only, `ui/`) | React, TypeScript, Vite, Jotai, Wouter, Tailwind, Base UI, Oxlint/Oxfmt, Playwright (2026-11-09, JOB-150), replacing Svelte 5 (2026-11-03, #202): output is built into `pkg/desk/dist` and embedded, so the Go module gains no dependency. Versions are exact in `ui/package.json`; ownership and conventions in `docs/notes/JOB-150-desk-react-port.md` | react 19.3.1, vite 8.3.5, jotai 3.0.1, wouter 3.13.0, tailwindcss 4.3.5 |
 | Lint (tool, not a module) | golangci-lint, run by CI (`golangci-lint-action`). Not packaged in the flake (2026-11-05): hosts put it on agents' PATH through `services.jobshop.path` | v2.15.0 |
 
 Uses:

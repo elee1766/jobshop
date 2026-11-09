@@ -2,7 +2,7 @@
 //
 // Only `[label](url)` is parsed. Everything else, including emphasis, code
 // and raw HTML, stays literal text, so a plain title renders unchanged. The
-// result is data (text and link parts), never HTML: Svelte escapes it, and
+// result is data (text and link parts), never HTML: React escapes it, and
 // every link destination passed resolveHref.
 
 const LINK = /\[([^[\]]+)\]\(\s*(?:<([^<>\s]+)>|([^\s()<>]+))\s*(?:"[^"]*"|'[^']*')?\s*\)/g;

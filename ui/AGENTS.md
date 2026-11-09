@@ -4,7 +4,7 @@ Read [the Desk design guide](../docs/desk-design.md) before changing UI behavior
 layout, styling or copy. It defines the Plan 9/Acme visual direction and the
 simple, accessible Unix approach to interactions.
 
-- Reuse `shell/tokens.css`, `shell/app.css` and existing components before adding
+- Reuse `src/tokens.css`, `src/app.css` and existing components before adding
   local styles or another component abstraction. Fix shared inconsistencies at
   their source, not with per-page overrides.
 - Use lowercase, short labels for navigation and controls. Preserve the case of

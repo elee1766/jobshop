@@ -1,6 +1,6 @@
 // Package desk serves Jobshop Desk: a read-only dashboard over the admin
 // API (#202). It is an admin-socket client like the gateway; it never
-// opens the database. The Svelte UI is built into dist/ and embedded.
+// opens the database. The UI is built into dist/ and embedded.
 package desk
 
 import (
