@@ -25,9 +25,10 @@ func setRules(t *testing.T, root config.Root, base []byte, rules string) {
 
 // TestPromptRules runs a dev session with a global system rule, a dev-only
 // turn rule and a plan-only rule: the ticket prompt carries the matching
-// ones in order and journals their names; session prompt shows the next
-// turn labeled; a respawn sends the system rule again; a reload that
-// removes a rule drops it from the next turn.
+// ones in order and journals their names; the pool prompt and unchanged
+// rules go out once per conversation, across a controller restart and a
+// respawn that reloads the conversation; a failed reload (new
+// conversation) sends them again; a reload that removes a rule drops it.
 func TestPromptRules(t *testing.T) {
 	root, start := poolRootReal(t, "1m")
 	base, err := os.ReadFile(root.Config())
@@ -73,7 +74,7 @@ func TestPromptRules(t *testing.T) {
 	runTicket("second")
 	p = prompts()
 	require.Len(t, p, 2)
-	assert.True(t, strings.HasPrefix(p[1], "POOL-DEV\n\nYou have claimed"), "unchanged rules not resent: %s", p[1])
+	assert.True(t, strings.HasPrefix(p[1], "You have claimed"), "pool prompt and unchanged rules not resent: %s", p[1])
 
 	sessions := openSessions(t, admin)
 	require.Len(t, sessions, 1)
@@ -123,23 +124,18 @@ func TestPromptRules(t *testing.T) {
 		srcs = append(srcs, part.Source)
 	}
 	assert.Equal(t, []string{"pool", "rule:dev-only", "rule:hook", "ticket"}, srcs)
-	// The new controller may already have claimed "third" and sent its
-	// turn (held open by block) before this call; the rules are then
-	// injected and show unchanged (#486). Otherwise it has no record of
-	// what the session holds, so they are new.
-	if pr.Parts[1].Status == "unchanged" {
-		assert.Empty(t, pr.Rules)
-		assert.Contains(t, pr.Text, "=== rule:dev-only (unchanged, not sent) ===\n")
-		assert.Equal(t, domain.StatusInProgress, show(next.ID).Status, "rules unchanged only after the turn was sent")
-	} else {
-		assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
-		assert.Contains(t, pr.Text, "=== rule:dev-only (new) ===\nDEV-RULE\n")
-	}
+	// The record of what the conversation holds is in the session's
+	// fields, so the restarted controller does not resend it.
+	assert.Empty(t, pr.Rules)
+	assert.Contains(t, pr.Text, "=== pool (unchanged, not sent) ===\n")
+	assert.Contains(t, pr.Text, "=== rule:dev-only (unchanged, not sent) ===\n")
 	assert.Contains(t, pr.Text, "=== ticket ===\nYou have claimed Jobshop ticket "+next.ID)
 	sess := dial(t, filepath.Join(sdir, "cli.sock"))
 	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, nil), rpc.ErrForbidden)
 
-	// Respawn: the next turn carries the system rule again.
+	// Respawn whose session/load fails: a new conversation gets everything
+	// again. (A load that works keeps the record: see the turn above.)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "loadfail"), nil, 0o600))
 	pid := hostPidOf(t, sdir)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
 	passEventually(t, root.Dir, func() bool {
@@ -151,7 +147,9 @@ func TestPromptRules(t *testing.T) {
 	p = prompts()
 	last := p[len(p)-1]
 	assert.Contains(t, last, next.ID)
-	assert.Contains(t, last, "never push to master", "system rule after a respawn")
+	assert.Contains(t, last, "never push to master", "system rule in a new conversation")
+	assert.Contains(t, last, "POOL-DEV", "pool prompt in a new conversation")
+	require.NoError(t, os.Remove(filepath.Join(root.Dir, "loadfail")))
 
 	// Reload without dev-only: the next turn no longer has it.
 	require.NoError(t, os.Remove(filepath.Join(root.Dir, "block")))
@@ -162,7 +160,7 @@ func TestPromptRules(t *testing.T) {
 	last = p[len(p)-1]
 	assert.NotContains(t, last, "DEV-RULE")
 	assert.NotContains(t, last, "HOOK-OK")
-	assert.True(t, strings.HasPrefix(last, "POOL-DEV\n\nPrompt rule \"dev-only\" no longer applies.\n\n"+
+	assert.True(t, strings.HasPrefix(last, "Prompt rule \"dev-only\" no longer applies.\n\n"+
 		"Prompt rule \"hook\" no longer applies.\n\nYou have claimed"), last)
 
 	// config show lists the rules.

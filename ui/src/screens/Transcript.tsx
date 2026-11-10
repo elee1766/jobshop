@@ -55,6 +55,23 @@ const PHASE_HEIGHT = 24;
 
 const dataURL = (image: { mime_type: string; data: string }) => 'data:' + image.mime_type + ';base64,' + image.data;
 
+// The raw prompt is the message envelope plus the controller context,
+// which Desk already shows above it. Drop the context so the disclosure
+// holds only what the context box does not.
+function rawExtra(raw: string, context?: string): string {
+  const known = new Set(
+    (context || '')
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean),
+  );
+  return raw
+    .split(/\n{2,}/)
+    .filter((p) => !known.has(p.trim()))
+    .join('\n\n')
+    .trim();
+}
+
 // Who a row belongs to (JOB-137). A turn_start with an operator message is
 // the human's; one with only controller context (or a legacy prompt) is the
 // controller's; every other row is the agent's.
@@ -320,10 +337,10 @@ const Row = memo(function Row({
             )}
             {/* A turn with no human message is all context: its raw prompt
                 is the same text, so it is not shown a second time. */}
-            {message.raw_prompt.trim() !== (message.context || '').trim() && (
+            {rawExtra(message.raw_prompt, message.context) !== '' && (
               <details className="raw-prompt" {...details(':raw')}>
                 <summary>raw model prompt</summary>
-                <pre>{message.raw_prompt}</pre>
+                <pre>{rawExtra(message.raw_prompt, message.context)}</pre>
               </details>
             )}
           </>
