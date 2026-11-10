@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/elee1766/jobshop/compare/v0.9.34...v0.10.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **automation:** callback workflow runs now follow the live callbacks by default. Set `pin_callbacks: true` on a workflow to keep the old pin and `--repin` behaviour.
+
+### Features
+
+* **automation:** callback runs follow live callbacks, pin_callbacks opts in (JOB-188) ([#1161](https://github.com/elee1766/jobshop/issues/1161)) ([e7c8b5f](https://github.com/elee1766/jobshop/commit/e7c8b5f44e2d2cdd0a2a60f946bb0aff163e0d8d))
+* **control:** record turns and show them on the trace timeline (JOB-184) ([#1159](https://github.com/elee1766/jobshop/issues/1159)) ([166d1d2](https://github.com/elee1766/jobshop/commit/166d1d273583a73d278f8a5ec6488f71253decf7))
+
 ## [0.9.34](https://github.com/elee1766/jobshop/compare/v0.9.33...v0.9.34) (2026-11-10)
 
 
