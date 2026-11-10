@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
@@ -336,6 +338,30 @@ func (h hookHost) ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, er
 	}
 	if list == nil {
 		list = []any{}
+	}
+	if !q.Comments || len(ts) == 0 {
+		return list, nil
+	}
+	// One query for all of them, not one Thread read per ticket.
+	ids := make([]string, len(ts))
+	for i, t := range ts {
+		ids[i] = t.ID
+	}
+	byTicket, err := h.c.store.CommentsFor(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i, t := range ts {
+		cs := make([]any, 0, len(byTicket[t.ID]))
+		for _, c := range byTicket[t.ID] {
+			cs = append(cs, map[string]any{
+				"id": json.Number(strconv.FormatInt(c.ID, 10)), "author": c.Author, "body": c.Body,
+				"created_at": c.CreatedAt.Format(time.RFC3339Nano),
+			})
+		}
+		if m, ok := list[i].(map[string]any); ok {
+			m["comments"] = cs
+		}
 	}
 	return list, nil
 }

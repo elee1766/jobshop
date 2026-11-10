@@ -311,6 +311,10 @@ type Store interface {
 	// in either direction, comments oldest first, history oldest first.
 	// It does not check that id exists.
 	Thread(ctx context.Context, id string, p Parts) (Thread, error)
+	// CommentsFor reads the comments of all ids in one query, oldest
+	// first per ticket, keyed by ticket id. A ticket without comments
+	// has no key. It does not check that an id exists.
+	CommentsFor(ctx context.Context, ids []string) (map[string][]domain.Comment, error)
 	// Record adds a history row for an outside action on a ticket without
 	// changing it (#542: desk_exec). The row carries the ticket's current
 	// revision.

@@ -61,6 +61,27 @@ func (s *Store) Thread(ctx context.Context, id string, p store.Parts) (store.Thr
 	return th, nil
 }
 
+// CommentsFor reads the comments of every id in one query.
+func (s *Store) CommentsFor(ctx context.Context, ids []string) (map[string][]domain.Comment, error) {
+	out := map[string][]domain.Comment{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	err := s.each(ctx, bqb.New("SELECT id, ticket_id, author, body, created_at FROM comments "+
+		"WHERE ticket_id IN (?) AND deleted = 0 ORDER BY id", ids),
+		func(r *sql.Rows) error {
+			var c domain.Comment
+			var at int64
+			if err := r.Scan(&c.ID, &c.TicketID, &c.Author, &c.Body, &at); err != nil {
+				return err
+			}
+			c.CreatedAt = fromNS(at)
+			out[c.TicketID] = append(out[c.TicketID], c)
+			return nil
+		})
+	return out, err
+}
+
 // Changes returns history rows of every ticket after seq, oldest first,
 // and the newest seq.
 func (s *Store) Changes(ctx context.Context, after int64, n int) (store.ChangePage, error) {
