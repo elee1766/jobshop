@@ -74,7 +74,7 @@ else
     // {
       subPackages = [ "cmd/jobshop" ];
       postPatch = ''
-        cp -r ${deskUi} pkg/transport/desk/dist
+        cp -r ${deskUi}/. pkg/transport/desk/dist/
       '';
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).

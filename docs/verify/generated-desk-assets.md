@@ -15,10 +15,14 @@ git check-ignore pkg/transport/desk/dist/index.html
 ```
 
 `pkg/transport/desk/dist` must contain the generated HTML, assets, fonts and public files,
-but `git ls-files pkg/transport/desk/dist` must be empty. Building the frontend again must
+but `git ls-files pkg/transport/desk/dist` must list only `.keep`. Building the frontend again must
 not produce a Git diff. Plain `go install ...@version` is not a supported build:
-it does not generate the embedded frontend. Use release binaries, Nix or the
+it does not generate the embedded frontend, so Desk serves a "not built" page. Use release binaries, Nix or the
 source build above followed by `go install ./cmd/jobshop`.
+
+Without the UI build (`git clean -fdX pkg/transport/desk/dist`), `go build ./...`
+and `go test ./pkg/transport/desk` must still pass, with the bundle tests
+skipped, and `JOBSHOP_REQUIRE_DESK_UI=1 go test ./pkg/transport/desk` must fail.
 
 ## Nix builders
 
@@ -51,4 +55,4 @@ checks build both fallback and plugin variants independently. Release frontend
 output is built from the release tag and shared by both binary architectures.
 Verify release archives contain working self-contained binaries, and only
 `jobshop-*` binary artifacts reach the release uploader, not the frontend
-artifact. The generated asset directory is never committed.
+artifact. Apart from `.keep`, the generated asset directory is never committed.
