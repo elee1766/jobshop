@@ -252,3 +252,35 @@ func RunPinned(programs map[string]*Program, cfg *config.Config, name, pinned st
 	}
 	return WorkflowDigest(programs, w) == pinned
 }
+
+// FollowsLive reports whether runs of callback workflow name follow the
+// live callbacks (JOB-188): the default, unless the workflow sets
+// pin_callbacks. A workflow that is not a loaded callback workflow never
+// follows, so its runs fail as they always did.
+func FollowsLive(cfg *config.Config, name string) bool {
+	w, ok := cfg.Workflows[name]
+	return ok && w.OnStart != "" && !w.PinCallbacks
+}
+
+// RunAllowed reports whether a run recorded under pin may run its
+// callbacks now: its workflow follows the live callbacks, or the active
+// configuration still matches the pin (RunPinned).
+func RunAllowed(programs map[string]*Program, cfg *config.Config, name, pinned string) bool {
+	return FollowsLive(cfg, name) || RunPinned(programs, cfg, name, pinned)
+}
+
+// LiveEntry is the callback an invocation calls under the active
+// configuration. A run that follows the live callbacks calls its workflow's
+// current on_start or on_step_completed, even when the invocation was
+// queued under a name an edit has since renamed. Any other invocation
+// calls the entry it recorded.
+func LiveEntry(cfg *config.Config, in Invocation) string {
+	if in.Run == "" || in.RunInput == nil || !FollowsLive(cfg, in.RunInput.Workflow) {
+		return in.Entry
+	}
+	w := cfg.Workflows[in.RunInput.Workflow]
+	if in.Step == "" {
+		return w.OnStart
+	}
+	return w.OnStepCompleted
+}

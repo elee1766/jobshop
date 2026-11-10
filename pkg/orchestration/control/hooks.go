@@ -57,6 +57,9 @@ func (c *Controller) enqueueRunHooks(ctx context.Context) error {
 		if f.Automation == nil || run.Status == domain.StatusClosed {
 			continue
 		}
+		// A run whose workflow follows the live callbacks is moved to them
+		// when its invocation is admitted (AdmitHook), not here: this runs in
+		// the pass and reads only the run (JOB-188).
 		children, err := store.Children(ctx, c.store, run.ID)
 		if err != nil {
 			return err

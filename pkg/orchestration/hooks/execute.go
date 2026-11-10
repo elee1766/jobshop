@@ -190,6 +190,9 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		return
 	}
 	runtime := c.host.CurrentHooks()
+	// A run that follows the live callbacks calls its workflow's current
+	// entry, whatever it was queued under (JOB-188).
+	in.Entry = LiveEntry(runtime.Config, in)
 	program := runtime.Programs[in.Entry]
 	if program == nil {
 		c.hookFailure(ctx, col, rec, in, errors.New("hook removed from active configuration"))
@@ -197,7 +200,7 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 	}
 	pinned := program.digest == in.Digest
 	if in.Run != "" {
-		pinned = in.RunInput != nil && RunPinned(runtime.Programs, runtime.Config, in.RunInput.Workflow, in.Digest)
+		pinned = in.RunInput != nil && RunAllowed(runtime.Programs, runtime.Config, in.RunInput.Workflow, in.Digest)
 	}
 	if !pinned {
 		c.hookFailure(ctx, col, rec, in, errors.New("hook manifest changed: restore the pinned configuration before resuming"))
