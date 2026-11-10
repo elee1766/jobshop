@@ -150,8 +150,33 @@ export function turnsText(t: TurnTotals) {
   return `active ${durationLabel(t.active)} in ${t.count} turn${t.count === 1 ? '' : 's'} · held ${durationLabel(t.held)}`;
 }
 
+// What a marker kind is called in the marker panel and accessible names.
+export const markerKinds: Record<string, string> = {
+  comment: 'comment',
+  event: 'event',
+  pr: 'pr opened',
+  merged: 'pr merged',
+  session: 'taken over',
+};
+
+// A marker's accessible name: what it is, its one line and its time.
 export function markerText(marker: TimelineMarker) {
   return [marker.kind, marker.label].filter(Boolean).join(': ');
+}
+
+// Ticks closer than gap pixels would cover each other and one could not be
+// pressed. They are drawn as one tick at the first of them; the marker panel
+// steps through the rest (#1182). markers are in time order, x maps a time to
+// a pixel. Each group lists the indexes of its markers in the row.
+export function clusterMarkers(markers: TimelineMarker[], x: (time: number) => number, gap = 10) {
+  const groups: { at: number; indexes: number[] }[] = [];
+  markers.forEach((marker, i) => {
+    const at = x(Date.parse(marker.at));
+    const last = groups[groups.length - 1];
+    if (last && at - last.at < gap) last.indexes.push(i);
+    else groups.push({ at, indexes: [i] });
+  });
+  return groups;
 }
 
 export type ArrowShape = 'met' | 'blocking' | 'conflict' | 'tracks' | 'wait';

@@ -92,9 +92,9 @@ const timeline = {
         }),
       ],
       markers: [
-        { at: prAt, kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/widget/pull/7' },
+        { at: prAt, kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/widget/pull/7', comment: 2 },
         { at: at(44), kind: 'session', label: 'taken over by js-s-2' },
-        { at: at(40), kind: 'comment', label: 'Rebased on master' },
+        { at: at(40), kind: 'comment', label: 'Rebased on master', comment: 1 },
       ],
     },
     {
@@ -211,19 +211,16 @@ test('summary and now fit above the tabs without scrolling the pane at 1000 px',
   await expect(pane(page).getByLabel('How it ended')).toBeVisible();
 });
 
-test('events are grouped one entry per span, newest first, with comments and the PR in place', async ({ page }) => {
+test('events are grouped one entry per span, newest first; comments are markers on the timeline', async ({ page }) => {
   await open(page, 'js-dev');
   const events = pane(page).locator('ol.events > li');
-  // close, waiting span, PR marker, session marker, comment, working, queued, retry, queued: no raw rows.
+  // close, waiting span, working, queued, retry, queued: comments and markers are on the timeline (#1182).
   await expect(events.first()).toContainText('closed done');
   await expect(events.first()).toContainText('PR merged');
   await expect(events.nth(1)).toContainText('waiting on an event');
   await expect(events.nth(1)).toContainText('ended met');
   await expect(events.nth(1).getByRole('link', { name: /PR #7 checks: success/ })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/7');
-  await expect(events.nth(2)).toContainText('PR opened');
-  // The PR comment shows once, as the marker.
-  await expect(pane(page).locator('ol.events > li[data-kind="comment"]')).toHaveCount(1);
-  await expect(pane(page).locator('ol.events > li[data-kind="comment"]')).toContainText('Rebased on master');
+  await expect(pane(page).locator('ol.events > li[data-kind="comment"], ol.events > li[data-kind="marker"]')).toHaveCount(0);
   // The failed claim says who, how it ended and why.
   const retry = pane(page).locator('ol.events > li[data-kind="segment"]').filter({ hasText: 'failed attempt' });
   await expect(retry).toContainText('js-s-1');
@@ -246,7 +243,8 @@ test('events are grouped one entry per span, newest first, with comments and the
 test('tabs are kept in the URL, reachable by keyboard, and an unknown one opens events', async ({ page }) => {
   await open(page, 'js-dev');
   const bar = tabs(page);
-  await expect(bar.getByRole('tab')).toHaveText(['events', 'input / result', 'relations 2', 'body', 'comments 2', 'raw']);
+  // Both comments are markers on the timeline, so there is no comments tab.
+  await expect(bar.getByRole('tab')).toHaveText(['events', 'input / result', 'relations 2', 'body', 'raw']);
   await expect(bar.getByRole('tab', { name: 'events' })).toHaveAttribute('aria-selected', 'true');
   await bar.getByRole('tab', { name: 'events' }).focus();
   await page.keyboard.press('ArrowRight');
@@ -270,8 +268,6 @@ test('tabs are kept in the URL, reachable by keyboard, and an unknown one opens 
   await expect(bar.getByRole('tab', { name: 'events' })).toHaveAttribute('aria-selected', 'true');
   await bar.getByRole('tab', { name: 'body' }).click();
   await expect(pane(page).getByRole('tabpanel')).toContainText('Implement the widget.');
-  await bar.getByRole('tab', { name: 'comments 2' }).click();
-  await expect(pane(page).locator('.ticket-comment')).toHaveCount(2);
 });
 
 test('relations list each ticket with its status and how long it took', async ({ page }) => {
@@ -374,14 +370,17 @@ test('a live update keeps the chosen tab and the scroll position', async ({ page
     const more = late ? { 'js-dev': [...comments['js-dev'], { id: 3, ticket_id: 'js-dev', author: 'x', body: 'late comment', created_at: at(1) }] } : comments;
     return body(run, inspect, { comments: more });
   };
-  await open(page, 'js-dev', '&tab=comments', { make });
-  await expect(tabs(page).getByRole('tab', { name: 'comments 2' })).toBeVisible();
+  await open(page, 'js-dev', '&tab=relations', { make });
+  await expect(tabs(page).getByRole('tab', { name: 'comments 1' })).toHaveCount(0);
   const scroller = page.locator('.work');
   await scroller.evaluate((el) => el.scrollBy(0, 120));
   const before = await scroller.evaluate((el) => el.scrollTop);
   late = true;
-  await expect(tabs(page).getByRole('tab', { name: 'comments 3' })).toBeVisible();
-  await expect(page).toHaveURL(/tab=comments/);
-  await expect(tabs(page).getByRole('tab', { name: 'comments 3' })).toHaveAttribute('aria-selected', 'true');
+  // A comment past the timeline's markers (not yet one) goes to the comments tab.
+  await expect(tabs(page).getByRole('tab', { name: 'comments 1' })).toBeVisible();
+  await expect(page).toHaveURL(/tab=relations/);
+  await expect(tabs(page).getByRole('tab', { name: /^relations/ })).toHaveAttribute('aria-selected', 'true');
   expect(await scroller.evaluate((el) => el.scrollTop)).toBe(before);
+  await tabs(page).getByRole('tab', { name: 'comments 1' }).click();
+  await expect(pane(page).locator('.ticket-comment')).toContainText('late comment');
 });

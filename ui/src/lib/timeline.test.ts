@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
+import type {
+  HolderInfo,
+  TimelineMarker,
+  TimelineResult,
+  TimelineRow,
+  TimelineSegment,
+} from '../../../packages/jobshop-client/rpc.js';
 import {
   arrowPath,
   arrowShape,
+  clusterMarkers,
   durationLabel,
   holderState,
   liveText,
@@ -126,4 +133,24 @@ test('only an open working span has a live state, and an unknown holder claims n
   assert.match(liveText('lost'), /host not alive/);
   assert.equal(liveText('unknown'), '');
   assert.match(segmentText(open, { session: holder({ host_lost: true }) }), /nobody is working this ticket/);
+});
+
+const marker = (sec: number): TimelineMarker => ({
+  at: new Date(Date.UTC(2026, 10, 10, 12, 0, sec)).toISOString(),
+  kind: 'comment',
+});
+// One pixel per second.
+const pixel = (t: number) => (t - Date.UTC(2026, 10, 10, 12, 0, 0)) / 1000;
+
+test('markers closer than the gap share one tick that keeps their order', () => {
+  const groups = clusterMarkers([0, 3, 9, 30, 31, 60].map(marker), pixel, 10);
+  assert.deepEqual(
+    groups.map((g) => g.indexes),
+    [[0, 1, 2], [3, 4], [5]],
+  );
+  assert.deepEqual(
+    groups.map((g) => g.at),
+    [0, 30, 60],
+  );
+  assert.deepEqual(clusterMarkers([], pixel), []);
 });

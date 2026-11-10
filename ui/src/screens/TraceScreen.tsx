@@ -1,7 +1,7 @@
 import { useAtom, useAtomValue } from 'jotai';
 import { useState } from 'react';
 import { useDeskRoute } from '../lib/route.ts';
-import { inspect, openAudit, openTrace } from '../state/actions.ts';
+import { inspect, openTrace } from '../state/actions.ts';
 import { selectedAtom, traceAtom } from '../state/live.ts';
 import { watchedSessionAtom } from '../state/ui.ts';
 import { SessionViewer } from './SessionViewer.tsx';
@@ -20,7 +20,6 @@ export function Trace() {
   // the details to another ticket stays on them, like a tab would. A new search
   // starts on the timeline.
   const [details, show] = useState(route.tab !== '');
-  const invocation = (selected?.meta as { automation?: { invocation?: string } } | undefined)?.automation?.invocation;
   const id = selected?.id || trace?.graph?.root || '';
   // Without a timeline there is nothing to swap with: the details stand alone.
   const swapped = details || !trace?.timeline;
@@ -42,6 +41,7 @@ export function Trace() {
               timeline={trace.timeline}
               sessions={trace.sessions}
               selected={id}
+              detail={trace.inspection || trace}
               hidden={swapped}
               onSelect={inspect}
               onDetails={() => show(true)}
@@ -87,14 +87,6 @@ export function Trace() {
             watched && <div className="trace-bottom">{viewer}</div>
           )}
         </div>
-      )}
-      {invocation && (
-        <p className="section-body">
-          automation invocation{' '}
-          <button className="mono" onClick={() => openAudit(invocation)}>
-            {invocation}
-          </button>
-        </p>
       )}
     </>
   );
