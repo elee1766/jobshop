@@ -306,10 +306,14 @@ const Row = memo(function Row({
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: md(message.context) }} />
               </details>
             )}
-            <details className="raw-prompt" {...details(':raw')}>
-              <summary>raw model prompt</summary>
-              <pre>{message.raw_prompt}</pre>
-            </details>
+            {/* A turn with no human message is all context: its raw prompt
+                is the same text, so it is not shown a second time. */}
+            {message.raw_prompt.trim() !== (message.context || '').trim() && (
+              <details className="raw-prompt" {...details(':raw')}>
+                <summary>raw model prompt</summary>
+                <pre>{message.raw_prompt}</pre>
+              </details>
+            )}
           </>
         ) : (
           <>

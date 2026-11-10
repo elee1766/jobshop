@@ -12,7 +12,8 @@ DESK_URL=http://127.0.0.1:7492 DESK_MUTATE=1 \
 
 Expected on desktop and mobile: each human message has a `you` bar above it and
 no highlight background, an agent turn has one bar however many tool rows it
-has, raw prompts have no bar, the read-only viewer shows the same bars, and the
+has, raw prompts have no bar, a ticket turn lists its prompt once (controller
+context, no raw prompt), the read-only viewer shows the same bars, and the
 history, tool spacing and live-follow checks in `chat-responsiveness.spec.js`
 still pass.
 
