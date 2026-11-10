@@ -178,7 +178,7 @@ func (h hookHost) LinearClient(_ context.Context, team string) (*linear.Client, 
 	case team == "" && len(names) > 1:
 		return nil, fmt.Errorf("%d Linear identities; pass team=", len(names))
 	}
-	return h.c.linearFor(names[0]), nil
+	return h.c.linearFor(cfg, names[0]), nil
 }
 
 func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]int64) bool {

@@ -98,7 +98,7 @@ func (c *Controller) identityCheck(ctx context.Context, sc scope, p rpc.Identity
 	if config.IsLinear(id.Kind) {
 		// A minted token can still be refused by the API; reading viewer
 		// proves it works (#278).
-		v, err := c.linearFor(name).Viewer(ctx)
+		v, err := c.linearFor(cfg, name).Viewer(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("identity %s: %w", name, err)
 		}
