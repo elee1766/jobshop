@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/gfx-labs/jobshop/compare/v0.10.5...v0.10.6) (2026-11-10)
+
+
+### Bug fixes
+
+* **control:** send the pool prompt and rules once per conversation ([#1189](https://github.com/gfx-labs/jobshop/issues/1189)) ([abe50d0](https://github.com/gfx-labs/jobshop/commit/abe50d068d053cdcf762e87a9c481b722edd7b20))
+
 ## [0.10.5](https://github.com/gfx-labs/jobshop/compare/v0.10.4...v0.10.5) (2026-11-10)
 
 
