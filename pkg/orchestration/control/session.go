@@ -78,8 +78,8 @@ type runner struct {
 	// _meta so the host journal records which applied (#205).
 	turnRules []string
 	// injected maps rule name to the hash of the text this conversation
-	// last received (#397). Reset when the context may be gone. Guarded
-	// by mu.
+	// last received (#397), mirrored in SessionFields.Injected. Reset with
+	// a new conversation. Guarded by mu.
 	injected map[string]string
 
 	ctx    context.Context
@@ -200,6 +200,9 @@ func (r *runner) setTurnRules(names []string) {
 // newConversation starts a new ACP session in place of one the agent could
 // not reload, and queues a summary of the old one from the host journal.
 func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnection, cwd string, fields *domain.SessionFields) error {
+	// The agent holds none of the old conversation: resend everything.
+	r.resetInjected()
+	fields.Injected = nil
 	ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
 		return fmt.Errorf("session/new: %w", err)
@@ -290,6 +293,17 @@ func (r *runner) resetInjected() {
 	r.mu.Lock()
 	r.injected = nil
 	r.mu.Unlock()
+	r.saveInjected(nil)
+}
+
+// saveInjected stores the injected record in the session's fields.
+func (r *runner) saveInjected(m map[string]string) {
+	if r.id == "" || r.ctx == nil {
+		return
+	}
+	if err := r.c.updateSessionFields(r.ctx, r.id, func(f *domain.SessionFields) { f.Injected = m }); err != nil {
+		r.log.WarnContext(r.ctx, "save injected prompt record", "err", err)
+	}
 }
 
 func (r *runner) takeResumed() bool {
@@ -345,6 +359,7 @@ func (c *Controller) startRunner(t domain.Ticket) {
 	if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
 		r.agent = f.Agent
+		r.injected = f.Injected
 	}
 	r.projectName = t.Project
 	c.runners[t.ID] = r
@@ -536,10 +551,6 @@ func (r *runner) session() error {
 	if welcome.Initialize == nil {
 		fresh = true
 	}
-	if fresh {
-		// A new host may hold a new conversation or a summary: resend all.
-		r.resetInjected()
-	}
 
 	gate := rpc.NewGate(rd)
 	conn := acp.NewClientSideConnection(r.client(), nc, gate)
@@ -607,6 +618,7 @@ func (r *runner) session() error {
 	switch {
 	case fields.ACPSession == "":
 		r.resetInjected()
+		fields.Injected = nil
 		ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 		if err != nil {
 			return fmt.Errorf("session/new: %w", err)
@@ -851,11 +863,14 @@ func (r *runner) saveFields(f domain.SessionFields) error {
 		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
 		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
 		tickets, claimed, parked, resumed := cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed
+		injected := cur.Injected
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
 		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
 		cur.Named, cur.Archived, cur.DisplayName = named, archived, name
 		cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed = tickets, claimed, parked, resumed
+		// The prompt record is written by saveInjected as turns go out.
+		cur.Injected = injected
 	})
 }
 
@@ -1354,8 +1369,12 @@ func (r *runner) takeContext() string {
 func (r *runner) useSend(parts []PromptPart) []PromptPart {
 	r.mu.Lock()
 	send, all, next := dedupe(r.c.config(), r.injected, parts)
+	changed := !maps.Equal(next, r.injected)
 	r.injected = next
 	r.mu.Unlock()
+	if changed {
+		r.saveInjected(next)
+	}
 	r.c.recordInjected(r.pool, all)
 	parts = send
 	names := ruleNames(parts)

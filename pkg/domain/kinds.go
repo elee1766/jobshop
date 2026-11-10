@@ -108,6 +108,11 @@ type SessionFields struct {
 	// Operator is the last human who sent the session a message, so a
 	// question a chat answers for them records them as from (JOB-52).
 	Operator string `json:"operator,omitempty"`
+	// Injected maps each prompt rule (and "@pool" for the pool prompt) to
+	// the hash of the text the conversation last received (#397). Kept
+	// here so a controller restart or a host respawn that reloads the
+	// conversation does not resend it; cleared with a new conversation.
+	Injected map[string]string `json:"injected,omitempty"`
 	// Follow is a question chat waiting on the asking worker's reaction
 	// to the answer it relayed (JOB-52).
 	Follow *QuestionFollow `json:"follow,omitempty"`

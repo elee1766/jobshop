@@ -17,9 +17,15 @@ import (
 // holds the rule text it was sent. Each runner records a hash per rule
 // it injected; a turn sends only rules that are new or changed since,
 // and tells the session once about a rule that was removed from config.
-// The record is memory only and resets whenever the context may be gone
-// (a host spawn: new conversation, journal-summary fallback or recovery
-// after a respawn) and on controller restart, so it can only resend more.
+// The record is kept in the session's fields, so it survives a controller
+// restart and a respawn whose session/load restores the conversation. It
+// resets with a new conversation (session/new, a failed load, a replaced
+// conversation), so it can only resend more. The pool prompt is deduped
+// the same way under poolKey.
+
+// poolKey records the pool prompt in the injected map. It is not a rule
+// name, so it never gets a removal notice.
+const poolKey = "@pool"
 
 // Part statuses (PromptPart.Status) for rule parts.
 const (
@@ -50,7 +56,7 @@ func dedupe(cfg *config.Config, sent map[string]string, parts []PromptPart) (sen
 	}
 	var removed []PromptPart
 	for _, name := range sortedNames(sent) {
-		if _, ok := mode[name]; !ok {
+		if _, ok := mode[name]; !ok && name != poolKey {
 			removed = append(removed, PromptPart{
 				Source: "removed:" + name, Status: injectRemoved,
 				Text: fmt.Sprintf("Prompt rule %q no longer applies.", name),
@@ -65,6 +71,9 @@ func dedupe(cfg *config.Config, sent map[string]string, parts []PromptPart) (sen
 			all = append(all, removed...)
 		}
 		name, ok := strings.CutPrefix(p.Source, "rule:")
+		if p.Source == "pool" {
+			name, ok = poolKey, true
+		}
 		if !ok {
 			send = append(send, p)
 			all = append(all, p)
@@ -81,7 +90,11 @@ func dedupe(cfg *config.Config, sent map[string]string, parts []PromptPart) (sen
 			p.Status = injectUnchanged
 		default:
 			p.Status = injectChanged
-			p.Text = fmt.Sprintf("Updated prompt rule %q:\n\n%s", name, p.Text)
+			if name == poolKey {
+				p.Text = "Updated pool instructions:\n\n" + p.Text
+			} else {
+				p.Text = fmt.Sprintf("Updated prompt rule %q:\n\n%s", name, p.Text)
+			}
 		}
 		all = append(all, p)
 		if p.Status == injectUnchanged {
