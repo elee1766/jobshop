@@ -10,7 +10,7 @@
     "format": "oxfmt --write src vite.config.ts",
     "format:check": "oxfmt --check src vite.config.ts",
     "check": "npm run typecheck && npm run lint && npm run format:check",
-    "test:unit": "node --test src/lib/route.test.ts src/lib/search.test.ts src/lib/timeline.test.ts src/lib/browse.test.ts kit/links.test.js kit/titles.test.js ../packages/jobshop-client/index.test.js",
+    "test:unit": "node --test src/lib/route.test.ts src/lib/search.test.ts src/lib/timeline.test.ts src/lib/history.test.ts src/lib/browse.test.ts kit/links.test.js kit/titles.test.js ../packages/jobshop-client/index.test.js",
     "test:e2e": "playwright test",
     "test:e2e:isolated": "node e2e/run-isolated.mjs"
   },

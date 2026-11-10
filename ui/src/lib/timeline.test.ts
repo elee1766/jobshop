@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { TimelineResult, TimelineRow } from '../../../packages/jobshop-client/rpc.js';
-import { arrowPath, arrowShape, durationLabel, segmentText, timelineSpan, visibleRows } from './timeline.ts';
+import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
+import {
+  arrowPath,
+  arrowShape,
+  durationLabel,
+  holderState,
+  liveText,
+  segmentText,
+  timelineSpan,
+  turnsText,
+  turnTotals,
+  visibleRows,
+} from './timeline.ts';
 
 const row = (id: string, depth: number, o: Partial<TimelineRow> = {}): TimelineRow => ({
   id,
@@ -63,4 +74,50 @@ test('arrows turn back through the row gap when the dependent starts first', () 
 test('durations read as two units', () => {
   assert.equal(durationLabel(90 * 60_000), '1h 30m');
   assert.equal(durationLabel(-5), '0s');
+});
+
+const seg = (o: Partial<TimelineSegment>): TimelineSegment => ({
+  state: 'working',
+  start: '2026-11-10T12:00:00Z',
+  ...o,
+});
+const min = (n: number) => new Date(Date.UTC(2026, 10, 10, 12, n)).toISOString();
+
+test('totals split a claim into time in turns and time held', () => {
+  const claim = seg({
+    end: min(60),
+    turns: [
+      { start: min(5), end: min(15) },
+      { start: min(30), end: min(34) },
+    ],
+  });
+  const t = turnTotals(claim, Date.parse(min(90)));
+  assert.deepEqual(t, { count: 2, active: 14 * 60_000, held: 46 * 60_000 });
+  assert.equal(turnsText(t!), 'active 14m in 2 turns · held 46m');
+  assert.equal(turnsText({ count: 1, active: 60_000, held: 0 }), 'active 1m in 1 turn · held 0s');
+});
+
+test('a running turn counts to now, a claim without turn rows has no totals', () => {
+  const open = seg({ turns: [{ start: min(10) }] });
+  assert.equal(turnTotals(open, Date.parse(min(40)))?.active, 30 * 60_000);
+  assert.equal(turnTotals(seg({}), Date.parse(min(40))), null);
+  assert.equal(segmentText(seg({ actor: 'js-s-1' }), { now: Date.parse(min(40)) }), 'working · js-s-1');
+});
+
+const holder = (o: Partial<HolderInfo>): HolderInfo => ({ id: 'js-s-1', ...o });
+
+test('only an open working span has a live state, and an unknown holder claims nothing', () => {
+  const open = seg({ actor: 'js-s-1' });
+  assert.equal(holderState(open, holder({ alive: true, busy: true, tool: 'go test' })), 'running');
+  assert.equal(holderState(open, holder({ alive: true })), 'idle');
+  assert.equal(holderState(open, holder({ host_lost: true })), 'lost');
+  assert.equal(holderState(open, holder({})), 'unknown', 'no host, not known lost: an external session');
+  assert.equal(holderState(open, undefined), 'unknown');
+  assert.equal(holderState(seg({ actor: 'js-s-1', end: min(5) }), holder({ alive: true })), undefined);
+  assert.equal(holderState(seg({ state: 'queued' }), holder({ alive: true })), undefined);
+  assert.equal(liveText('running', holder({ tool: 'go test' })), 'turn running: go test');
+  assert.equal(liveText('idle'), 'held, idle between turns');
+  assert.match(liveText('lost'), /host not alive/);
+  assert.equal(liveText('unknown'), '');
+  assert.match(segmentText(open, { session: holder({ host_lost: true }) }), /nobody is working this ticket/);
 });

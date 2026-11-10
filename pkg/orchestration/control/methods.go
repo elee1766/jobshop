@@ -814,7 +814,9 @@ func (c *Controller) sessionInfoOf(id string, sess *domain.Ticket, held []domain
 		}
 		r.mu.Unlock()
 		info.Crashes = r.crashCount()
-		if r.inTurn.Load() {
+		if r.inTurn.Load() || r.turning.Load() {
+			// turning also covers the unclosed reminder, a turn inTurn
+			// does not (JOB-184): the timeline reads the same flag.
 			info.Busy = true
 			t := r.traffic.Running()
 			info.Tool, info.ToolTarget, info.ToolIntent = t.Title, t.Target, t.Intent

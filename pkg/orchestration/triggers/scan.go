@@ -398,6 +398,11 @@ func LastActivity(ctx context.Context, s store.Store, t domain.Ticket) (time.Tim
 		return last, err
 	}
 	for _, h := range hist {
+		if h.Op == domain.OpTurnStart || h.Op == domain.OpTurnEnd {
+			// A turn on a held ticket is not progress on it: the
+			// session_silent and stale signals keep their meaning (JOB-184).
+			continue
+		}
 		if h.At.After(last) {
 			last = h.At
 		}

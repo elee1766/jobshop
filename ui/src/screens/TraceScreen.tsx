@@ -24,6 +24,7 @@ export function Trace() {
             trace.timeline ? (
               <Timeline
                 timeline={trace.timeline}
+                sessions={trace.sessions}
                 selected={selected?.id || trace.graph.root}
                 onSelect={inspect}
                 onTrace={openTrace}

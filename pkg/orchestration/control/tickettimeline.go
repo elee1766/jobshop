@@ -21,6 +21,9 @@ import (
 // label_add, label_remove, and update (fields.wait, fields.state,
 // defer_until). A ticket with no history, or whose history does not start
 // at its creation, gets an "unknown" span and its row is marked partial.
+//
+// Working and retry spans also list the agent turns that ran inside their
+// claim (JOB-184), from the turn_start and turn_end rows the runner records.
 
 // maxCommentMarkers bounds the comment ticks on one bar: the newest.
 const maxCommentMarkers = 40
@@ -32,6 +35,7 @@ type tlDiff struct {
 	Resolution string    `json:"resolution"`
 	Label      string    `json:"label"`
 	Labels     []string  `json:"labels"`
+	Stop       string    `json:"stop"`     // turn_end
 	Failures   *int      `json:"failures"` // set when the event counted a failed attempt
 	Fields     *struct {
 		State string       `json:"state"`
@@ -49,10 +53,13 @@ func (c *Controller) ticketTimeline(ctx context.Context, sc scope, p rpc.GraphPa
 	if err != nil {
 		return nil, err
 	}
-	return buildTimeline(c.config(), g, threads, c.now()), nil
+	return buildTimeline(c.config(), g, threads, c.now(), c.sessionBusy), nil
 }
 
-func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]store.Thread, now time.Time) rpc.TimelineResult {
+// buildTimeline replays each node's history into a row. busy reports whether
+// a session is in a turn now: it decides whether the last turn of an open
+// claim that has no turn_end is still running.
+func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]store.Thread, now time.Time, busy func(session string) bool) rpc.TimelineResult {
 	out := rpc.TimelineResult{Root: g.Root, Rows: []rpc.TimelineRow{}, Arrows: []rpc.TimelineArrow{}, Truncated: g.Truncated}
 	tickets := map[string]domain.Ticket{}
 	rows := map[string]*rpc.TimelineRow{}
@@ -61,7 +68,7 @@ func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]sto
 			continue
 		}
 		tickets[n.ID] = n.Ticket
-		row := timelineRow(cfg, n.Ticket, threads[n.ID], now)
+		row := timelineRow(cfg, n.Ticket, threads[n.ID], now, busy)
 		rows[n.ID] = &row
 	}
 	// Nesting: parent_id first, else the ticket whose holder created it.
@@ -190,7 +197,7 @@ type tlBuilder struct {
 	marks    []rpc.TimelineMarker
 }
 
-func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.Time) rpc.TimelineRow {
+func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.Time, busy func(string) bool) rpc.TimelineRow {
 	row := rpc.TimelineRow{
 		ID: t.ID, Kind: t.Kind, Title: t.Title, Pool: t.Pool, Status: t.Status, Resolution: t.Resolution,
 		CreatedAt: t.CreatedAt, ClosedAt: t.ClosedAt, Segments: []rpc.TimelineSegment{}, Markers: []rpc.TimelineMarker{},
@@ -220,8 +227,14 @@ func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.
 		}
 	}
 	var lastActor string
+	var turnRows []store.HistoryEntry
 	for i, h := range hist {
 		b.tick(h.At)
+		if h.Op == domain.OpTurnStart || h.Op == domain.OpTurnEnd {
+			// Not a state change: kept for the turns of each claim.
+			turnRows = append(turnRows, h)
+			continue
+		}
 		var d tlDiff
 		_ = json.Unmarshal(h.Diff, &d)
 		fail, why := false, ""
@@ -283,7 +296,7 @@ func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.
 		b.st.closed = true
 	}
 	b.apply(end, false, "")
-	row.Segments = b.segs
+	row.Segments = withTurns(b.segs, turnRows, end, busy)
 	row.Markers = append(row.Markers, b.marks...)
 	row.Markers = append(row.Markers, commentMarkers(th.Comments)...)
 	slices.SortStableFunc(row.Markers, func(a, c rpc.TimelineMarker) int { return a.At.Compare(c.At) })

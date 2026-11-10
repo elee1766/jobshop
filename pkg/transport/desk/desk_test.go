@@ -523,3 +523,40 @@ func TestStaticCompression(t *testing.T) {
 		assert.Empty(t, w.Header().Get("Content-Encoding"), p)
 	}
 }
+
+// TestTraceTimelineHolders (JOB-184): the holders of open working bars join
+// the one session.list call, also when no trace node or run step names them,
+// and a controller-driven session whose host is gone is marked so.
+func TestTraceTimelineHolders(t *testing.T) {
+	open := rpc.TimelineSegment{State: rpc.TimelineWorking, Actor: "js-s-live"}
+	closed := rpc.TimelineSegment{State: rpc.TimelineWorking, Actor: "js-s-old", End: time.Now()}
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodTicketGraph: rpc.GraphResult{Root: "r1"},
+		rpc.MethodTicketTimeline: rpc.TimelineResult{Root: "r1", Rows: []rpc.TimelineRow{
+			{ID: "r1", Segments: []rpc.TimelineSegment{closed, open}},
+			{ID: "r2", Segments: []rpc.TimelineSegment{{State: rpc.TimelineWorking, Actor: "js-s-dead"}, {State: rpc.TimelineWorking, Actor: "js-s-ext"}}},
+		}},
+		rpc.MethodTicketShow:  rpc.ShowResult{Ticket: domain.Ticket{ID: "r1"}},
+		rpc.MethodTicketTrace: rpc.TraceNode{ID: "r1"},
+		rpc.MethodSessionList: []rpc.SessionInfo{
+			{ID: "js-s-live", Alive: true, Busy: true, Tool: "go test"},
+			{ID: "js-s-dead", HostPid: 42, Exit: "crashed"},
+			{ID: "js-s-ext"},
+			{ID: "js-s-old", Alive: true},
+		},
+	}}
+	h := New(Config{}, ctl, nil).Handler()
+	var tv TicketView
+	get(t, h, "/api/trace/r1?timeline=1", &tv)
+	assert.Equal(t, rpc.HolderInfo{ID: "js-s-live", Alive: true, Busy: true, Tool: "go test"}, tv.Sessions["js-s-live"])
+	assert.True(t, tv.Sessions["js-s-dead"].HostLost)
+	assert.False(t, tv.Sessions["js-s-ext"].HostLost, "an external session has no host to lose")
+	assert.NotContains(t, tv.Sessions, "js-s-old", "a closed bar's holder is not looked up")
+	n := 0
+	for _, c := range ctl.calls {
+		if strings.HasPrefix(c, rpc.MethodSessionList) {
+			n++
+		}
+	}
+	assert.Equal(t, 1, n, "one session.list call")
+}

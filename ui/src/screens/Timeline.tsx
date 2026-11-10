@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
+import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
 import { useSize } from '../lib/useSize.ts';
@@ -7,14 +7,16 @@ import {
   arrowPath,
   arrowShape,
   durationLabel,
+  holderState,
+  legendLabels,
   markerText,
   parentIds,
   rowEnd,
   rowStart,
   segmentEnd,
   segmentText,
-  stateLabels,
   timelineSpan,
+  turnTotals,
   visibleRows,
 } from '../lib/timeline.ts';
 import { axisTicks, exactLabel, fullLabel, linkLabel, relativeLabel } from '../lib/trace.ts';
@@ -28,19 +30,21 @@ const minChart = 320;
 const minZoom = 1;
 const maxZoom = 64;
 
-const legend = ['queued', 'working', 'waiting', 'human', 'deferred', 'retry'];
+const legend = ['queued', 'working', 'held', 'lost', 'waiting', 'human', 'deferred', 'retry'];
 
 // One bar per ticket on a shared time axis, nested by parent, with
 // arrows for blocking edges (#1103). Rows come from ticket.timeline in
 // tree order; open bars grow to the "now" line.
 export function Timeline({
   timeline,
+  sessions,
   selected,
   onSelect,
   onTrace,
   onGraph,
 }: {
   timeline: TimelineResult;
+  sessions?: Record<string, HolderInfo>;
   selected: string;
   onSelect: (id: string) => void;
   onTrace: (ref: string) => void;
@@ -87,8 +91,9 @@ export function Timeline({
     });
   }
 
+  const text = (s: TimelineSegment) => segmentText(s, { now, session: s.actor ? sessions?.[s.actor] : undefined });
   const segTitle = (row: TimelineRow, s: TimelineSegment) =>
-    `${segmentText(s)}\n${exactLabel(s.start)} to ${s.end ? exactLabel(s.end) : 'now'} (${durationLabel(segmentEnd(s, now) - Date.parse(s.start))})\n${row.id}`;
+    `${text(s)}\n${exactLabel(s.start)} to ${s.end ? exactLabel(s.end) : 'now'} (${durationLabel(segmentEnd(s, now) - Date.parse(s.start))})\n${row.id}`;
 
   return (
     <section aria-label="Ticket timeline" className="ticket-timeline">
@@ -129,7 +134,7 @@ export function Timeline({
         {legend.map((state) => (
           <li key={state}>
             <span className="tl-swatch" data-state={state} aria-hidden="true" />
-            {stateLabels[state]}
+            {legendLabels[state]}
           </li>
         ))}
         <li>
@@ -201,13 +206,16 @@ export function Timeline({
                     {row.segments.map((s, i) => {
                       const left = x(Date.parse(s.start));
                       const w = Math.max(3, x(segmentEnd(s, now)) - left);
+                      const live = holderState(s, s.actor ? sessions?.[s.actor] : undefined);
                       return (
                         <button
                           key={i}
                           className="tl-seg"
                           data-state={s.state}
                           data-open={!s.end || undefined}
-                          aria-label={segmentText(s) + ', ' + row.id}
+                          data-turns={s.turns?.length || undefined}
+                          data-live={live}
+                          aria-label={text(s) + ', ' + row.id}
                           aria-pressed={seg?.id === row.id && seg.i === i}
                           title={segTitle(row, s)}
                           style={{ left: left + 'px', width: w + 'px', height: barH + 'px' }}
@@ -215,7 +223,22 @@ export function Timeline({
                             setSeg({ id: row.id, i });
                             onSelect(row.id);
                           }}
-                        />
+                        >
+                          {s.state === 'working' &&
+                            s.turns?.map((turn, j) => {
+                              const from = Math.max(0, x(Date.parse(turn.start)) - left);
+                              const to = Math.min(w, x(turn.end ? Date.parse(turn.end) : segmentEnd(s, now)) - left);
+                              return (
+                                <span
+                                  key={j}
+                                  className="tl-turn"
+                                  data-running={!turn.end || undefined}
+                                  aria-hidden="true"
+                                  style={{ left: from + 'px', width: Math.max(2, to - from) + 'px' }}
+                                />
+                              );
+                            })}
+                        </button>
                       );
                     })}
                     {row.closed_at && (
@@ -292,7 +315,9 @@ export function Timeline({
           </div>
         </div>
       </section>
-      {pick && <RowDetail row={pick} now={now} seg={seg?.id === pick.id ? seg.i : -1} onTrace={onTrace} />}
+      {pick && (
+        <RowDetail row={pick} now={now} sessions={sessions} seg={seg?.id === pick.id ? seg.i : -1} onTrace={onTrace} />
+      )}
     </section>
   );
 }
@@ -303,11 +328,13 @@ export function Timeline({
 function RowDetail({
   row,
   now,
+  sessions,
   seg,
   onTrace,
 }: {
   row: TimelineRow;
   now: number;
+  sessions?: Record<string, HolderInfo>;
   seg: number;
   onTrace: (ref: string) => void;
 }) {
@@ -326,7 +353,9 @@ function RowDetail({
         {row.segments.map((s, i) => (
           <li key={i} className={i === seg ? 'chosen' : undefined}>
             <span className="tl-swatch" data-state={s.state} aria-hidden="true" />
-            <span>{segmentText(s)}</span>{' '}
+            <span data-live={holderState(s, s.actor ? sessions?.[s.actor] : undefined)}>
+              {segmentText(s, { now, session: s.actor ? sessions?.[s.actor] : undefined })}
+            </span>{' '}
             <span className="muted">
               <time dateTime={s.start} title={exactLabel(s.start)}>
                 {fullLabel(s.start)}
@@ -335,6 +364,7 @@ function RowDetail({
               {durationLabel(segmentEnd(s, now) - Date.parse(s.start))}
               {s.end ? '' : ' so far'}
             </span>
+            {s.turns && s.turns.length > 0 && <TurnList seg={s} now={now} />}
             {s.wait && s.wait.length > 0 && (
               <ul>
                 {s.wait.map((w, j) => (
@@ -381,5 +411,30 @@ function RowDetail({
         </details>
       )}
     </div>
+  );
+}
+
+// The turns of one claim with exact times, for keyboard and touch.
+function TurnList({ seg, now }: { seg: TimelineSegment; now: number }) {
+  const totals = turnTotals(seg, now);
+  return (
+    <details className="tl-turns">
+      <summary>
+        {totals?.count} turn{totals?.count === 1 ? '' : 's'}
+      </summary>
+      <ol>
+        {seg.turns?.map((t, i) => (
+          <li key={i}>
+            <time dateTime={t.start} title={exactLabel(t.start)}>
+              {fullLabel(t.start)}
+            </time>
+            {' · '}
+            {durationLabel((t.end ? Date.parse(t.end) : segmentEnd(seg, now)) - Date.parse(t.start))}
+            {t.end ? '' : ' so far'}
+            {t.stop ? ' · ' + t.stop : ''}
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
