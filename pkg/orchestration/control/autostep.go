@@ -228,6 +228,10 @@ func (c *Controller) finishAutoStep(ctx context.Context, cfg *config.Config, t d
 	}
 	c.log.InfoContext(ctx, "step attempt", "ticket", t.ID, "step", sf.Step, "type", sf.Type, "result", res.Result)
 	c.stepEvent(ctx, cfg, t)
+	// The steps after this one may be ready now (JOB-193).
+	if domain.StepFinished(t) {
+		c.wakePass()
+	}
 }
 
 // stepHost is what stepexec needs from the controller.

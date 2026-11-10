@@ -102,11 +102,20 @@ func (c *Controller) offFinish(key string, keep bool, v any) {
 	}
 	o.done[key] = offDone{val: v, at: now}
 	// A pass records it now, not at the next tick.
-	if c.offWake != nil {
-		select {
-		case c.offWake <- struct{}{}:
-		default:
-		}
+	c.wakePass()
+}
+
+// wakePass asks the serve loop for a supervisor pass now, not at the next
+// tick (JOB-193). The channel holds one wake, so wakes that arrive before
+// the loop takes one, or while a pass runs, cost one further pass in all.
+// A controller built by hand in a test has no channel.
+func (c *Controller) wakePass() {
+	if c.offWake == nil {
+		return
+	}
+	select {
+	case c.offWake <- struct{}{}:
+	default:
 	}
 }
 
