@@ -535,7 +535,7 @@ func (c *Controller) runList(ctx context.Context, sc scope, p rpc.RunListParams)
 	if !sc.admin {
 		p.Project = sc.project
 	}
-	return c.store.List(ctx, store.Filter{Kind: domain.KindRun, Project: p.Project, State: p.State, Order: store.OrderNewest, Limit: p.Limit})
+	return c.store.List(ctx, store.Filter{Kind: domain.KindRun, Project: p.Project, State: p.State, Workflow: p.Workflow, Key: p.Key, Order: store.OrderNewest, Limit: p.Limit})
 }
 
 // setRunState writes fields.state, closing the run with resolution when

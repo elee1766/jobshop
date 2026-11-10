@@ -48,13 +48,15 @@ func (c runShowCmd) Run(g *Globals) error {
 }
 
 type runListCmd struct {
-	Project string `help:"Project."`
-	State   string `short:"s" enum:",running,needs_human,done,cancelled" default:"" help:"Run state."`
-	Limit   int    `short:"n" help:"Max results (default 500)."`
+	Project  string `help:"Project."`
+	State    string `short:"s" enum:",running,needs_human,done,cancelled" default:"" help:"Run state."`
+	Workflow string `help:"Only runs of this workflow (exact name)."`
+	Key      string `help:"Only runs with this key (exact), closed ones included."`
+	Limit    int    `short:"n" help:"Max results (default 500)."`
 }
 
 func (c runListCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodRunList, rpc.RunListParams{Project: c.Project, State: c.State, Limit: c.Limit}, nil)
+	return g.call(rpc.MethodRunList, rpc.RunListParams{Project: c.Project, State: c.State, Workflow: c.Workflow, Key: c.Key, Limit: c.Limit}, nil)
 }
 
 type runCancelCmd struct {
