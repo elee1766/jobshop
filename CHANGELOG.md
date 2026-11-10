@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.12](https://github.com/gfx-labs/jobshop/compare/v0.10.11...v0.10.12) (2026-11-10)
+
+
+### Features
+
+* **control:** pause pools on host credential outages (JOB-194) ([#1204](https://github.com/gfx-labs/jobshop/issues/1204)) ([aa55c76](https://github.com/gfx-labs/jobshop/commit/aa55c76ae57cb57c30c05406c3beddfe8f33ac55))
+* **control:** wake idle sessions on ready work, housekeeping off the pass (JOB-197) ([#1208](https://github.com/gfx-labs/jobshop/issues/1208)) ([29ae6b4](https://github.com/gfx-labs/jobshop/commit/29ae6b4db857a3fbc47e690da968a0b950732a10))
+* **desk:** put comments and history events on the timeline ([#1182](https://github.com/gfx-labs/jobshop/issues/1182)) ([#1207](https://github.com/gfx-labs/jobshop/issues/1207)) ([bd7cd95](https://github.com/gfx-labs/jobshop/commit/bd7cd9504bc3433ce6c6bfe55a7c84c445c25d7d))
+* **learn:** add duplicate learning status linked to the learning kept (JOB-199) ([#1206](https://github.com/gfx-labs/jobshop/issues/1206)) ([730d593](https://github.com/gfx-labs/jobshop/commit/730d5935e95d84d8246dc8649e6e8d86bef16897))
+
+
+### Bug fixes
+
+* **control:** keep runner state across a controller restart (JOB-196) ([#1203](https://github.com/gfx-labs/jobshop/issues/1203)) ([05341b8](https://github.com/gfx-labs/jobshop/commit/05341b8c76f8d30980742d5e82dbecaaf8d017ba))
+
 ## [0.10.11](https://github.com/gfx-labs/jobshop/compare/v0.10.10...v0.10.11) (2026-11-10)
 
 
