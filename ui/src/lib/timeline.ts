@@ -69,7 +69,7 @@ export function durationLabel(ms: number) {
   return relativeLabel(Math.max(0, ms)).slice(1);
 }
 
-// What a state is called in the legend, details and accessible names.
+// What a state is called in details and accessible names.
 export const stateLabels: Record<string, string> = {
   queued: 'queued',
   working: 'working',
@@ -82,8 +82,8 @@ export const stateLabels: Record<string, string> = {
   unknown: 'no history kept',
 };
 
-// The legend: a working bar splits into time in a turn and time held with
-// none (JOB-184). The swatch state and its words.
+// A working bar splits into time in a turn and time held with none
+// (JOB-184). The swatch state and its words.
 export const legendLabels: Record<string, string> = { ...stateLabels, working: 'in a turn' };
 
 // One line saying what a segment is, without its times.

@@ -1070,8 +1070,6 @@ output.block { display: block; margin: 6px 0; }
    alone. */
 .ticket-timeline { padding: var(--page-inset); min-width: 0; }
 .ticket-timeline > .graph-heading { margin: calc(-1 * var(--page-inset)) calc(-1 * var(--page-inset)) 0; column-gap: var(--space-4); flex-wrap: nowrap; }
-.tl-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0; padding: 0; list-style: none; font-size: var(--font-size-small); }
-.tl-legend li { display: flex; align-items: center; gap: var(--space-2); }
 .tl-swatch { display: inline-block; flex: none; width: 14px; height: 10px; border: 1px solid var(--column); background: var(--tl-queued); }
 .tl-swatch[data-state="working"], .tl-seg[data-state="working"] { background: var(--tl-working); }
 /* A claim with turn rows (JOB-184): the bar is the held color, in thin
@@ -1086,8 +1084,6 @@ output.block { display: block; margin: 6px 0; }
 .tl-swatch[data-state="retry"], .tl-seg[data-state="retry"] { background: var(--tl-retry); }
 .tl-swatch[data-state="unknown"], .tl-seg[data-state="unknown"] { background: repeating-linear-gradient(45deg, var(--tl-unknown) 0 3px, var(--paper) 3px 6px); }
 .tl-seg[data-state="queued"] { background: var(--tl-queued); }
-.tl-arrow-sample { display: inline-block; width: 18px; border-top: 2px solid var(--tl-retry); }
-.tl-arrow-sample[data-shape="tracks"] { border-top: 2px dotted var(--column); }
 .tl-scroll { position: relative; overflow: auto; max-height: min(60dvh, 640px); border: 1px solid var(--rule); overscroll-behavior: contain; }
 .tl-canvas { position: relative; }
 .tl-axis { position: sticky; top: 0; z-index: 3; display: flex; background: var(--paper); border-bottom: 1px solid var(--column); font-size: var(--font-size-small); }
