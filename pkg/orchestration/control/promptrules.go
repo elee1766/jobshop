@@ -328,7 +328,10 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		body = PromptPart{Source: "messages", Text: conversation.EnvelopePlaceholder}
 	}
 	parts := c.assemble(ctx, ts, body)
-	var sent map[string]string
+	// Without a runner (right after a restart, before the supervisor
+	// respawns it) the record of what the conversation holds is the one
+	// stored in the session's fields, which the runner loads on creation.
+	sent := f.Injected
 	if r != nil {
 		r.mu.Lock()
 		sent = r.injected
