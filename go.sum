@@ -61,8 +61,8 @@ github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeO
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/fsnotify/fsnotify v1.8.0 h1:dAwr6QBTBZIkG8roQaJjGof0pp0EeF+tNV7YBP3F/8M=
 github.com/fsnotify/fsnotify v1.8.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
-github.com/gfx-labs/acphost v0.23.1-0.20261110081812-c2743114212e h1:T6+SN+ixPfWc7lqpOE2n92zYrnUFqvdJ4NiC9a2Xj/0=
-github.com/gfx-labs/acphost v0.23.1-0.20261110081812-c2743114212e/go.mod h1:m3JO7YOYZXT4k5hQFyrvKu52+UMoM9TxqRL2pslPVms=
+github.com/gfx-labs/acphost v0.24.0 h1:fKMVqBiZvzfuk1Pr0NO1OVuwGzzYOfBwqE7vDyxTjlE=
+github.com/gfx-labs/acphost v0.24.0/go.mod h1:m3JO7YOYZXT4k5hQFyrvKu52+UMoM9TxqRL2pslPVms=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376/go.mod h1:an3vInlBmSxCcxctByoQdvwPiA7DTK7jaaFDBTtu0ic=
 github.com/go-git/gcfg/v2 v2.0.2 h1:MY5SIIfTGGEMhdA7d7JePuVVxtKL7Hp+ApGDJAJ7dpo=
