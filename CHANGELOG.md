@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.29](https://github.com/elee1766/jobshop/compare/v0.9.28...v0.9.29) (2026-11-10)
+
+
+### Features
+
+* **automation:** start command steps from callbacks ([#1145](https://github.com/elee1766/jobshop/issues/1145)) ([ff14bd6](https://github.com/elee1766/jobshop/commit/ff14bd64f8546cf27c319b1e2ddaed4b86e11fbd))
+
 ## [0.9.28](https://github.com/elee1766/jobshop/compare/v0.9.27...v0.9.28) (2026-11-10)
 
 
