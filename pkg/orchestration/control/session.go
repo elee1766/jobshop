@@ -496,6 +496,9 @@ func (r *runner) session() error {
 	if err != nil {
 		return err
 	}
+	if end, ok := r.parkEnd(r.ctx, fields); ok {
+		return end
+	}
 	if fields.Suspended && !session.HostAlive(r.dir) {
 		return errSuspended
 	}
@@ -840,15 +843,19 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 func (r *runner) saveFields(f domain.SessionFields) error {
 	// The runner's copy has a stale journal cursor; keep the stored one,
 	// which only the shipper moves (#530). Prestart, ReadOnly and
-	// Suspended belong to the controller's attention chats (#606).
+	// Suspended belong to the controller's attention chats (#606). The
+	// ticket count and the park (JOB-189) are the runner's and the
+	// supervisor's, written as they happen.
 	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *domain.SessionFields) {
 		shipped := cur.ShippedSeq
 		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
 		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
+		tickets, claimed, parked, resumed := cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
 		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
 		cur.Named, cur.Archived, cur.DisplayName = named, archived, name
+		cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed = tickets, claimed, parked, resumed
 	})
 }
 
@@ -901,6 +908,19 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// nothing new. Scale and drain cordons then end it; a manual one
 		// keeps it open and out of rotation.
 		cordon := r.c.sessionCordon(ctx, r.id)
+		if pool.MaxTickets > 0 {
+			// A single-use session (JOB-189) counts the ticket it closed. One
+			// it released onto a wait or a timed defer that hands it back
+			// parks the session: suspended, in no slot count.
+			if r.settleClaimed(ctx) {
+				if pt := r.parkedTicket(ctx); pt != "" {
+					return r.park(nc, pt)
+				}
+			}
+			if cordon == nil && r.ticketsWorked(ctx) >= pool.MaxTickets {
+				cordon = &domain.Cordon{Reason: domain.CordonTickets, By: "controller", At: r.c.now()}
+			}
+		}
 		var cordonWork string
 		if cordon != nil {
 			cordonWork = r.c.cordonedWork(ctx, r.id)
@@ -911,6 +931,8 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				return errSessionEnd{resolution: resolutionScaledDown}
 			case domain.CordonDrain:
 				return errSessionEnd{resolution: resolutionDrained}
+			case domain.CordonTickets:
+				return errSessionEnd{resolution: resolutionTicketLimit}
 			}
 		}
 		var t domain.Ticket
@@ -964,6 +986,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		r.mu.Lock()
 		r.lastClaim = r.c.now()
 		r.mu.Unlock()
+		if pool.MaxTickets > 0 {
+			r.markClaimed(ctx, t.ID)
+		}
 		r.setTurnTicket(t.ID)
 		comments, err := store.Comments(ctx, r.c.store, t.ID)
 		if err != nil {

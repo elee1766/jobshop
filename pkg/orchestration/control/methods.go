@@ -617,6 +617,9 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	if until.IsZero() {
 		// A plain release of a step counts as a failed attempt.
 		c.recordStepFailure(ctx, t, "released", p.Reason)
+	} else if !sc.admin {
+		// A single-use session parks on a ticket it deferred (JOB-189).
+		c.assignDeferred(ctx, t, sc.session)
 	}
 	c.stepEvent(ctx, c.config(), t)
 	return t, nil
@@ -835,6 +838,7 @@ func (c *Controller) sessionInfoOf(id string, sess *domain.Ticket, held []domain
 		info.Ticket = sess
 		if f, err := domain.DecodeFields[domain.SessionFields](sessTicket); err == nil {
 			info.DisplayName = f.DisplayName
+			info.Suspended, info.Parked = f.Suspended, f.Parked
 			if f.Cordoned != nil {
 				info.Cordon = f.Cordoned.Reason
 			}

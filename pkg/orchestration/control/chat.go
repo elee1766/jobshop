@@ -334,8 +334,9 @@ func (c *Controller) humanSlot(ctx context.Context, cfg *config.Config, pool str
 	if err != nil {
 		return err
 	}
-	if len(open) >= p.MaxSessions+1 {
-		return fmt.Errorf("%w: pool %s has %d open sessions, max_sessions %d plus one reserved human slot", domain.ErrConflict, pool, len(open), p.MaxSessions)
+	// A suspended session has no host and takes no slot (JOB-189).
+	if n := countedSessions(open); n >= p.MaxSessions+1 {
+		return fmt.Errorf("%w: pool %s has %d open sessions, max_sessions %d plus one reserved human slot", domain.ErrConflict, pool, n, p.MaxSessions)
 	}
 	return nil
 }

@@ -90,6 +90,21 @@ func TestPlanPool(t *testing.T) {
 		},
 		{"manual cordon is never lifted", 2, []scaleplan.Session{{ID: "m", Cordon: domain.CordonManual}}, scaleplan.Plan{Start: 2}},
 		{"steady state", 2, []scaleplan.Session{{ID: "a"}, {ID: "b"}}, scaleplan.Plan{}},
+		{
+			"a resumed session over the cap is not cordoned and nothing starts (JOB-189)", 1,
+			[]scaleplan.Session{{ID: "a"}, {ID: "r", Exempt: true}},
+			scaleplan.Plan{},
+		},
+		{
+			"a resumed session fills a slot, so one fewer starts (JOB-189)", 2,
+			[]scaleplan.Session{{ID: "r", Exempt: true}},
+			scaleplan.Plan{Start: 1},
+		},
+		{
+			"a cordoned resumed session is planned like any cordoned one", 1,
+			[]scaleplan.Session{{ID: "r", Exempt: true, Cordon: domain.CordonScale}},
+			scaleplan.Plan{Uncordon: []string{"r"}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, scaleplan.ForPool(tc.desired, tc.sessions))

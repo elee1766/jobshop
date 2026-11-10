@@ -1172,6 +1172,7 @@ export interface PoolScale {
   idle: number;
   cordoned: number;
   drained?: boolean;
+  parked?: number;
 }
 
 export interface PoolScaleParams {
@@ -1458,6 +1459,8 @@ export interface SessionInfo {
   exit?: string;
   drained?: boolean;
   cordon?: string;
+  suspended?: boolean;
+  parked?: string;
   crashes?: number;
   backoff_until?: string;
   model?: string;

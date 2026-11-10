@@ -55,8 +55,13 @@ packs:
 **Pools** are where sessions run. Fields: `agent` (an `agents:` entry),
 `repo` (a checkout; each session gets a worktree at `ref`) or `dir`,
 `prompt` or `prompt_file` (the session's standing instructions),
-`max_sessions`, `idle_timeout`, `turn_timeout`, `admin` (admin RPC
-grants). `type: chat` makes a pool whose sessions are started per
+`max_sessions`, `min_sessions`, `max_tickets`, `idle_timeout`, `turn_timeout`,
+`admin` (admin RPC
+grants). `max_tickets` (default 0, unlimited; not for chat pools) makes
+sessions single use: a session ends `ticket_limit` after it closes that many
+tickets, and while its ticket waits (`wait add --resume`, or a timed defer)
+it is suspended and takes no slot, so `max_sessions` counts only tickets
+being worked. See [the note](notes/JOB-189-single-use-sessions.md). `type: chat` makes a pool whose sessions are started per
 conversation (by a gateway or `jobshop send`) instead of by tickets.
 
 **Prompts and `prompt_rules`.** A pool prompt is sent on a session's

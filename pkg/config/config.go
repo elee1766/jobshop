@@ -1390,6 +1390,12 @@ type Pool struct {
 	// MinSessions are kept open with no ready work (a warm pool, #281).
 	// Default 0. Must be <= max_sessions.
 	MinSessions int `yaml:"min_sessions"`
+	// MaxTickets makes a ticket-pool session single use (JOB-189): it ends
+	// after it has closed this many tickets, and while its ticket is parked
+	// on a wait it is suspended and takes no slot. 0 (default) is unlimited:
+	// a session keeps claiming tickets in one conversation. Not for chat
+	// pools.
+	MaxTickets int `yaml:"max_tickets"`
 	// ScaleDownAfter is how long demand must stay below the open count
 	// before surplus sessions are cordoned (Go duration). Default 10m.
 	ScaleDownAfter string `yaml:"scale_down_after"`
@@ -1660,6 +1666,12 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.MinSessions > 0 && p.Chat() {
 			return nil, fmt.Errorf("%s: pool %s: min_sessions does not apply to chat pools", src("pools", name), name)
+		}
+		if p.MaxTickets < 0 {
+			return nil, fmt.Errorf("%s: pool %s: max_tickets must be >= 0", src("pools", name), name)
+		}
+		if p.MaxTickets > 0 && p.Chat() {
+			return nil, fmt.Errorf("%s: pool %s: max_tickets does not apply to chat pools", src("pools", name), name)
 		}
 		if p.ConversationExport {
 			// A warning for one release, then an error (#530, as #325).

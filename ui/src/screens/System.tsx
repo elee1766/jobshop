@@ -179,7 +179,8 @@ export function System() {
               <button className="mono" onClick={() => openTrace(session.id)}>
                 {session.display_name || session.id}
               </button>{' '}
-              {session.busy ? 'working' : 'idle'}
+              {session.suspended ? 'suspended' : session.busy ? 'working' : 'idle'}
+              {session.parked && <span> · waiting on {session.parked}</span>}
               {session.cordon && <span> · cordoned: {session.cordon}</span>}{' '}
               {canCordon && session.ticket?.pool && scaled.has(session.ticket.pool) && (
                 <CordonControl id={session.id} name={session.display_name || session.id} cordon={session.cordon} />

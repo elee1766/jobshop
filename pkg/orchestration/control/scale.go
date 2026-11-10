@@ -94,18 +94,37 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 		if p.Chat() {
 			continue // chat sessions are started by session.send
 		}
-		sessions, working, err := c.scaleSessions(ctx, name)
+		sessions, working, parked, err := c.scaleSessions(ctx, name)
 		if err != nil {
 			continue
+		}
+		// Suspended single-use sessions (JOB-189) have no host and take no
+		// slot. Resume the ready ones, oldest first. A resume may take the
+		// pool one over max_sessions, never past the host limit.
+		if len(parked) > 0 && !c.poolDrained(name) {
+			hostFree := -1
+			if cfg.Limits.MaxSessions > 0 {
+				hostFree = max(cfg.Limits.MaxSessions-c.hostCounted(ctx, cfg), 0)
+			}
+			if c.resumeReady(ctx, name, p, len(sessions), hostFree, parked) > 0 {
+				if sessions, working, parked, err = c.scaleSessions(ctx, name); err != nil {
+					continue
+				}
+			}
 		}
 		open += len(sessions)
 		if p.MaxSessions == 0 {
 			continue // manual sessions only
 		}
-		ready, err := c.store.List(ctx, store.Filter{Project: p.Project, Pool: name, Ready: true, Limit: p.MaxSessions})
+		ready, err := c.store.List(ctx, store.Filter{Project: p.Project, Pool: name, Ready: true, Limit: p.MaxSessions + len(parked)})
 		if err != nil {
 			continue
 		}
+		// A ready ticket held for a parked session is not demand: no new
+		// session can claim it.
+		ready = slices.DeleteFunc(ready, func(t domain.Ticket) bool {
+			return slices.ContainsFunc(parked, func(ps parkedSession) bool { return ps.ID == t.Holder })
+		})
 		desired := c.desired(name, p, len(ready)+working, len(sessions), now)
 		c.metrics.PoolDesired.Record(ctx, int64(desired), metric.WithAttributes(telemetry.AttrPool.String(name)))
 		cordoned := 0
@@ -162,17 +181,27 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 // scaleSessions lists a pool's open sessions and how many hold a ticket.
 // Idle is read before the caller reads ready: a claim in between then
 // drops the ticket from ready instead of counting it twice (#102).
-func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scaleplan.Session, int, error) {
+// Suspended sessions take no slot (JOB-189): they are not in the list.
+// Those parked on a ticket come back as parked.
+func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions []scaleplan.Session, working int, parked []parkedSession, err error) {
 	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	out := make([]scaleplan.Session, 0, len(open))
-	working := 0
 	for _, t := range open {
 		s := scaleplan.Session{ID: t.ID, Created: t.CreatedAt, LastClaim: t.CreatedAt}
-		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Cordoned != nil {
-			s.Cordon = f.Cordoned.Reason
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
+			if f.Suspended {
+				if f.Parked != "" {
+					parked = append(parked, parkedSession{ID: t.ID, Ticket: f.Parked})
+				}
+				continue
+			}
+			s.Exempt = f.Resumed
+			if f.Cordoned != nil {
+				s.Cordon = f.Cordoned.Reason
+			}
 		}
 		held, err := c.store.List(ctx, store.Filter{Holder: t.ID, Status: domain.StatusInProgress, Limit: 1})
 		s.Idle = err == nil && len(held) == 0
@@ -188,7 +217,7 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scalepla
 		c.mu.Unlock()
 		out = append(out, s)
 	}
-	return out, working, nil
+	return out, working, parked, nil
 }
 
 // desired is the pool's target this tick: 0 when drained, the manual
@@ -248,7 +277,7 @@ func (c *Controller) keepWarm(ctx context.Context, pool string) bool {
 	if floor == 0 {
 		return false
 	}
-	sessions, _, err := c.scaleSessions(ctx, pool)
+	sessions, _, _, err := c.scaleSessions(ctx, pool)
 	if err != nil {
 		return false
 	}
@@ -411,8 +440,8 @@ func (c *Controller) poolStatusCtx(ctx context.Context) rpc.PoolStatusResult {
 			row.Target = &t
 		}
 		c.mu.Unlock()
-		if sessions, working, err := c.scaleSessions(ctx, name); err == nil {
-			row.Open, row.Working = len(sessions), working
+		if sessions, working, parked, err := c.scaleSessions(ctx, name); err == nil {
+			row.Open, row.Working, row.Parked = len(sessions), working, len(parked)
 			for _, s := range sessions {
 				if s.Cordon != "" {
 					row.Cordoned++
