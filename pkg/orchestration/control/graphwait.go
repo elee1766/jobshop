@@ -173,6 +173,9 @@ func waitTarget(cfg *config.Config, project string, cd domain.WaitCond) (string,
 		if cd.Workflow != "" {
 			label += " (" + cd.Workflow + ")"
 		}
+		if cd.Check != "" {
+			label += " (" + cd.Check + ")"
+		}
 		return ext(label, link)
 	case domain.WaitReview:
 		return ext(pr+" review by "+cd.Login, prURL)
