@@ -74,8 +74,7 @@ export function TicketHistory({
     return { title, step, summary, refs, turns };
   }
   return (
-    <details className="ticket-history" open>
-      <summary>history ({entries.length})</summary>
+    <div className="ticket-history">
       <ol className="rows">
         {entries.toReversed().map((entry) => {
           const event = describe(entry);
@@ -128,6 +127,6 @@ export function TicketHistory({
           );
         })}
       </ol>
-    </details>
+    </div>
   );
 }

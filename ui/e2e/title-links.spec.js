@@ -17,7 +17,7 @@ test('Markdown links in titles open their destination and leave the row action a
     const plain = await call('ticket.create', { title: `Plain ${key} *not italic* <b>not bold</b>`, parent_id: parent.id });
     const unsafe = await call('ticket.create', { title: `Unsafe ${key} [click](javascript:alert%281%29) [data](data:text/html,x)`, parent_id: parent.id });
     created.push(plain.id, unsafe.id);
-    await page.goto(`./?view=trace&layout=graph&ref=${parent.id}`);
+    await page.goto(`./?view=trace&layout=graph&tab=relations&ref=${parent.id}`);
     const relationships = page.getByLabel('Ticket relationships', { exact: true });
     const heading = page.locator('.ticket-overview > h2');
     await expect(heading.getByRole('link', { name: 'JOB-117', exact: true })).toHaveAttribute('href', 'https://linear.app/gfx-labs/issue/JOB-117');

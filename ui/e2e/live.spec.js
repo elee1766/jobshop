@@ -189,6 +189,8 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(statusLink).not.toHaveCSS('background-color', linkBackground);
     await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link', { name: 'acme/widget#42', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/42');
     await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link')).toHaveCount(2);
+    // The relations tab holds the relationship groups (JOB-185).
+    await page.getByRole('tab', { name: /^relations/ }).click();
     const relationships = page.getByLabel('Ticket relationships', { exact: true });
     const dependencyRow = relationships.getByRole('listitem').filter({ hasText: 'Required evidence' });
     await expect(dependencyRow.locator('.ticket-status')).toHaveText('O');
@@ -198,10 +200,11 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(page.locator('.ticket-parent')).toContainText('child of');
     await expect(relationships.getByRole('region', { name: 'waits for', exact: true })).toContainText('Required evidence');
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(ticket.id);
+    // The events tab lists spans; every history row is behind a toggle.
+    await page.getByRole('tab', { name: 'events' }).click();
+    await page.getByLabel('every history row').check();
     const history = page.locator('.ticket-history');
-    await expect(history.locator(':scope > summary')).toHaveCSS('cursor', 'pointer');
-    await expect(page.locator('.inspector summary').filter({ hasText: 'raw ticket data' })).toHaveCSS('cursor', 'pointer');
-    await expect(history).toHaveAttribute('open');
+    await expect(page.locator('.inspector').getByRole('tab', { name: 'raw' })).toHaveCSS('cursor', 'pointer');
     await expect(history.locator('.history-raw').first()).not.toHaveAttribute('open');
     await expect(history.getByRole('link', { name: 'https://github.com/acme/widget/issues/9', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
     const historyLink = history.getByRole('link', { name: new RegExp(dependency.id) });
@@ -209,11 +212,13 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await historyLink.click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
+    await page.getByRole('tab', { name: /^relations/ }).click();
     await relationships.locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
-    await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
+    await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).toHaveCount(0);
     await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).\n\nCompact https://github.com/elee1766/jobcity/pull/21?w=1#top, <https://linear.app/gfx-labs/issue/JOB-93/stall-triggers>. \`https://github.com/acme/widget/pull/47\` https://evilgithub.com/acme/widget/pull/48 [Authored PR](https://github.com/acme/widget/pull/49)` });
     const comment = page.locator('.ticket-comment .markdown');
+    await page.getByRole('tab', { name: /^comments/ }).click();
     await expect(comment.getByRole('link', { name: 'Linear issue', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(comment.getByRole('link', { name: 'GitHub evidence', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
     await expect(comment.getByRole('link', { name: 'Implementation', exact: true })).toHaveAttribute('href', '?view=trace&ref=' + child.id);
@@ -231,6 +236,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
     await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
+    await page.getByRole('tab', { name: /^relations/ }).click();
     await page.getByLabel('Ticket relationships', { exact: true }).locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);

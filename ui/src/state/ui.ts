@@ -83,3 +83,8 @@ export const pendingAtom = atom<Record<string, boolean>>({});
 // control for a method that is not listed stays hidden: desk.rpc is the grant
 // Desk can see, and the controller still checks its own.
 export const rpcMethodsAtom = atom<string[] | null>(null);
+
+// The segment the timeline chart last chose (JOB-185): the detail pane opens
+// its events tab on that entry. n counts choices, so choosing the same bar
+// again scrolls to it again.
+export const segmentChoiceAtom = atom<{ id: string; index: number; n: number } | null>(null);
