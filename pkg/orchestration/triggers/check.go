@@ -11,7 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // Trigger checks run outside the tick (JOB-109). A check is a shell

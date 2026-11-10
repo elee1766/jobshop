@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Poller reads GitHub repos that send no webhook and writes inbox rows

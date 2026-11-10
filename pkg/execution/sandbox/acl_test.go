@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 func TestApplySlot(t *testing.T) {

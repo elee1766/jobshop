@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 func TestTicketPromptComments(t *testing.T) {

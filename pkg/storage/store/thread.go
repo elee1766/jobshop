@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Helpers over Thread and Changes (#579: helpers wrap the interface in

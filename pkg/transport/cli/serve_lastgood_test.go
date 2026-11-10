@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // serve must reach the controller when only a pack fails and a last good

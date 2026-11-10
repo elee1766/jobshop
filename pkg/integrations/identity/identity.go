@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // DefaultAPIURL is the GitHub REST API base.

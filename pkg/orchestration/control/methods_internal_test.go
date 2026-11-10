@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // rpc.Methods is what Desk's generic RPC endpoint accepts (#517); it must

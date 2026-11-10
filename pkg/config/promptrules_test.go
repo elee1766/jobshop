@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 func TestRuleMatch(t *testing.T) {
 	yes, no := true, false
 	dev := RuleSubject{Pool: "dev", Agent: "jcode", Project: "js", Packs: []string{"github", "selfdev"}}
 	step := dev
-	step.Ticket, step.Repo, step.Workflow, step.Step, step.Labels = true, "elee1766/jobshop", "pr-work", "implement", []string{"x", "urgent"}
+	step.Ticket, step.Repo, step.Workflow, step.Step, step.Labels = true, "gfx-labs/jobshop", "pr-work", "implement", []string{"x", "urgent"}
 	chat := RuleSubject{Pool: "operator", Agent: "jcode", Project: "js", Chat: true}
 	for _, tc := range []struct {
 		name string
@@ -28,7 +28,7 @@ func TestRuleMatch(t *testing.T) {
 		{"pool glob", RuleMatch{Pools: []string{"d*"}}, dev, true},
 		{"pack", RuleMatch{Packs: []string{"selfdev"}}, dev, true},
 		{"pack other", RuleMatch{Packs: []string{"operator"}}, dev, false},
-		{"repo glob", RuleMatch{Repos: []string{"elee1766/*"}}, step, true},
+		{"repo glob", RuleMatch{Repos: []string{"gfx-labs/*"}}, step, true},
 		{"repo other owner", RuleMatch{Repos: []string{"other/*"}}, step, false},
 		{"repo needs a ticket", RuleMatch{Repos: []string{"*"}}, dev, false},
 		{"step", RuleMatch{Steps: []string{"implement"}}, step, true},

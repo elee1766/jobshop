@@ -15,7 +15,7 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/tooling/archcheck"
+	"github.com/gfx-labs/jobshop/pkg/tooling/archcheck"
 )
 
 func main() {

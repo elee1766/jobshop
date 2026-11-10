@@ -18,7 +18,7 @@ passed to compare.
 4. For each `not_helped` edit with a `pr` (a prompt PR), revert it
    through `pr-work`:
    - `gh pr view <pr> --json title,mergeCommit` for the merge commit.
-   - File an issue on elee1766/jobshop titled `Revert curator edit
+   - File an issue on gfx-labs/jobshop titled `Revert curator edit
      <pr number>: <title>` whose body quotes the reason and the before
      and after numbers.
    - `git switch -c issue-<n>`, `git revert --no-edit -m 1 <merge sha>`

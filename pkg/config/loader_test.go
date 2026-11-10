@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // Loader tests on small fixture packs (JOB-2). They exercise one loader

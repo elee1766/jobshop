@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // hookMetaPack marks ask-human tickets filed by a hook, keyed so a

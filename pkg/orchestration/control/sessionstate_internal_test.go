@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // TestSessionListState (JOB-32): a closed session is listed from the

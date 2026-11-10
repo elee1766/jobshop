@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/orchestration/threads"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/threads"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Pollers only write the inbox (#335, #442). Each find gets a stable

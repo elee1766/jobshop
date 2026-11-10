@@ -1,7 +1,7 @@
 # Jobshop
 
 Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
-`github.com/elee1766/jobshop`. Design: `docs/plan.md` (frozen archive,
+`github.com/gfx-labs/jobshop`. Design: `docs/plan.md` (frozen archive,
 up to 2026-11-05), `docs/layout.md`, `docs/data-model.md`. Decisions:
 the pinned decision log issue (#569). Progress: open `target` issues.
 

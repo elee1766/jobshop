@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Resume marks only safely replayable work for retry. The host then resumes its run.

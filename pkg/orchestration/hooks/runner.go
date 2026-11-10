@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // GuardEvent is the JSON a guardrail hook receives on stdin.

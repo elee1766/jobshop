@@ -6,7 +6,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 type configResolveCmd struct {

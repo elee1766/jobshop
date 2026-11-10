@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	"github.com/elee1766/jobshop/pkg/orchestration/control/controltest"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control/controltest"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Command steps a callback starts (start_step(type="command")): the step

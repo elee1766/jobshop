@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/execution/automation"
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 type (

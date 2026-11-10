@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/threads"
-	"github.com/elee1766/jobshop/pkg/orchestration/workflow"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/threads"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/workflow"
 )
 
 // The controller side of targeted wait wakes (#679). workflow.Wakes

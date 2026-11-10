@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // The fixtures in testdata are what Linear and GitHub answered for the four
@@ -119,7 +119,7 @@ func newRig(t *testing.T) *rig {
 		Identities: map[string]config.Identity{
 			"lin": {Kind: config.IdentityLinear, Teams: []string{"JOB", "*"}, Workspace: "gfx-labs"},
 		},
-		Activity: &config.Activity{Repos: []string{"elee1766/jobshop"}},
+		Activity: &config.Activity{Repos: []string{"gfx-labs/jobshop"}},
 	}
 	r.host = &fakeHost{
 		cfg: cfg,
@@ -137,14 +137,14 @@ func newRig(t *testing.T) *rig {
 
 var (
 	linearJob = rpc.BrowseListParams{Provider: rpc.BrowseLinear, Scope: "JOB", Limit: 8}
-	ghRepo    = rpc.BrowseListParams{Provider: rpc.BrowseGitHub, Scope: "elee1766/jobshop", Kind: "all"}
+	ghRepo    = rpc.BrowseListParams{Provider: rpc.BrowseGitHub, Scope: "gfx-labs/jobshop", Kind: "all"}
 )
 
 func TestScope(t *testing.T) {
 	r := newRig(t)
 	sc := r.Scope()
 	assert.Equal(t, []rpc.BrowseLinearScope{{Team: "JOB", Workspace: "gfx-labs"}}, sc.Linear, `"*" names no team`)
-	assert.Equal(t, []rpc.BrowseGitHubScope{{Repo: "elee1766/jobshop"}}, sc.GitHub)
+	assert.Equal(t, []rpc.BrowseGitHubScope{{Repo: "gfx-labs/jobshop"}}, sc.GitHub)
 	assert.False(t, sc.Writes.Enabled)
 	assert.NotEmpty(t, sc.Writes.Reason)
 	assert.Positive(t, sc.Limits.PageSize)
@@ -157,8 +157,8 @@ func TestScopeRejection(t *testing.T) {
 		{Provider: rpc.BrowseLinear, Scope: "OTHER"},
 		{Provider: rpc.BrowseLinear, Scope: "*"},
 		{Provider: rpc.BrowseGitHub, Scope: "evil/repo"},
-		{Provider: rpc.BrowseGitHub, Scope: "elee1766/jobshop", Author: "a b"},
-		{Provider: rpc.BrowseGitHub, Scope: "elee1766/jobshop", View: "bogus"},
+		{Provider: rpc.BrowseGitHub, Scope: "gfx-labs/jobshop", Author: "a b"},
+		{Provider: rpc.BrowseGitHub, Scope: "gfx-labs/jobshop", View: "bogus"},
 		{Provider: rpc.BrowseLinear, Scope: "JOB", View: "bogus"},
 		{Provider: rpc.BrowseLinear, Scope: "JOB", Project: "not an id!"},
 		{Provider: rpc.BrowseLinear, Scope: "JOB", Cursor: strings.Repeat("x", 5000)},
@@ -246,7 +246,7 @@ func TestLinearDetailThreads(t *testing.T) {
 			prs = append(prs, l.URL)
 		}
 	}
-	assert.ElementsMatch(t, []string{"https://github.com/elee1766/jobshop/pull/1097", "https://github.com/elee1766/jobshop/pull/1092"}, prs)
+	assert.ElementsMatch(t, []string{"https://github.com/gfx-labs/jobshop/pull/1097", "https://github.com/gfx-labs/jobshop/pull/1092"}, prs)
 }
 
 func TestGitHubList(t *testing.T) {
@@ -255,7 +255,7 @@ func TestGitHubList(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Items)
 	it := res.Items[0]
-	assert.Equal(t, "elee1766/jobshop#1111", it.Ref)
+	assert.Equal(t, "gfx-labs/jobshop#1111", it.Ref)
 	assert.Equal(t, "#1111", it.ID)
 	assert.Equal(t, "pr", it.Kind)
 	assert.Equal(t, "merged", it.State)
@@ -270,21 +270,21 @@ func TestGitHubSearchQuery(t *testing.T) {
 	r := newRig(t)
 	q := func(p rpc.BrowseListParams) string {
 		t.Helper()
-		p.Scope = "elee1766/jobshop"
+		p.Scope = "gfx-labs/jobshop"
 		p.Provider = rpc.BrowseGitHub
 		_, err := r.List(t.Context(), p)
 		require.NoError(t, err)
 		return r.last.Load().Variables["q"].(string)
 	}
-	assert.Equal(t, "repo:elee1766/jobshop is:pr is:open sort:updated-desc", q(rpc.BrowseListParams{}))
-	assert.Equal(t, "repo:elee1766/jobshop is:issue is:closed is:unmerged sort:updated-desc", q(rpc.BrowseListParams{Kind: "issue", View: "closed"}))
+	assert.Equal(t, "repo:gfx-labs/jobshop is:pr is:open sort:updated-desc", q(rpc.BrowseListParams{}))
+	assert.Equal(t, "repo:gfx-labs/jobshop is:issue is:closed is:unmerged sort:updated-desc", q(rpc.BrowseListParams{Kind: "issue", View: "closed"}))
 	assert.Contains(t, q(rpc.BrowseListParams{Author: "elee-agent[bot]", Kind: "all", View: "all"}), "author:app/elee-agent")
 
 	got := q(rpc.BrowseListParams{Query: "repo:evil/x org:evil -user:a is:private \"quoted\" fix\nbug", View: "all"})
-	assert.True(t, strings.HasPrefix(got, "repo:elee1766/jobshop is:pr "), got)
+	assert.True(t, strings.HasPrefix(got, "repo:gfx-labs/jobshop is:pr "), got)
 	for _, w := range strings.Fields(got) {
 		if strings.HasPrefix(w, "repo:") {
-			assert.Equal(t, "repo:elee1766/jobshop", w, "the typed repo: is not a qualifier")
+			assert.Equal(t, "repo:gfx-labs/jobshop", w, "the typed repo: is not a qualifier")
 		}
 		for _, bad := range []string{"org:", "user:", "is:private"} {
 			assert.NotEqual(t, bad, w[:min(len(w), len(bad))], got)
@@ -296,7 +296,7 @@ func TestGitHubSearchQuery(t *testing.T) {
 
 func TestGitHubDetail(t *testing.T) {
 	r := newRig(t)
-	d, err := r.Show(t.Context(), rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "elee1766/jobshop#1097", Kind: "pr"})
+	d, err := r.Show(t.Context(), rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "gfx-labs/jobshop#1097", Kind: "pr"})
 	require.NoError(t, err)
 	assert.Equal(t, "pr", d.Item.Kind)
 	assert.Equal(t, "merged", d.Item.State)
@@ -490,20 +490,20 @@ func TestProviderErrorCodes(t *testing.T) {
 		r.setFail(func(w http.ResponseWriter) {
 			_, _ = io.WriteString(w, `{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a PullRequest with the number of 9."}]}`)
 		})
-		d, err := r.Show(ctx, rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "elee1766/jobshop#9"})
+		d, err := r.Show(ctx, rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "gfx-labs/jobshop#9"})
 		require.NoError(t, err)
 		assert.Equal(t, rpc.BrowseCodeNotFound, d.Status.Code)
-		assert.Equal(t, "elee1766/jobshop#9", d.Item.Ref, "the reference is kept to show the error against")
+		assert.Equal(t, "gfx-labs/jobshop#9", d.Item.Ref, "the reference is kept to show the error against")
 		assert.NotNil(t, d.Threads)
 	})
 }
 
 func TestBriefSkipsDiscussion(t *testing.T) {
 	r := newRig(t)
-	d, err := r.Show(t.Context(), rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "elee1766/jobshop#1097", Brief: true})
+	d, err := r.Show(t.Context(), rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "gfx-labs/jobshop#1097", Brief: true})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, r.last.Load().Variables["last"], "a brief read asks for the least discussion")
-	assert.Equal(t, "elee1766/jobshop#1097", d.Item.Ref)
+	assert.Equal(t, "gfx-labs/jobshop#1097", d.Item.Ref)
 }
 
 func TestSearchTermAndClip(t *testing.T) {

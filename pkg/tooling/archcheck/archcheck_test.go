@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/tooling/archcheck"
+	"github.com/gfx-labs/jobshop/pkg/tooling/archcheck"
 )
 
 const mod = "example.test/m"

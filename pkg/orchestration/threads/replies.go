@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Replies answers a thread.reply wait (waitengine.ReplySource): a human

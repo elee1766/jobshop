@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // EmbedView is one desk.embeds entry as the browser needs it (JOB-151). The

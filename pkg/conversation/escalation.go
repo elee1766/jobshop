@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/conversation/attention"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/conversation/attention"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Escalation chat (#379). When work is on hold for a human (a run or pool

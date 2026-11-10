@@ -21,14 +21,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest/queue"
-	"github.com/elee1766/jobshop/pkg/orchestration/threads"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest/queue"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/threads"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
 )
 
 // Ingest pipeline tests (#453): one GitHub comment goes through the

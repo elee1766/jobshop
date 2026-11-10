@@ -9,8 +9,8 @@ level (#248, #250). Run from the admin socket.
    working.
 2. `JOBSHOP_SOCKET= jobshop config show | jq '.instances[] | {path,
    prefix, repo: .vars.repo, jobshop_repo: .vars.jobshop_repo}'` lists
-   three instances: selfdev (repo `elee1766/jobshop`), `acphost-` (repo
-   `elee1766/acphost`) and operator (`jobshop_repo: elee1766/jobshop`).
+   three instances: selfdev (repo `gfx-labs/jobshop`), `acphost-` (repo
+   `elee1766/acphost`) and operator (`jobshop_repo: gfx-labs/jobshop`).
 3. Start or pick an operator session (`jobshop send pool:operator --key
    verify:host-operator "list the instances you serve"`, or `jobshop
    session list`). `JOBSHOP_SOCKET= jobshop session prompt <id>` shows

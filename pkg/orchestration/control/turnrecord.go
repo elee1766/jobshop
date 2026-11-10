@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Turn rows (JOB-184). Whether a session runs a turn is otherwise only the

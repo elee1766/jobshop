@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite/sqldb"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite/sqldb"
 )
 
 // Provider-owned slots (#407). See store.Slot.

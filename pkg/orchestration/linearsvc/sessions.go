@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // sessionPoll spaces the agent-session sweep. A delegation or mention

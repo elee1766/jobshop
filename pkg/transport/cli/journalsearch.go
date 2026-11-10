@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // journalCmd is journal search on VictoriaLogs (#530).

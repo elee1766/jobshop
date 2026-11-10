@@ -78,12 +78,12 @@ module names the jobshop checkout as a local replacement:
 // cue.mod/module.cue
 module: "example.local/host@v0"
 language: version: "v0.17.0"
-deps: "github.com/elee1766/jobshop@v0": {v: "v0.0.0", default: true}
+deps: "github.com/gfx-labs/jobshop@v0": {v: "v0.0.0", default: true}
 ```
 
 ```cue
 // cue.mod/local-module.cue
-deps: "github.com/elee1766/jobshop@v0": replaceWith: "/srv/jobshop"
+deps: "github.com/gfx-labs/jobshop@v0": replaceWith: "/srv/jobshop"
 ```
 
 ## 3. Packs list to CUE imports
@@ -106,8 +106,8 @@ packs:
 package host
 
 import (
-	githubpack "github.com/elee1766/jobshop/packs/github"
-	operatorpack "github.com/elee1766/jobshop/packs/operator"
+	githubpack "github.com/gfx-labs/jobshop/packs/github"
+	operatorpack "github.com/gfx-labs/jobshop/packs/operator"
 )
 
 default_project: "js"

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/postgres"
 )
 
 // TestInboxMigrate: 00008 (#579) copies the inbox into the collection

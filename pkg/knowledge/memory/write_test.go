@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/knowledge/memory"
+	"github.com/gfx-labs/jobshop/pkg/knowledge/memory"
 )
 
 func TestTarget(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
 		"global":                 "memory/global.md",
-		"repo/elee1766__jobshop": "memory/repo/elee1766__jobshop.md",
+		"repo/gfx-labs__jobshop": "memory/repo/gfx-labs__jobshop.md",
 		"pool/dev.md":            "memory/pool/dev.md",
 		"skills/rebase":          "skills/rebase/SKILL.md",
 	} {

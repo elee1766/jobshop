@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/orchestration/control/controltest"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control/controltest"
 )
 
 // TestVersionServer: `version --server` prints the controller's commit,

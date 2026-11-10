@@ -1,6 +1,6 @@
 package rpc
 
-import "github.com/elee1766/jobshop/pkg/storage/store"
+import "github.com/gfx-labs/jobshop/pkg/storage/store"
 
 // AutomationListParams selects durable hook invocations for the operator.
 type AutomationListParams struct {

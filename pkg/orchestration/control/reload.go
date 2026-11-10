@@ -11,12 +11,12 @@ import (
 	"github.com/goccy/go-yaml"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/support/redact"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/support/redact"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // liveConfig is the config and the lease parsed from it, swapped as one

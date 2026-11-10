@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 var journalYAML = strings.Replace(scanYAML, "pools:\n", "pools:\n  reader: {agent: fake, dir: %[1]q, admin: [session-journal]}\n", 1)

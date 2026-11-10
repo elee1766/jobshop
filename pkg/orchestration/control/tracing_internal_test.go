@@ -17,9 +17,9 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // tracingYAML has a trigger with a check command and a Linear intake

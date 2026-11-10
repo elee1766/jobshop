@@ -9,8 +9,8 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // Injection dedup (#397): a session that keeps its conversation already

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/writekey"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Idempotency keys for tracker writes (#280). The CLI claims a key before

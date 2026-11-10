@@ -7,10 +7,10 @@ import (
 	"context"
 	"os"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	"github.com/elee1766/jobshop/pkg/transport/cli"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	"github.com/gfx-labs/jobshop/pkg/transport/cli"
 )
 
 func main() {

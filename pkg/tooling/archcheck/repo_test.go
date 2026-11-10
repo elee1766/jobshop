@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/tooling/archcheck"
+	"github.com/gfx-labs/jobshop/pkg/tooling/archcheck"
 )
 
 type loadedGraph struct {
@@ -54,7 +54,7 @@ func TestRepository(t *testing.T) {
 // appear in `go list`, and expects the real rules to name each one.
 func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 	t.Parallel()
-	const m = "github.com/elee1766/jobshop/"
+	const m = "github.com/gfx-labs/jobshop/"
 	cases := []struct {
 		name     string
 		from, to string
@@ -125,7 +125,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 func TestRepositoryLegitimateTestHarnessEdgesPass(t *testing.T) {
 	t.Parallel()
 	g := repoGraph(t)
-	const m = "github.com/elee1766/jobshop/"
+	const m = "github.com/gfx-labs/jobshop/"
 	for _, h := range []string{"pkg/storage/store/storetest", "pkg/orchestration/control/controltest"} {
 		var testImporters int
 		for _, p := range g.Pkgs {

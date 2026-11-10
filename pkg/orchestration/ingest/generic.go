@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // SourceGeneric is any other HMAC-signed JSON sender (#399).

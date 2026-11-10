@@ -3,7 +3,7 @@
 After a deploy that includes #183, on gasserver:
 
 1. `jobshop ticket list --kind run | jq -r '.[] | select(.meta.github) | "\(.id) \(.meta.github)"'`
-   Every line has `"repo":"elee1766/jobshop"`, including runs created
+   Every line has `"repo":"gfx-labs/jobshop"`, including runs created
    before the deploy (the startup backfill).
 2. The controller journal has `backfilled meta.github.repo` once, on the
    first start after the deploy, and not on later restarts.

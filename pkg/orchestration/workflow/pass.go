@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // Pass caches provider reads within one evaluation pass, so waits on one

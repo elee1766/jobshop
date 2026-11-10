@@ -13,10 +13,10 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver "pgx"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
-	"github.com/elee1766/jobshop/pkg/storage/store/storetest"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/postgres"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storetest"
 )
 
 // dsnEnv names a server the tests may create databases on. Unset, the

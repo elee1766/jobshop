@@ -8,7 +8,7 @@ import (
 )
 
 // docsBase is where `jobshop docs` links point.
-const docsBase = "https://github.com/elee1766/jobshop"
+const docsBase = "https://github.com/gfx-labs/jobshop"
 
 // docTopics lists `jobshop docs` topics in print order. Each link is a
 // path in the repo; a trailing slash is a directory (tree/, not blob/).

@@ -12,7 +12,7 @@ import (
 	msqlite "modernc.org/sqlite" // database/sql driver "sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 //go:embed migrations/*.sql

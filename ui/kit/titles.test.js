@@ -14,11 +14,11 @@ test('plain titles are one text part, unchanged', () => {
 });
 
 test('GitHub and Linear links become link parts with readable text', () => {
-  const parsed = parseTitle('Review [jobshop#1021](https://github.com/elee1766/jobshop/pull/1021) for [JOB-117](https://linear.app/gfx-labs/issue/JOB-117)');
+  const parsed = parseTitle('Review [jobshop#1021](https://github.com/gfx-labs/jobshop/pull/1021) for [JOB-117](https://linear.app/gfx-labs/issue/JOB-117)');
   assert.equal(parsed.text, 'Review jobshop#1021 for JOB-117');
   assert.deepEqual(parsed.parts, [
     { text: 'Review ' },
-    { text: 'jobshop#1021', link: { href: 'https://github.com/elee1766/jobshop/pull/1021', external: true } },
+    { text: 'jobshop#1021', link: { href: 'https://github.com/gfx-labs/jobshop/pull/1021', external: true } },
     { text: ' for ' },
     { text: 'JOB-117', link: { href: 'https://linear.app/gfx-labs/issue/JOB-117', external: true } },
   ]);

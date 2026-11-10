@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/desk"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/desk"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 type deskCmd struct {

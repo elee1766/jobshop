@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 func TestIdentityConfig(t *testing.T) {
@@ -14,12 +14,12 @@ func TestIdentityConfig(t *testing.T) {
 projects:
   js: {identities: [gh]}
 identities:
-  gh: {kind: github-app, app_id: 1, private_key_file: /k, installations: {elee1766: 5}, repos: ["elee1766/*"]}
+  gh: {kind: github-app, app_id: 1, private_key_file: /k, installations: {gfx-labs: 5}, repos: ["gfx-labs/*"]}
   lin: {kind: linear, token_file: /t, workspace: w, teams: [ENG]}
 `
 	c, err := config.Parse([]byte(ok))
 	require.NoError(t, err)
-	n, found := c.IdentityFor([]string{"gh", "lin"}, "elee1766/jobshop")
+	n, found := c.IdentityFor([]string{"gh", "lin"}, "gfx-labs/jobshop")
 	assert.True(t, found)
 	assert.Equal(t, "gh", n)
 	n, _ = c.IdentityFor([]string{"gh", "lin"}, "ENG")

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/storage/journal"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
 )
 
 // TestJournalsMigrate: journal rows in the shared recall index are in

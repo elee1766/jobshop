@@ -5,9 +5,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // reapOrphans stops hosts whose session is not open: leftovers from a crash

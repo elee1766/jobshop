@@ -10,7 +10,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // OpenTool is a running tool call's title and what it acts on.

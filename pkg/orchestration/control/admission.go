@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest/queue"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest/queue"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Ingest admission (#348): the controller's half. The hook runner, the

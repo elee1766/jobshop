@@ -10,9 +10,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 var linearID = regexp.MustCompile(`^[0-9a-fA-F-]{8,64}$`)

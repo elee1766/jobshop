@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/conversation/attention"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/conversation/attention"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Attention opens the chat that resolves it (#535). A click on an item

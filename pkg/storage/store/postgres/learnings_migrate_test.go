@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/postgres"
 )
 
 // TestLearningsMigrate: 00007 (#579) copies learnings into the

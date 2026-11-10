@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
 )
 
 // LinearClient picks the Linear identity covering the team, shares one

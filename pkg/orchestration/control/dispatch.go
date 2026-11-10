@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest/queue"
-	"github.com/elee1766/jobshop/pkg/orchestration/threads"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest/queue"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/threads"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/writekey"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Ingest dispatch (#442, docs/notes/442-ingest-dispatch.md). Pollers only

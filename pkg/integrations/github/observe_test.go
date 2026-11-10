@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
 )
 
 func TestNewestRun(t *testing.T) {

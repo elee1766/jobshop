@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // wait (#381): park a ticket until outside state holds.

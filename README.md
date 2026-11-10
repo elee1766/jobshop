@@ -1,9 +1,9 @@
 # jobshop
 
-[![CI](https://github.com/elee1766/jobshop/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/elee1766/jobshop/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/elee1766/jobshop.svg)](https://pkg.go.dev/github.com/elee1766/jobshop)
+[![CI](https://github.com/gfx-labs/jobshop/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/gfx-labs/jobshop/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gfx-labs/jobshop.svg)](https://pkg.go.dev/github.com/gfx-labs/jobshop)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Go 1.27](https://img.shields.io/github/go-mod/go-version/elee1766/jobshop)](go.mod)
+[![Go 1.27](https://img.shields.io/github/go-mod/go-version/gfx-labs/jobshop)](go.mod)
 
 > Agents: start at [llm/README.md](llm/README.md).
 
@@ -72,9 +72,9 @@ Shipped in [`packs/`](packs/):
   curator turns them into learnings later sessions recall.
 
 ## Quick start
-Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
+Linux binaries are on [Releases](https://github.com/gfx-labs/jobshop/releases), or `nix run github:gfx-labs/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
-nix profile add github:elee1766/jobshop
+nix profile add github:gfx-labs/jobshop
 jobshop init ./root
 ```
 
@@ -114,12 +114,12 @@ The rest is in [docs/running.md](docs/running.md).
 | [docs/ingest.md](docs/ingest.md) | Webhooks and generic ingest |
 | [docs/nixos.md](docs/nixos.md) | NixOS module |
 | [docs/desk-plugins.md](docs/desk-plugins.md) | Desk API client and migration from plugins |
-| [docs/plan.md](docs/plan.md) | Design archive up to 2026-11-05 (frozen); later decisions are on [#569](https://github.com/elee1766/jobshop/issues/569) |
+| [docs/plan.md](docs/plan.md) | Design archive up to 2026-11-05 (frozen); later decisions are on [#569](https://github.com/gfx-labs/jobshop/issues/569) |
 | [docs/layout.md](docs/layout.md) | Packages, dependencies, build and deployment |
 | [docs/data-model.md](docs/data-model.md) | Tables and queries |
 | [docs/notes/](docs/notes/) | Behavior as built, one note per change |
 | [docs/verify/](docs/verify/) | Runbook checks against a live host |
-| [`target` issues](https://github.com/elee1766/jobshop/issues?q=is%3Aopen+label%3Atarget) | Progress |
+| [`target` issues](https://github.com/gfx-labs/jobshop/issues?q=is%3Aopen+label%3Atarget) | Progress |
 
 ## Develop
 

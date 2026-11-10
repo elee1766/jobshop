@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/elee1766/jobshop/pkg/transport/rpc"
+import "github.com/gfx-labs/jobshop/pkg/transport/rpc"
 
 type automationCmd struct {
 	List automationListCmd `cmd:"" help:"List durable hook invocations, newest first (admin)."`

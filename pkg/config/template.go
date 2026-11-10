@@ -1,8 +1,8 @@
 package config
 
 import (
-	"github.com/elee1766/jobshop/pkg/pack"
-	"github.com/elee1766/jobshop/pkg/pack/tmpl"
+	"github.com/gfx-labs/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack/tmpl"
 )
 
 // Config values such as step titles, check commands and escalation prompts

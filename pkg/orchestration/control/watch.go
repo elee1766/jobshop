@@ -9,7 +9,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // configWatcher reloads the config after jobshop.yaml, an include or a

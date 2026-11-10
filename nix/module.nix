@@ -361,7 +361,7 @@ let
         url = lib.mkOption {
           type = lib.types.str;
           default = "";
-          example = "https://github.com/elee1766/jobshop.git";
+          example = "https://github.com/gfx-labs/jobshop.git";
           description = "Repo cloned once into dir before the controller starts; pools use it as `repo`. Empty: no clone.";
         };
         dir = lib.mkOption {
@@ -1113,7 +1113,7 @@ in
       example = lib.literalExpression ''
         {
           jobshop = {
-            url = "https://github.com/elee1766/jobshop.git";
+            url = "https://github.com/gfx-labs/jobshop.git";
             livePacks = [ "packs/selfdev" ];
             followInstalled = true;
           };

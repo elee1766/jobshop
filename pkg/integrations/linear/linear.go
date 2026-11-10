@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/internal/transport"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/internal/transport"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // DefaultAPIURL is Linear's GraphQL endpoint.

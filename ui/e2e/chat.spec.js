@@ -16,7 +16,7 @@ test('named chat streams, survives reload, archives and restores', async ({ page
     await page.getByRole('button', { name: 'new', exact: true }).click();
     await page.getByRole('textbox', { name: 'name', exact: true }).fill(name);
     await page.getByRole('textbox', { name: 'name', exact: true }).press('Enter');
-    await page.getByRole('textbox', { name: /^First message to new chat:/ }).fill('Desk browser check. Reply with PONG, the Markdown link [Jobshop issue](https://github.com/elee1766/jobshop/issues/625), and the bare URL https://linear.app/acme/issue/ENG-2. Do not put the links in code spans or code fences. Do not use tools.');
+    await page.getByRole('textbox', { name: /^First message to new chat:/ }).fill('Desk browser check. Reply with PONG, the Markdown link [Jobshop issue](https://github.com/gfx-labs/jobshop/issues/625), and the bare URL https://linear.app/acme/issue/ENG-2. Do not put the links in code spans or code fences. Do not use tools.');
     const created = page.waitForResponse((response) => response.url().endsWith('/api/chat/manage') && response.request().method() === 'POST');
     await page.getByRole('textbox', { name: /^First message to new chat:/ }).press('Enter');
     const response = await created;
@@ -24,7 +24,7 @@ test('named chat streams, survives reload, archives and restores', async ({ page
     id = (await response.json()).id;
     await expect(page.getByRole('button', { name: 'Choose chat', exact: true })).toContainText(name);
     await expect(page.locator('.transcript .markdown')).toContainText('PONG', { timeout: 180_000 });
-    await expect(page.locator('.transcript .markdown').getByRole('link', { name: 'Jobshop issue', exact: true })).toHaveAttribute('href', 'https://github.com/elee1766/jobshop/issues/625');
+    await expect(page.locator('.transcript .markdown').getByRole('link', { name: 'Jobshop issue', exact: true })).toHaveAttribute('href', 'https://github.com/gfx-labs/jobshop/issues/625');
     await expect(page.locator('.transcript .markdown a[href="https://linear.app/acme/issue/ENG-2"]')).toBeVisible();
     const composer = page.getByRole('textbox', { name: 'to ' + name, exact: true });
     await composer.fill(`Reply with only this Markdown link: [This session](jobshop://session/${id}). Do not use tools.`);

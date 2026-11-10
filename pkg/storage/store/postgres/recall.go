@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // defaultRecallLimit bounds Recall when no limit is given.

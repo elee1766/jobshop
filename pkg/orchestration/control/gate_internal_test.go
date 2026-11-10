@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // TestCuratorGate: applying a curator PR records a memory edit with a
@@ -36,7 +36,7 @@ func TestCuratorGate(t *testing.T) {
 	id1 := l1.(domain.Learning).ID
 	clk.advance(time.Hour)
 
-	const pr = "https://github.com/elee1766/jobshop/pull/900"
+	const pr = "https://github.com/gfx-labs/jobshop/pull/900"
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, PR: pr})
 	require.NoError(t, err)
 	edits, err := knowledge.ListEdits(ctx, c.store, "", 0)
@@ -117,7 +117,7 @@ func TestCuratorGateAge(t *testing.T) {
 	l, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: domain.LearningWorkaround, Summary: "retry gh on 502", Scope: "pool:dev"})
 	require.NoError(t, err)
 	id := l.(domain.Learning).ID
-	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id}, Status: domain.LearningApplied, PR: "https://github.com/elee1766/jobshop/pull/901"})
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id}, Status: domain.LearningApplied, PR: "https://github.com/gfx-labs/jobshop/pull/901"})
 	require.NoError(t, err)
 
 	w := config.EditsWhen{Age: "72h"}

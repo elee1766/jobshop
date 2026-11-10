@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Store is the part of the store learnings and memory edits need.

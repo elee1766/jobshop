@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
 )
 
 // skipNoACL skips where the temp filesystem has no POSIX ACLs, or the

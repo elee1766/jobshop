@@ -3,7 +3,7 @@ package control
 import (
 	"github.com/elee1766/acphost/pkg/proc"
 
-	"github.com/elee1766/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
 )
 
 // stopHost asks a host to stop (it forwards SIGTERM to the agent's group),

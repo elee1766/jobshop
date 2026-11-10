@@ -8,9 +8,9 @@ import (
 	"github.com/elee1766/acphost/pkg/cgroup"
 	"github.com/elee1766/acphost/pkg/sandbox"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	execsandbox "github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	execsandbox "github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // The sandbox spec is built by execsandbox.BuildSandbox from config; the

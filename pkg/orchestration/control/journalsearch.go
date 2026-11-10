@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/journal"
-	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal/ship"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // grantJournalSearch lets a pool search its own project's journals.

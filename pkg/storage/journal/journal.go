@@ -20,8 +20,8 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/support/redact"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/support/redact"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // Prompt _meta keys the controller sets on session/prompt. The shipper

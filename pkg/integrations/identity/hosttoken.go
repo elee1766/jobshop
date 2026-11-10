@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // hostTokenTTL is how long HostToken keeps a token before reading it again.

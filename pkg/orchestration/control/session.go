@@ -27,18 +27,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/conversation"
-	"github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/orchestration/slotprovider"
-	"github.com/elee1766/jobshop/pkg/storage/journal"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/logctx"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/conversation"
+	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/slotprovider"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/logctx"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 const (

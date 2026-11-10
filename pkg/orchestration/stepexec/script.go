@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	packcue "github.com/elee1766/jobshop/pkg/pack/cue"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	packcue "github.com/gfx-labs/jobshop/pkg/pack/cue"
 )
 
 // Script steps (JOB-124): a Starlark step function the controller runs

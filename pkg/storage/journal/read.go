@@ -25,8 +25,8 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 const (

@@ -7,9 +7,9 @@ import (
 
 	"github.com/nullism/bqb"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	sqldb "github.com/elee1766/jobshop/pkg/storage/store/postgres/pgdb"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	sqldb "github.com/gfx-labs/jobshop/pkg/storage/store/postgres/pgdb"
 )
 
 // Ticket reads built in Go (#579 step 3): List builds its WHERE from the

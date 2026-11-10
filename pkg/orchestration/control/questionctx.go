@@ -3,9 +3,9 @@ package control
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/conversation/question"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/conversation/question"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // questionContext is the asker's context followed by the links and

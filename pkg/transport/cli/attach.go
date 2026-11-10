@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // stdin is swapped by tests.

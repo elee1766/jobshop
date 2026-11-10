@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/knowledge/memory"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/knowledge/memory"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // The mechanics of curation. pkg/orchestration/control decides who may write memory,

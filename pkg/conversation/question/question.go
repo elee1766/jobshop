@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 const (

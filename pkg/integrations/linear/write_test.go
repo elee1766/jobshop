@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // writeServer is a fake Linear GraphQL server that keeps created issues,

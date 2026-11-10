@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/clock"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/clock"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 const scriptStepHooks = `def begin(run):

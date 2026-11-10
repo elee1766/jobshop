@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // identityCmd exposes the controller's identities (#200).

@@ -14,9 +14,9 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/automation"
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // Program pins loaded source, credentials, authority, and the prompt asset root.

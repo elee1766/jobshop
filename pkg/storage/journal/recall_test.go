@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/storage/journal"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
 )
 
 // TestRecall: journal summaries rank a short focused match first, a

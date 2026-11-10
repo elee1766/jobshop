@@ -60,7 +60,7 @@ let
 
   two = eval {
     workspaces.jobshop = {
-      url = "https://github.com/elee1766/jobshop.git";
+      url = "https://github.com/gfx-labs/jobshop.git";
       livePacks = [ "packs/selfdev" ];
       followInstalled = true;
     };
@@ -91,7 +91,7 @@ let
   # The old option, as gasserver sets it.
   legacy = eval {
     workspace = {
-      url = "https://github.com/elee1766/jobshop.git";
+      url = "https://github.com/gfx-labs/jobshop.git";
       livePacks = [ "packs/selfdev" ];
       followInstalled = true;
     };
@@ -316,7 +316,7 @@ let
     dataDir = "/srv/jobshop";
     restrictEgress = false;
     workspaces.jobshop = {
-      url = "https://github.com/elee1766/jobshop.git";
+      url = "https://github.com/gfx-labs/jobshop.git";
       livePacks = [ "packs/selfdev" ];
       followInstalled = true;
     };
@@ -464,14 +464,14 @@ let
         start = c: c.config.systemd.services.jobshop.serviceConfig.ExecStart;
         more = eval {
           workspaces.jobshop = {
-            url = "https://github.com/elee1766/jobshop.git";
+            url = "https://github.com/gfx-labs/jobshop.git";
             livePacks = [ "packs/selfdev" ];
             livePackVars.dev_sessions = 8;
           };
         };
         base = eval {
           workspaces.jobshop = {
-            url = "https://github.com/elee1766/jobshop.git";
+            url = "https://github.com/gfx-labs/jobshop.git";
             livePacks = [ "packs/selfdev" ];
             livePackVars.dev_sessions = 4;
           };

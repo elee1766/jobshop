@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Helpers over List for common shapes (#579: helpers wrap the interface

@@ -17,7 +17,7 @@ import (
 )
 
 // Scope is the instrumentation scope name for jobshop's tracer and logger.
-const Scope = "github.com/elee1766/jobshop"
+const Scope = "github.com/gfx-labs/jobshop"
 
 // Tracing owns the tracer provider and, with an OTLP endpoint, the log
 // provider behind the slog bridge.

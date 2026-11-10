@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Socket is a Controller that dials the admin socket per call, so a

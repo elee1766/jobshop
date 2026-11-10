@@ -1,8 +1,8 @@
 {
   "item": {
     "provider": "github",
-    "scope": "elee1766/jobshop",
-    "ref": "elee1766/jobshop#1097",
+    "scope": "gfx-labs/jobshop",
+    "ref": "gfx-labs/jobshop#1097",
     "id": "#1097",
     "kind": "pr",
     "title": "feat(desk): migrate Desk to React, Jotai, Wouter and Tailwind (JOB-150)",
@@ -13,7 +13,7 @@
     "checks": "pass",
     "labels": [],
     "updated_at": "2026-11-09T01:16:05Z",
-    "url": "https://github.com/elee1766/jobshop/pull/1097"
+    "url": "https://github.com/gfx-labs/jobshop/pull/1097"
   },
   "body": "Refs JOB-150. Delivers the full migration; the issue stays open until review checks its whole acceptance list. Ports Desk from Svelte to React, Jotai, Wouter and Tailwind with Base UI, TanStack Virtual and Hotkeys, Fuse, Oxlint and Oxfmt, and removes Svelte. Go, the API and the SSE contract are unchanged.\n\nBehavior: the URL contract (query state, #waiting and #inflight), one api/live connection per tab, native confirm and prompt, and the e2e class, id and role locators are kept. Wait edges and external graph nodes from #1095 are ported with a mocked-stream spec.\n\nBudgets (docs/notes/JOB-150-desk-react-port.md, worst of three): every runtime, resource and tooling budget is met. JS is 189.3 KB gzip against a 190 KB ceiling, so that one has almost no headroom. Trace, learn and sys are lazy chunks preloaded when idle.\n\nOxc compiler: experimental, off by default (DESK_COMPILER=1). It builds and passes the e2e suite but adds about 16 KB gzip, over budget, so it is not on. TanStack Virtual is skipped by the compiler in Transcript only.\n\nTested: tsc, Oxlint, Oxfmt, 18 unit tests, go build, vet, test, golangci-lint, nix build .#jobshop, e2e on desktop and mobile (65 passed, 7 skipped, the same real-agent skips as the baseline) and behind a path prefix.\n\nRollback: revert the cutover commits and rebuild. nix/desk-ui.nix has a new npmDepsHash and fileset, and CI runs check, unit tests and build.\n",
   "props": {
@@ -38,14 +38,14 @@
     {
       "id": "IC_kwDOVevQxc8AAAABkSFl-g",
       "kind": "comment",
-      "url": "https://github.com/elee1766/jobshop/pull/1097#issuecomment-6729852410",
+      "url": "https://github.com/gfx-labs/jobshop/pull/1097#issuecomment-6729852410",
       "comments": [
         {
           "id": "IC_kwDOVevQxc8AAAABkSFl-g",
           "author": "linear-code",
           "bot": true,
           "at": "2026-11-09T01:10:19Z",
-          "url": "https://github.com/elee1766/jobshop/pull/1097#issuecomment-6729852410",
+          "url": "https://github.com/gfx-labs/jobshop/pull/1097#issuecomment-6729852410",
           "body": "\u003c!-- linear-linkback --\u003e\n\u003cp\u003e\u003ca href=\"https://linear.app/gfx-labs/issue/JOB-150\"\u003eJOB-150\u003c/a\u003e\u003c/p\u003e"
         }
       ]
@@ -508,35 +508,35 @@
     {
       "name": "nix",
       "state": "pass",
-      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925271837",
+      "url": "https://github.com/gfx-labs/jobshop/actions/runs/42544109487/job/128925271837",
       "started_at": "2026-11-09T01:10:27Z",
       "seconds": 101
     },
     {
       "name": "pr-title",
       "state": "pass",
-      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109462/job/128925273115",
+      "url": "https://github.com/gfx-labs/jobshop/actions/runs/42544109462/job/128925273115",
       "started_at": "2026-11-09T01:10:19Z",
       "seconds": 3
     },
     {
       "name": "pr-title",
       "state": "pass",
-      "url": "https://github.com/elee1766/jobshop/actions/runs/42544120885/job/128925306576",
+      "url": "https://github.com/gfx-labs/jobshop/actions/runs/42544120885/job/128925306576",
       "started_at": "2026-11-09T01:10:26Z",
       "seconds": 4
     },
     {
       "name": "ui",
       "state": "pass",
-      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925271649",
+      "url": "https://github.com/gfx-labs/jobshop/actions/runs/42544109487/job/128925271649",
       "started_at": "2026-11-09T01:10:26Z",
       "seconds": 16
     },
     {
       "name": "go",
       "state": "pass",
-      "url": "https://github.com/elee1766/jobshop/actions/runs/42544109487/job/128925395705",
+      "url": "https://github.com/gfx-labs/jobshop/actions/runs/42544109487/job/128925395705",
       "started_at": "2026-11-09T01:12:46Z",
       "seconds": 82
     }

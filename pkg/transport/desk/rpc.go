@@ -9,10 +9,10 @@ import (
 	"path"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
-	"github.com/elee1766/jobshop/pkg/transport/rpc/rpcschema"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc/rpcschema"
 )
 
 // Generic RPC for clients (#517): POST /api/rpc/{method} forwards to the

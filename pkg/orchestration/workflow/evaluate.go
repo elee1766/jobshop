@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
 )
 
 // Decision is the outcome of evaluating one wait against a Pass. It is

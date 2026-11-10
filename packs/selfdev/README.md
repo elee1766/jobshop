@@ -6,7 +6,7 @@ Jobshop's values, through `pack.cue`:
 
 | github var | selfdev value |
 | --- | --- |
-| `repo` | `elee1766/jobshop` |
+| `repo` | `gfx-labs/jobshop` |
 | `checkout` | this pack's `repo` var (the host checkout) |
 | `human` | `elee1766` |
 | `check_cmd` | `go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')` |
@@ -19,7 +19,7 @@ Jobshop's values, through `pack.cue`:
 
 | Var | Meaning |
 | --- | --- |
-| `repo` | Main checkout of github.com/elee1766/jobshop; sessions get worktrees of it |
+| `repo` | Main checkout of github.com/gfx-labs/jobshop; sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `learn_sessions` | `max_sessions` for the curator's `learn` pool. Default 1 |
@@ -33,7 +33,7 @@ packs:
     vars: {repo: /var/lib/jobshop/src/jobshop, agent: jcode, dev_sessions: 2}
   # The operator chat pool is host-level, included once (#248).
   - path: /var/lib/jobshop/src/jobshop/packs/operator
-    vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
+    vars: {jobshop_repo: gfx-labs/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
 agents:
   # jcode's own memory is off: learnings come from jobshop (#320).
   jcode: {command: jcode, args: [acp], env: {JCODE_MEMORY_ENABLED: "0"}}
@@ -49,7 +49,7 @@ The pack is CUE. A root CUE file in the module tree composes it:
 ```cue
 package city
 
-import selfdevpack "github.com/elee1766/jobshop/packs/selfdev"
+import selfdevpack "github.com/gfx-labs/jobshop/packs/selfdev"
 
 packs: selfdev: selfdevpack.#Pack & {
 	path: "packs/selfdev"
@@ -65,7 +65,7 @@ offline, so the root file lives in the module tree containing `cue.mod`,
 relative to the including root file.
 
 `#Config.repo` is the checkout path; the GitHub pack's `vars.repo` is
-`elee1766/jobshop` and `vars.checkout` the checkout. With `prefix: ""`
+`gfx-labs/jobshop` and `vars.checkout` the checkout. With `prefix: ""`
 names are unchanged; a nonempty prefix renames local references.
 
 `curate`, `evaluate` and `live-check` are Starlark workflows

@@ -5,8 +5,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // startTelemetry builds a long-running command's logger and tracer from

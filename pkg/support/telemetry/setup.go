@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/elee1766/jobshop/pkg/support/logctx"
+	"github.com/gfx-labs/jobshop/pkg/support/logctx"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 )

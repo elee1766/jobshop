@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/elee1766/jobshop/pkg/support/logctx"
+	"github.com/gfx-labs/jobshop/pkg/support/logctx"
 )
 
 func TestHandlerAddsContextAttrs(t *testing.T) {

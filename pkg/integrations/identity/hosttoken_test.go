@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
 )
 
 // A cached token is kept until the API refuses it, then read again.

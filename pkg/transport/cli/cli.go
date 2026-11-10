@@ -11,13 +11,13 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
-// Set at build time with -ldflags "-X github.com/elee1766/jobshop/pkg/transport/cli.version=...".
+// Set at build time with -ldflags "-X github.com/gfx-labs/jobshop/pkg/transport/cli.version=...".
 var (
 	version = "dev"
 	commit  = "unknown"

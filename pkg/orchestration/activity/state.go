@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // File is the cache file name under the controller root.

@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
 )
 
 // rulesController is a Controller with a store and the given config, for
@@ -126,7 +126,7 @@ func TestRuleCommand(t *testing.T) {
 	ctx := t.Context()
 	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: domain.KindTask, Title: "x", Pool: "dev",
-		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":205}}`),
+		Meta: json.RawMessage(`{"github":{"repo":"gfx-labs/jobshop","issue":205}}`),
 	})
 
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestRuleCommand(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &ev))
 	assert.Equal(t, RuleEvent{
 		Rule: "echo", At: config.RuleTurn, Session: "js-s", Pool: "dev", Agent: "fake", Project: "js",
-		Turn: turnTicket, Ticket: tk.ID, Repo: "elee1766/jobshop",
+		Turn: turnTicket, Ticket: tk.ID, Repo: "gfx-labs/jobshop",
 	}, ev)
 
 	out := logs.b.String()
@@ -160,7 +160,7 @@ func TestRuleMemory(t *testing.T) {
 	mem := t.TempDir()
 	for p, s := range map[string]string{
 		"memory/global.md":                 "GLOBAL-MEM",
-		"memory/repo/elee1766__jobshop.md": "REPO-MEM",
+		"memory/repo/gfx-labs__jobshop.md": "REPO-MEM",
 		"memory/pool/dev.md":               "DEV-MEM " + strings.Repeat("x", 50),
 		"skills/logs/SKILL.md":             "---\nname: logs\ndescription: Read host logs\n---\n",
 	} {
@@ -175,7 +175,7 @@ func TestRuleMemory(t *testing.T) {
 	ctx := t.Context()
 	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: domain.KindTask, Title: "x", Pool: "dev",
-		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":266}}`),
+		Meta: json.RawMessage(`{"github":{"repo":"gfx-labs/jobshop","issue":266}}`),
 	})
 
 	require.NoError(t, err)

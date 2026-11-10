@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/tooling/runbook"
+	"github.com/gfx-labs/jobshop/pkg/tooling/runbook"
 )
 
 // runbookCmd is `jobshop runbook` (#635). It runs locally: it reads a

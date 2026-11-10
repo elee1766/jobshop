@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/journal"
-	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/redact"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal/ship"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/redact"
 )
 
 // shipper is the journal shipper (#530, pkg/storage/journal/ship), made on

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Labels the signals read. The controller uses them too.

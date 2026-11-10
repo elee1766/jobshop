@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Collections (#579, docs/notes/579-collections.md) are named buckets of

@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Create inserts one ticket. A helper over Apply (#579), not a Store

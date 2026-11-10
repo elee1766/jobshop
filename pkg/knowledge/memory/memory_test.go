@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/knowledge/memory"
+	"github.com/gfx-labs/jobshop/pkg/knowledge/memory"
 )
 
 func write(t *testing.T, dir string, files map[string]string) {
@@ -25,12 +25,12 @@ func TestScopes(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		"memory/global.md":                 "G",
-		"memory/repo/elee1766__jobshop.md": "R",
+		"memory/repo/gfx-labs__jobshop.md": "R",
 		"memory/repo/other__x.md":          "OTHER",
 		"memory/pool/dev.md":               "P",
 		"memory/pool/plan.md":              "PLAN",
 	})
-	files, err := memory.Files(dir, memory.Scope{Repo: "elee1766/jobshop", Pool: "dev"}, 0)
+	files, err := memory.Files(dir, memory.Scope{Repo: "gfx-labs/jobshop", Pool: "dev"}, 0)
 	require.NoError(t, err)
 	var got []string
 	for _, f := range files {

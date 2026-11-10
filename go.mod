@@ -1,4 +1,4 @@
-module github.com/elee1766/jobshop
+module github.com/gfx-labs/jobshop
 
 go 1.27.3
 

@@ -6,11 +6,11 @@ import (
 	"path"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/orchestration/triggers"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/triggers"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Learnings (#264). Agents record corrections, failures and workarounds

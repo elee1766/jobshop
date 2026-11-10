@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
 )
 
 // commentReader answers like the controller: a "comments" list only when

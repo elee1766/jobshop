@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
 	"go.starlark.net/starlark"
 )
 

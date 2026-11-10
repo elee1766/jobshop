@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/support/redact"
+	"github.com/gfx-labs/jobshop/pkg/support/redact"
 )
 
 func TestMapper(t *testing.T) {

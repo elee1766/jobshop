@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/support/logctx"
+	"github.com/gfx-labs/jobshop/pkg/support/logctx"
 )
 
 // LogFlags set the level and format of the log handler shared by serve,

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // apiClients holds one client per identity, shared by every caller in the

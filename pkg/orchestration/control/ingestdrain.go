@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Ingest drain RPCs (#335, #679, docs/notes/679-ingest-queue.md). The

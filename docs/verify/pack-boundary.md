@@ -4,8 +4,8 @@ Run in the source checkout. No host state is touched.
 
 ```sh
 go run ./pkg/tooling/archcheck/cmd/archcheck
-go list -deps ./pkg/pack/cue | grep elee1766/jobshop      # only pkg/pack/cue
-go list -deps ./pkg/pack | grep elee1766/jobshop          # pack, pack/cue, pack/tmpl
+go list -deps ./pkg/pack/cue | grep gfx-labs/jobshop      # only pkg/pack/cue
+go list -deps ./pkg/pack | grep gfx-labs/jobshop          # pack, pack/cue, pack/tmpl
 go test ./pkg/pack/... ./pkg/config/... ./pkg/orchestration/hooks/...
 go run ./cmd/jobshop config check --file pkg/config/testdata/cue-starlark-example/jobshop.yaml
 ```

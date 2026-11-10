@@ -11,7 +11,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/pack/tmpl"
+	"github.com/gfx-labs/jobshop/pkg/pack/tmpl"
 )
 
 // maxDepth bounds extends chains so a cycle fails instead of looping.

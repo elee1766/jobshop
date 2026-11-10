@@ -14,8 +14,8 @@ import (
 
 	"github.com/elee1766/acphost/pkg/proc"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // ExitNotYet is the command exit code for "not yet, retry after

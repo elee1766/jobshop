@@ -14,8 +14,8 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
 )
 
 // detachedHostDir writes a spec for a fake-agent host in a fresh session

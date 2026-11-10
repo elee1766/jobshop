@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // The curator gate's judgement (#274), moved out of pkg/orchestration/control by the

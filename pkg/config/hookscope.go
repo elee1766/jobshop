@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // HookScope records every pool and workflow reference owner's callbacks

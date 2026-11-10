@@ -6,9 +6,9 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Identities (#200). The controller holds the App keys and Linear token

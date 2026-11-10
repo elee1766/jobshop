@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // fakeReverts is fakeActivity plus the PR reads revert detection needs.
@@ -36,7 +36,7 @@ func (f *fakeReverts) CommitPulls(_ context.Context, _, sha string) ([]int, erro
 	return f.commits[sha], nil
 }
 
-const revRepo = "elee1766/jobshop"
+const revRepo = "gfx-labs/jobshop"
 
 func mergeItem(id string, n int, at time.Time) rpc.ActivityItem {
 	return ghItem(revRepo, id, "merge", "elee1766", fmt.Sprint(n), at)
@@ -55,13 +55,13 @@ func TestRevertLearning(t *testing.T) {
 	now := clk.now()
 	run := mkTicket(t, c, store.NewTicket{
 		Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"done"}`),
-		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":265}}`),
+		Meta: json.RawMessage(`{"github":{"repo":"gfx-labs/jobshop","issue":265}}`),
 	})
 	step := mkTicket(t, c, store.NewTicket{
 		Kind: domain.KindStep, Title: "implement", ParentID: run.ID,
 		Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`),
 	})
-	_, err := store.AddComment(t.Context(), c.store, "s1", step.ID, "PR https://github.com/elee1766/jobshop/pull/268 head abc")
+	_, err := store.AddComment(t.Context(), c.store, "s1", step.ID, "PR https://github.com/gfx-labs/jobshop/pull/268 head abc")
 	require.NoError(t, err)
 
 	src := &fakeReverts{
@@ -69,10 +69,10 @@ func TestRevertLearning(t *testing.T) {
 		prs: map[int]github.Pull{
 			268: {Number: 268, Title: "recall (#265)", Merged: true, MergeCommitSHA: "aaaa1111bbbb"},
 			270: {Number: 270, Title: "other fix", Body: "plain change", Merged: true, MergeCommitSHA: "cccc"},
-			271: {Number: 271, Title: `Revert "recall (#265)"`, Body: "This reverts commit aaaa1111bbbb.\n\nbroke deploy", Merged: true, HTMLURL: "https://github.com/elee1766/jobshop/pull/271"},
+			271: {Number: 271, Title: `Revert "recall (#265)"`, Body: "This reverts commit aaaa1111bbbb.\n\nbroke deploy", Merged: true, HTMLURL: "https://github.com/gfx-labs/jobshop/pull/271"},
 			// A PR jobshop did not merge, and its revert.
 			280: {Number: 280, Title: "manual", Merged: true, MergeCommitSHA: "dddd"},
-			281: {Number: 281, Title: `Revert "manual"`, Body: "Reverts elee1766/jobshop#280", Merged: true},
+			281: {Number: 281, Title: `Revert "manual"`, Body: "Reverts gfx-labs/jobshop#280", Merged: true},
 		},
 		commits: map[string][]int{"aaaa1111bbbb": {268}},
 	}

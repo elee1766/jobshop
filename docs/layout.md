@@ -408,7 +408,7 @@ as its own user, not as `agent`.
   ```nix
   services.jobshop.workspaces = {
     jobshop = {
-      url = "https://github.com/elee1766/jobshop.git";
+      url = "https://github.com/gfx-labs/jobshop.git";
       livePacks = [ "packs/selfdev" ];
       livePackVars = { repo = "/var/lib/jobshop/workspaces/jobshop"; };
       followInstalled = true; # live packs follow the installed binary

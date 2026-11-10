@@ -20,7 +20,7 @@ import (
 	"github.com/elee1766/acphost/pkg/xerr"
 	"golang.org/x/sys/unix"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // The controller is unprivileged and cannot chown to a subuid, so for a

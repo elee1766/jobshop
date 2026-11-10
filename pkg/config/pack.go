@@ -8,7 +8,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections,

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
 )
 
 // TestApplyIsolationNoDelegation: a pool with limits and no delegated

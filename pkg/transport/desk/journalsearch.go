@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // journalSearch proxies journal.search (#530). Query: q (LogsQL), since

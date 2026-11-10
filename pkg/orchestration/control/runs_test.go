@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
-	"github.com/elee1766/jobshop/pkg/support/clock"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/support/clock"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // runRoot starts a controller whose pools never spawn sessions, with a
@@ -469,7 +469,7 @@ func TestSelfdevPRWork(t *testing.T) {
 	for _, s := range r.Steps {
 		pools = append(pools, s.Pool)
 		titles = append(titles, s.Title)
-		assert.JSONEq(t, `{"github":{"repo":"elee1766/jobshop","issue":93}}`, string(s.Meta))
+		assert.JSONEq(t, `{"github":{"repo":"gfx-labs/jobshop","issue":93}}`, string(s.Meta))
 	}
 	assert.Equal(t, []string{"dev", "refinery", "deploy-check"}, pools)
 	assert.Equal(t, "Implement #93", titles[0])
@@ -538,7 +538,7 @@ workflows:
   pr-work:
     vars: [issue]
     issue: issue
-    repo: elee1766/jobshop
+    repo: gfx-labs/jobshop
     escalate_pool: plan
     steps:
       - {id: implement, pool: dev, retries: 3, title: "Implement #{{.issue}}", prompt: "gh issue view {{.issue}} --comments"}
@@ -547,7 +547,7 @@ workflows:
   drill:
     vars: [issue]
     issue: issue
-    repo: elee1766/jobshop
+    repo: gfx-labs/jobshop
     escalate_pool: plan
     steps:
       - {id: fail, pool: dev, retries: 1, title: "Drill #{{.issue}}", prompt: "jobshop close -r failed"}

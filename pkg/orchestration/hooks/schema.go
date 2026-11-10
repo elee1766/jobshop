@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	packcue "github.com/elee1766/jobshop/pkg/pack/cue"
+	packcue "github.com/gfx-labs/jobshop/pkg/pack/cue"
 )
 
 // DefaultOutputBytes bounds a step's structured output when

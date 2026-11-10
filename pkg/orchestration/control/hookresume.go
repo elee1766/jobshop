@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // The caller holds runMu. The engine rejects unknown or unsafe external outcomes.

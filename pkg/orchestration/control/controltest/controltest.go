@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	"github.com/elee1766/jobshop/pkg/support/clock"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	"github.com/gfx-labs/jobshop/pkg/support/clock"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Epoch is the fake clock's start time.

@@ -11,14 +11,14 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/conversation"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/redact"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
 	"github.com/fsnotify/fsnotify"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/conversation"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/redact"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // subscribePoll is the fallback when a journal directory cannot be watched yet.

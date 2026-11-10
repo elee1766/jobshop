@@ -9,8 +9,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // DefaultScaleDownAfter is the stabilization window when the pool sets

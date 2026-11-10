@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc/rpcschema"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc/rpcschema"
 )
 
 func main() {

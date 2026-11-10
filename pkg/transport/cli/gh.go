@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // `jobshop gh` (#349) runs the real gh with the identity token for the

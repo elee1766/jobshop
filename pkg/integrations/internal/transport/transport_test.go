@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/internal/transport"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/internal/transport"
 )
 
 type source struct {

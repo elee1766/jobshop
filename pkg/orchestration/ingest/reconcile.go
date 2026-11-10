@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
 )
 
 // Reconcile asks GitHub to redeliver App webhook deliveries that failed

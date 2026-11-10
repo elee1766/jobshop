@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/acphost/pkg/cgroup"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // Delegation is the controller's delegated cgroup, set up at start when

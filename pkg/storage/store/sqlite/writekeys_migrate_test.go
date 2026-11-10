@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
-	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/writekey"
 )
 
 // TestWriteKeysCursorsMigrate: rows in the old write_keys and
