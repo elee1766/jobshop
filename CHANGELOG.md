@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.7](https://github.com/gfx-labs/jobshop/compare/v0.10.6...v0.10.7) (2026-11-10)
+
+
+### Performance
+
+* **store:** cut quiet tick latency on SQLite (JOB-191) ([#1191](https://github.com/gfx-labs/jobshop/issues/1191)) ([f41689e](https://github.com/gfx-labs/jobshop/commit/f41689ebe96b757103948876b0e945debb3cd329))
+
 ## [0.10.6](https://github.com/gfx-labs/jobshop/compare/v0.10.5...v0.10.6) (2026-11-10)
 
 
