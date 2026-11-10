@@ -1087,6 +1087,9 @@ output.block { display: block; margin: 6px 0; }
    vertical lines, and each turn on it is the solid working color. The
    pattern, not the color, tells time held with no turn from time in one. */
 .tl-swatch[data-state="held"], .tl-seg[data-state="working"][data-turns] { background: repeating-linear-gradient(90deg, var(--tl-working) 0 1px, color-mix(in srgb, var(--tl-working) 28%, var(--paper)) 1px 4px); }
+/* A run or batch with no holder (#1184): outlined and light, so it is not read
+   as an agent in a turn. */
+.tl-swatch[data-state="working"][data-workflow], .tl-seg[data-state="working"][data-workflow] { background: color-mix(in srgb, var(--tl-working) 22%, var(--paper)); border: 1px solid var(--tl-working); box-sizing: border-box; }
 .tl-swatch[data-state="lost"], .tl-seg[data-state="working"][data-live="lost"] { background: repeating-linear-gradient(-45deg, var(--warn) 0 3px, var(--paper) 3px 6px); border: 1px solid var(--warn); }
 .tl-seg[data-live="lost"] .tl-turn { background: var(--warn); }
 .tl-swatch[data-state="waiting"], .tl-seg[data-state="waiting"] { background: repeating-linear-gradient(135deg, var(--tl-waiting) 0 4px, color-mix(in srgb, var(--tl-waiting) 55%, var(--paper)) 4px 8px); }

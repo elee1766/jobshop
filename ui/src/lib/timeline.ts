@@ -83,12 +83,26 @@ export const stateLabels: Record<string, string> = {
 };
 
 // A working bar splits into time in a turn and time held with none
-// (JOB-184). The swatch state and its words.
-export const legendLabels: Record<string, string> = { ...stateLabels, working: 'in a turn' };
+// (JOB-184). The swatch state and its words. A run or batch is working for
+// its whole life with nobody holding it: that is running, never a turn
+// (#1184).
+export const legendLabels: Record<string, string> = {
+  ...stateLabels,
+  working: 'in a turn',
+  workflow: 'running, no agent holds it',
+};
+
+// A working span with no holder: a run or batch (or a step) the controller
+// drives. It says the work is going on, not that an agent is in a turn; the
+// child steps' own bars say what each is doing (a deferred step stays
+// deferred).
+export function isWorkflowSpan(seg: TimelineSegment) {
+  return seg.state === 'working' && !seg.actor;
+}
 
 // One line saying what a segment is, without its times.
 export function segmentText(seg: TimelineSegment, opts: { now?: number; session?: HolderInfo } = {}) {
-  const parts = [stateLabels[seg.state] || seg.state];
+  const parts = [isWorkflowSpan(seg) ? legendLabels.workflow : stateLabels[seg.state] || seg.state];
   if (seg.actor) parts.push(seg.actor);
   if (seg.detail) parts.push(seg.detail);
   if (seg.state === 'deferred' && seg.until) parts.push('until ' + new Date(seg.until).toLocaleString());

@@ -12,6 +12,7 @@ import {
   clusterMarkers,
   durationLabel,
   holderState,
+  isWorkflowSpan,
   markerKey,
   markerText,
   parentIds,
@@ -239,6 +240,7 @@ export function Timeline({
                           data-state={s.state}
                           data-open={!s.end || undefined}
                           data-turns={s.turns?.length || undefined}
+                          data-workflow={isWorkflowSpan(s) || undefined}
                           data-live={live}
                           aria-label={text(s) + ', ' + row.id}
                           aria-pressed={seg?.id === row.id && seg.i === i}
