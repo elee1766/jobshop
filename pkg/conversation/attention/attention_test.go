@@ -259,3 +259,21 @@ func TestBuildPropagatesReadError(t *testing.T) {
 	_, err := attention.Build(t.Context(), failing{})
 	require.Error(t, err)
 }
+
+// TestOutageRow (JOB-194): one row per identity however many pools wait on
+// it, with probe and keep as the choices.
+func TestOutageRow(t *testing.T) {
+	t.Parallel()
+	f := fake{health: attention.Health{
+		Started: t0,
+		Outages: []attention.Outage{{Identity: "gh", Pools: []string{"dev", "refinery"}, Why: "401 Unauthorized\nmore", Since: t0.Add(time.Minute)}},
+	}}
+	items, err := attention.Build(t.Context(), f)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, rpc.AttentionOutage, items[0].Kind)
+	assert.Equal(t, "gh", items[0].ID)
+	assert.Equal(t, t0.Add(time.Minute), items[0].Since)
+	assert.Equal(t, "host outage: identity gh cannot get credentials, pools dev, refinery paused: 401 Unauthorized", items[0].Title)
+	assert.Equal(t, []string{"Probe now", "Keep paused"}, titles(attention.Actions(t.Context(), f, items[0])))
+}

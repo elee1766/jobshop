@@ -1165,6 +1165,13 @@ export interface PoolMetrics {
   recurrence: number;
 }
 
+export interface PoolOutage {
+  identity: string;
+  reason: string;
+  since: string;
+  next_probe: string;
+}
+
 export interface PoolParams {
   pool: string;
 }
@@ -1208,6 +1215,7 @@ export interface PoolShowResult {
 export interface PoolStatusResult {
   quarantined: Record<string, string>;
   paused: Record<string, string>;
+  outages?: Record<string, PoolOutage>;
   pools?: PoolScale[];
   host_max?: number;
   disabled?: string[];

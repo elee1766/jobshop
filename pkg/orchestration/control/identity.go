@@ -92,6 +92,7 @@ func (c *Controller) identityCheck(ctx context.Context, sc scope, p rpc.Identity
 	}
 	t, err := c.minter.Token(ctx, name, id, p.Target)
 	if err != nil {
+		c.noteIdentityError(ctx, name, err)
 		return nil, err
 	}
 	res := rpc.IdentityCheckResult{Target: p.Target, Identity: name, Kind: id.Kind, Expires: t.Expires}
@@ -129,6 +130,7 @@ func (c *Controller) identityToken(ctx context.Context, sc scope, p rpc.Identity
 		t, err = c.minter.Token(ctx, name, id, p.Target)
 	}
 	if err != nil {
+		c.noteIdentityError(ctx, name, err)
 		return nil, fmt.Errorf("identity token for %s: %w", p.Target, err)
 	}
 	if renewed {

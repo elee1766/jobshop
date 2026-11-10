@@ -54,7 +54,24 @@ export function System() {
               {(system?.pools?.pools || []).map((pool) => (
                 <tr key={pool.name}>
                   <td>{pool.name}</td>
-                  <td>{system?.pools.quarantined?.[pool.name] ? 'quarantined' : pool.drained ? 'drained' : 'ok'}</td>
+                  <td
+                    title={
+                      system?.pools.outages?.[pool.name]
+                        ? system.pools.outages[pool.name].reason +
+                          ' (since ' +
+                          system.pools.outages[pool.name].since +
+                          ')'
+                        : undefined
+                    }
+                  >
+                    {system?.pools.quarantined?.[pool.name]
+                      ? 'quarantined'
+                      : system?.pools.outages?.[pool.name]
+                        ? 'paused: host outage (' + system.pools.outages[pool.name].identity + ')'
+                        : pool.drained
+                          ? 'drained'
+                          : 'ok'}
+                  </td>
                   <td>
                     {pool.open} / {pool.max || 'uncapped'}
                   </td>

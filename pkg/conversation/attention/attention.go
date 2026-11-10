@@ -72,6 +72,15 @@ type Pause struct {
 	Why   string
 }
 
+// Outage is an identity the host cannot get credentials for (JOB-194).
+// Its pools wait until a probe succeeds; one row stands for all of them.
+type Outage struct {
+	Identity string
+	Pools    []string
+	Why      string
+	Since    time.Time
+}
+
 // Health is the controller's own state that can wait on a human.
 type Health struct {
 	Started time.Time
@@ -81,6 +90,8 @@ type Health struct {
 	// Quarantined maps a pool to why it stopped for good.
 	Quarantined map[string]string
 	Paused      []Pause
+	// Outages are the host outages in force (JOB-194).
+	Outages []Outage
 	// PausedFor is how long a pause lasts, to date its start.
 	PausedFor time.Duration
 }
@@ -248,6 +259,14 @@ func healthItems(h Health, escalatedPools map[string]bool) []rpc.AttentionItem {
 			Summary: SummaryOf(p.Why),
 		})
 	}
+	// One row per identity, however many pools and steps wait on it.
+	for _, o := range h.Outages {
+		items = append(items, rpc.AttentionItem{
+			Kind: rpc.AttentionOutage, ID: o.Identity, Since: o.Since,
+			Title:   ClipTitle("host outage: identity " + o.Identity + " cannot get credentials, pools " + strings.Join(o.Pools, ", ") + " paused: " + o.Why),
+			Summary: SummaryOf(o.Why),
+		})
+	}
 	return items
 }
 
@@ -355,6 +374,7 @@ const (
 	VerbGuard        = "guard"
 	VerbExtend       = "extend"
 	VerbKeep         = "keep"
+	VerbProbe        = "probe"
 	VerbDiscuss      = "discuss"
 )
 
@@ -382,6 +402,9 @@ func Actions(ctx context.Context, src ActionSource, it rpc.AttentionItem) []Acti
 		pool = it.ID
 	}
 	switch {
+	case it.Kind == rpc.AttentionOutage:
+		add("Probe now", "Mint a token again and resume the paused pools if it works", VerbProbe, it.ID, "")
+		add("Keep paused", "Leave the pools paused until the next scheduled probe", VerbKeep, it.ID, "")
 	case it.Kind == rpc.AttentionQuestion && len(it.Options) > 0:
 		for _, opt := range it.Options {
 			actions = append(actions, Action{Option: opt, Verb: VerbQuestion, Target: it.ID})
