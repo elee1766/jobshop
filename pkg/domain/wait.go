@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"regexp"
 	"time"
 )
@@ -86,6 +87,10 @@ type WaitCond struct {
 	// workflow. Set, the wait follows that workflow's newest run on the
 	// commit instead of every check (JOB-75).
 	Workflow string `json:"workflow,omitempty"`
+	// Check is for github.checks: a check name, or a path.Match glob such
+	// as "go (*)". Set, the wait follows only the checks of that name
+	// (JOB-200). On a PR a check name is the job name.
+	Check string `json:"check,omitempty"`
 	// Thread is owner/name#n or a Linear key, for thread.reply.
 	Thread string    `json:"thread,omitempty"`
 	From   string    `json:"from,omitempty"`
@@ -127,6 +132,17 @@ func (w *Wait) Validate() error {
 func (c WaitCond) validate() error {
 	if c.Workflow != "" && c.Type != WaitChecks {
 		return fmt.Errorf("%s: workflow applies only to %s", c.Type, WaitChecks)
+	}
+	if c.Check != "" {
+		if c.Type != WaitChecks {
+			return fmt.Errorf("%s: check applies only to %s", c.Type, WaitChecks)
+		}
+		if c.Workflow != "" {
+			return fmt.Errorf("%s check does not combine with workflow", c.Type)
+		}
+		if _, err := path.Match(c.Check, ""); err != nil {
+			return fmt.Errorf("%s check %q: %w", c.Type, c.Check, err)
+		}
 	}
 	needPR := func() error {
 		if !repoRe.MatchString(c.Repo) || c.PR <= 0 {

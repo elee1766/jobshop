@@ -1349,11 +1349,14 @@ Park a ticket until conditions hold; a held ticket is released (not a failed
 attempt). End the turn after.
 
 Arguments:
-  <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head,
-                state), github.checks (pr or repo+sha, state=success|failure,
-                required, workflow=<name or file>: follow that workflow's
-                newest run on the commit instead of every check;
-                a cancelled run ends the wait as invalidated), github.pr (pr,
+  <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head, state),
+                github.checks (pr or repo+sha, state=success|failure, required,
+                workflow=<name or file>: follow that workflow's newest run
+                on the commit instead of every check; a cancelled run ends
+                the wait as invalidated; check=<name or glob>, alias name=:
+                follow only the checks of that name (job names on a PR),
+                a glob like 'go (*)' covers a matrix, one name per condition,
+                does not combine with workflow=), github.pr (pr,
                 state=merged|closed|head_changed), github.label (issue, label;
                 met when the issue has the label or is closed), github.tag
                 (repo, tag), deploy (repo, sha; met when the controller's build

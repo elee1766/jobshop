@@ -1910,6 +1910,7 @@ export interface WaitCond {
   state?: string;
   required?: boolean;
   workflow?: string;
+  check?: string;
   thread?: string;
   from?: string;
   at?: string;

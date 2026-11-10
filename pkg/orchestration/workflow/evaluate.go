@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -258,6 +259,14 @@ func evalChecks(ctx context.Context, pass *Pass, cd *domain.WaitCond, head strin
 	if cd.Required {
 		what = "required checks"
 	}
+	at := short(head)
+	if cd.Check != "" {
+		what = cd.Check
+		cs = slices.DeleteFunc(slices.Clone(cs), func(ch github.Check) bool { return !checkMatches(cd.Check, ch.Name) })
+		if len(cs) == 0 {
+			return false, fmt.Sprintf("%s not reported on %s", cd.Check, at), nil
+		}
+	}
 	commit := cd.PR == 0
 	var failed, pending, cancelled []string
 	passed := 0
@@ -273,7 +282,6 @@ func evalChecks(ctx context.Context, pass *Pass, cd *domain.WaitCond, head strin
 			passed++
 		}
 	}
-	at := short(head)
 	if len(cancelled) > 0 && len(failed) == 0 && len(pending) == 0 {
 		return false, "", invalidated{fmt.Sprintf("%s cancelled on %s: %s; this head will not go green, push or wait on a newer commit", what, at, strings.Join(cancelled, ", "))}
 	}
@@ -285,6 +293,17 @@ func evalChecks(ctx context.Context, pass *Pass, cd *domain.WaitCond, head strin
 		green = green && passed > 0
 	}
 	return green, fmt.Sprintf("%s green on %s", what, at), nil
+}
+
+// checkMatches: a check name equals pattern, or matches it as a
+// path.Match glob (`go (*)` covers a matrix). A bad pattern only matches
+// by equality; domain validation rejects it before it is stored.
+func checkMatches(pattern, name string) bool {
+	if pattern == name {
+		return true
+	}
+	ok, err := path.Match(pattern, name)
+	return err == nil && ok
 }
 
 // evalWorkflow follows the newest run of cd.Workflow on head:

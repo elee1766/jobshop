@@ -252,6 +252,86 @@ func TestWaitChecksCommit(t *testing.T) {
 	assert.Contains(t, lastComment(d.ID), "condition met: checks green on aaaa111")
 }
 
+// TestWaitChecksCheckName: check= follows only the checks of that name
+// (JOB-200), as an exact name or a path.Match glob, on a PR head and on a
+// commit.
+func TestWaitChecksCheckName(t *testing.T) {
+	t.Parallel()
+	const mixed = `[{"name":"go","bucket":"pass"},{"name":"nix","bucket":"pending"},{"name":"lint","bucket":"fail"}]`
+	const matrix = `[{"name":"go (1.27)","bucket":"pass"},{"name":"go (1.26)","bucket":"pass"},{"name":"nix","bucket":"pending"}]`
+	const matrixOpen = `[{"name":"go (1.27)","bucket":"pass"},{"name":"go (1.26)","bucket":"pending"}]`
+	for _, tc := range []struct {
+		name   string
+		check  string
+		state  string
+		checks string
+		met    bool
+		note   string
+	}{
+		{"pass clears success", "go", "success", mixed, true, "go green on aaaa111"},
+		{"pending stays parked", "nix", "success", mixed, false, "nix green on aaaa111"},
+		{"fail clears failure", "lint", "failure", mixed, true, "lint failed on aaaa111"},
+		{"other failure ignored", "go", "failure", mixed, false, "go failed on aaaa111"},
+		{"not reported", "missing", "success", mixed, false, "missing not reported on aaaa111"},
+		{"not reported, failure wait", "missing", "failure", mixed, false, "missing not reported on aaaa111"},
+		{"glob over a matrix", "go (*)", "success", matrix, true, "go (*) green on aaaa111"},
+		{"glob with one pending", "go (*)", "success", matrixOpen, false, "go (*) green on aaaa111"},
+		{"glob does not match plain name", "go (*)", "success", mixed, false, "go (*) not reported on aaaa111"},
+	} {
+		for _, form := range []string{"sha", "pr"} {
+			t.Run(tc.name+"/"+form, func(t *testing.T) {
+				t.Parallel()
+				c, _, prs, threads := waitController(t)
+				ctx := t.Context()
+				cond := domain.WaitCond{Type: domain.WaitChecks, Repo: "acme/widget", State: tc.state, Check: tc.check}
+				if form == "pr" {
+					cond.PR = 5
+					prs.set(recPR, `[[]]`, tc.checks)
+				} else {
+					cond.SHA = "aaaa1111"
+					prs.checks["acme/widget#0"] = tc.checks
+				}
+				tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
+				_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "CI", Conds: []domain.WaitCond{cond}})
+				require.NoError(t, err)
+				c.pollWaits(ctx, prs, threads)
+				w := waitOf(mustGet(t, c, tk.ID))
+				if tc.met {
+					assert.Nil(t, w, "wait ended")
+					cs, err := store.Comments(ctx, c.store, tk.ID)
+					require.NoError(t, err)
+					require.NotEmpty(t, cs)
+					assert.Contains(t, cs[len(cs)-1].Body, "condition met: "+tc.note)
+					return
+				}
+				require.NotNil(t, w, "wait keeps waiting")
+				assert.False(t, w.Conds[0].Met)
+				assert.Contains(t, w.Conds[0].Note, tc.note)
+			})
+		}
+	}
+}
+
+// TestWaitChecksCheckCancelled: a cancelled named check invalidates the
+// wait like an unnamed one, whatever the other checks are doing.
+func TestWaitChecksCheckCancelled(t *testing.T) {
+	t.Parallel()
+	c, _, prs, threads := waitController(t)
+	ctx := t.Context()
+	prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"cancel"},{"name":"nix","bucket":"pending"}]`)
+	tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
+	_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "CI", Conds: []domain.WaitCond{
+		{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Check: "go", Required: true},
+	}})
+	require.NoError(t, err)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, tk.ID)))
+	cs, err := store.Comments(ctx, c.store, tk.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, cs)
+	assert.Contains(t, cs[len(cs)-1].Body, "invalidated: go cancelled on aaaa111: go")
+}
+
 // fakePRs serves recorded responses per PR, replaced as a test goes on.
 type fakePRs struct {
 	mu      sync.Mutex
@@ -539,6 +619,9 @@ func TestWaitValidate(t *testing.T) {
 		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "green"}},
 		{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Workflow: "ci"}},
 		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci", Required: true}},
+		{{Type: domain.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Check: "go"}},
+		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci", Check: "go"}},
+		{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Check: "go["}},
 		{{Type: domain.WaitReply, Thread: "bad"}},
 	} {
 		_, err := c.waitAdd(t.Context(), admin, rpc.WaitAddParams{ID: a.ID, Reason: "x", Conds: conds})
