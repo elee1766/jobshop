@@ -29,8 +29,9 @@ callback, script step, planned-action apply or resume uses the workflow's
 current entry points, code, host grants and reference scope, and the run
 records the move in one comment. An edit that the run's existing steps and
 output do not fit fails in the callback and the run goes `needs_human` with
-that error. This includes changed grants and scope: the operator controls the
-configuration, so a reload needs no admin action. A workflow that needs the
+that error. This includes changed grants and scope, widened or narrowed: the
+operator controls the configuration, so a reload needs no admin action and the
+run's recorded reference scope moves with it. A workflow that needs the
 old guarantee sets `pin_callbacks: true` (callback workflows only): its runs
 stop on a changed manifest until `run resume --repin`. The option is read from
 the live configuration, not recorded on the run. See

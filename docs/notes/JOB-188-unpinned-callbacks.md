@@ -25,8 +25,13 @@ patch markers or migration of old runs were added.
   entry point, still fails the run.
 - Plain `jobshop run resume <run>` works for a run stranded before this
   change. `--repin` on an unpinned run is accepted and does nothing extra.
-- Authority: an unpinned run picks up changed grants and reference scope on
-  reload with no admin action. The operator controls the configuration.
+- Authority follows too, widened or narrowed. An unpinned run uses the live
+  host grants (they are part of the pin) and the live reference scope after a
+  reload, with no admin action. A change to the scope alone (a pool or
+  workflow reference added or removed) moves the run as well and rewrites its
+  recorded `Scope`. The "a reload can only narrow a run's scope" rule applies
+  to pinned workflows only. A workflow that needs the old guarantee sets
+  `pin_callbacks: true`.
 
 ## Pinned (`pin_callbacks: true`)
 
@@ -46,6 +51,7 @@ option is only valid on a callback workflow (config load error otherwise).
   `jobshop run resume <run>`. If the run cannot be fixed, cancel it.
 - The escalation text names `--repin` only for a pinned workflow.
 
-Tests: `pkg/orchestration/control/unpinned_test.go`, `TestHookRunResumeRepin`
+Tests: `pkg/orchestration/control/unpinned_test.go` (including
+`TestUnpinnedRunFollowsLiveAuthority`), `TestHookRunResumeRepin`
 and `TestHookRunPinSurvivesUnrelatedReloadOnly` (both set `pin_callbacks`),
 `TestWorkflowErrors` (config validation).

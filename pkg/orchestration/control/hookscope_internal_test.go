@@ -33,7 +33,7 @@ func TestHookPreparedPlanRespectsRevokedInstanceScope(t *testing.T) {
 	}
 	write("jobshop.yaml", "projects: {js: {}}\nagents: {fake: {command: \"false\"}}\npacks: [{path: one}, {path: two}]\n")
 	pool := "pools:\n  dev: {project: js, agent: fake, max_sessions: 0, dir: .}\n"
-	workflow := "workflows:\n  work:\n    project: js\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n"
+	workflow := "workflows:\n  work:\n    project: js\n    pin_callbacks: true\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n"
 	write("one/pack.yaml", pool+workflow)
 	write("two/pack.yaml", "pools: {}\n")
 	write("one/hooks.star", "def begin(run):\n    return [start_step(id=\"work\",pool=\"dev\",prompt=\"work\")]\ndef completed(run, step):\n    return []\n")
@@ -93,7 +93,7 @@ func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 	}
-	pack := "workflows:\n  work:\n    project: js\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n"
+	pack := "workflows:\n  work:\n    project: js\n    pin_callbacks: true\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n"
 	write("one/pack.yaml", pack)
 	write("one/hooks.star", "def begin(run):\n    return [finish_run(outcome=\"done\")]\ndef completed(run, step):\n    return []\n")
 	load := func(work string) *liveConfig {
@@ -105,7 +105,7 @@ func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
 		return lc
 	}
 	// Same script, selectors and roots, but no instance bounds its references.
-	hostLevel := load("workflows:\n  work:\n    project: js\n    on_start: one/hooks.star:begin\n    on_step_completed: one/hooks.star:completed\n")
+	hostLevel := load("workflows:\n  work:\n    project: js\n    pin_callbacks: true\n    on_start: one/hooks.star:begin\n    on_step_completed: one/hooks.star:completed\n")
 	accepted := load("packs: [{path: one}]\n")
 	require.NotEqual(t, accepted.cfg.HookRunPins["work"], hostLevel.cfg.HookRunPins["work"], "moving a workflow out of its instance changes its run pin")
 
@@ -168,7 +168,7 @@ func TestHookPreparedStaticChildRejectsRetryProjectDrift(t *testing.T) {
 	write("jobshop.yaml", "projects: {js: {}, other: {}}\ndefault_project: js\nagents: {fake: {command: \"false\"}}\npacks: [{path: one}]\n")
 	pack := func(retryProject string) string {
 		return "pools:\n  dev: {project: js, agent: fake, max_sessions: 0, dir: .}\n  retry: {project: " + retryProject + ", agent: fake, max_sessions: 0, dir: .}\n" +
-			"workflows:\n  work:\n    project: js\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n" +
+			"workflows:\n  work:\n    project: js\n    pin_callbacks: true\n    on_start: hooks.star:begin\n    on_step_completed: hooks.star:completed\n" +
 			"  child:\n    steps: [{id: work, pool: dev, retry_pool: retry, title: work, prompt: work}]\n"
 	}
 	write("one/pack.yaml", pack("js"))

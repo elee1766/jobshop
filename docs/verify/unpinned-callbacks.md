@@ -20,6 +20,10 @@ and whose prompt text you can edit, for example `pr-work` or a fixture with
    mention `--repin`.
 5. Fix the callback, reload, `jobshop run resume <run>` (no flag). Expected:
    the run continues.
+6. Add a pool the callback names and a host grant (for example
+   `automation: {http: true}`), reload, close the next step. Expected: the
+   callback uses both with no operator action. Remove the pool or the grant,
+   reload: the open run loses it and its callback fails with that error.
 
 ## Pinned: the run stops
 

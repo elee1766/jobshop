@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
@@ -27,11 +28,17 @@ func (c *Controller) resumeHook(ctx context.Context, actor string, run domain.Ti
 }
 
 // runOnLive reports whether a callback run already runs under the live
-// manifest: its pin and entry points match the active configuration.
+// manifest: its pin, entry points and recorded reference scope match the
+// active configuration. The scope is not part of the pin, so a reload that
+// only adds or removes a pool or workflow reference also moves the run.
 func (lc *liveConfig) runOnLive(f domain.RunFields) bool {
 	w, ok := lc.cfg.Workflows[f.Workflow]
 	a := f.Automation
-	return ok && a != nil && hooks.RunPinned(lc.runtime.Programs, lc.runtime.Config, f.Workflow, a.Digest) && a.OnStart == w.OnStart && a.OnStepCompleted == w.OnStepCompleted
+	if !ok || a == nil || !hooks.RunPinned(lc.runtime.Programs, lc.runtime.Config, f.Workflow, a.Digest) || a.OnStart != w.OnStart || a.OnStepCompleted != w.OnStepCompleted || a.Scope == nil {
+		return false
+	}
+	live := lc.cfg.HookScope("workflows." + f.Workflow)
+	return maps.Equal(a.Scope.Pools, live.Pools) && maps.Equal(a.Scope.Workflows, live.Workflows)
 }
 
 // followLive moves an open run of a workflow that follows the live
@@ -102,7 +109,11 @@ func (c *Controller) repinRun(ctx context.Context, actor string, t domain.Ticket
 	if err != nil {
 		return t, f, err
 	}
-	_, _ = store.AddComment(ctx, c.store, actor, t.ID, fmt.Sprintf("Repinned to the live callback manifest (%s, was %s) by %s.", pin, old, actor))
+	detail := fmt.Sprintf("%s, was %s", pin, old)
+	if pin == old {
+		detail = pin + ", reference scope updated"
+	}
+	_, _ = store.AddComment(ctx, c.store, actor, t.ID, fmt.Sprintf("Repinned to the live callback manifest (%s) by %s.", detail, actor))
 	c.log.InfoContext(ctx, "run repinned", "run", t.ID, "workflow", f.Workflow, "by", actor)
 	return t, f, nil
 }

@@ -275,3 +275,93 @@ func TestStrandedRunResumesWithoutRepin(t *testing.T) {
 	assert.Equal(t, domain.RunRunning, runFieldsOf(t, c, id).State)
 	assert.Equal(t, "second v2", hookRun(t, c, id).Steps[1].Body)
 }
+
+// An unpinned run uses the live host grants and reference scope after a
+// reload, widened or narrowed, with no operator action. The run's recorded
+// scope moves with it.
+func TestUnpinnedRunFollowsLiveAuthority(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(server.Close)
+	const script = `def begin(run):
+    return [start_step(id="a",pool="dev",prompt="first")]
+def completed(run, step):
+    if step.id == "a":
+        ok = http.get(run.inputs["url"]).json()["ok"]
+        return [start_step(id="b",pool=run.inputs["next"],prompt="second",needs=["a"],inputs={"ok":ok})]
+    return [finish_run(outcome="done")]
+def handle(event, args):
+    return []
+`
+	pool := func(name string) string {
+		return "  " + name + `: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}` + "\n"
+	}
+	grant := "automation: {http: true}\n"
+	edit := func(t *testing.T, root config.Root, file, from, to string) {
+		t.Helper()
+		path := filepath.Join(root.Dir, file)
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Contains(t, string(data), from)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(data), from, to, 1)), 0o600))
+	}
+	for name, tc := range map[string]struct {
+		next    string
+		before  string // pools and grants present when the run starts
+		granted bool
+		change  func(t *testing.T, root config.Root)
+		failure string // empty: the run continues
+	}{
+		"grant and pool added": {next: "later", change: func(t *testing.T, root config.Root) {
+			edit(t, root, "pack.yaml", "pools:\n", "pools:\n"+strings.ReplaceAll(pool("later"), "$ROOT", root.Dir))
+			data, err := os.ReadFile(root.Config())
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(grant)...), 0o600))
+		}},
+		"pool removed": {next: "spare", granted: true, before: pool("spare"), change: func(t *testing.T, root config.Root) {
+			edit(t, root, "pack.yaml", strings.ReplaceAll(pool("spare"), "$ROOT", root.Dir), "")
+		}, failure: "spare"},
+		"grant removed": {next: "dev", granted: true, change: func(t *testing.T, root config.Root) {
+			edit(t, root, "jobshop.yaml", grant, "")
+		}, failure: "http"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := hookTestRoot(t, script)
+			edit(t, root, "pack.yaml", "pools:\n", "pools:\n"+strings.ReplaceAll(tc.before, "$ROOT", root.Dir))
+			if tc.granted {
+				data, err := os.ReadFile(root.Config())
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(grant)...), 0o600))
+			}
+			c := controltest.Start(t, root, control.Options{})
+			var run rpc.RunResult
+			c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Inputs: map[string]any{"url": server.URL, "next": tc.next}}, &run)
+			c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 1 }, "first step not created")
+			first := hookRun(t, c, run.Run.ID).Steps[0]
+			startScope := runFieldsOf(t, c, run.Run.ID).Automation.Scope
+
+			tc.change(t, root)
+			c.Call(rpc.MethodReload, struct{}{}, nil)
+			c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: first.ID}, nil)
+			if tc.failure == "" {
+				c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "run did not use the widened authority")
+				got := hookRun(t, c, run.Run.ID).Steps[1]
+				assert.Equal(t, "later", got.Pool)
+				assert.Contains(t, runFieldsOf(t, c, run.Run.ID).Automation.Scope.Pools, "later", "the recorded scope moved")
+				assert.NotContains(t, startScope.Pools, "later")
+				return
+			}
+			c.PassUntil(func() bool { return runFieldsOf(t, c, run.Run.ID).State == domain.RunNeedsHuman }, "narrowed authority did not stop the run")
+			comments := commentsOf(t, c, run.Run.ID)
+			assert.Equal(t, 1, countContaining(comments, tc.failure), "%v", comments)
+			assert.Zero(t, countContaining(comments, "manifest changed"), "%v", comments)
+			assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 1)
+			if strings.Contains(name, "pool") {
+				assert.NotContains(t, runFieldsOf(t, c, run.Run.ID).Automation.Scope.Pools, "spare", "the recorded scope narrowed")
+			}
+		})
+	}
+}
