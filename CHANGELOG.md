@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/gfx-labs/jobshop/compare/v0.10.1...v0.10.2) (2026-11-10)
+
+
+### Bug fixes
+
+* **desk:** fit graph card content and update live spec for wait edges ([#1166](https://github.com/gfx-labs/jobshop/issues/1166)) ([#1175](https://github.com/gfx-labs/jobshop/issues/1175)) ([509b448](https://github.com/gfx-labs/jobshop/commit/509b448c9ff6aa30db4591bce6ae3ded07437859))
+
 ## [0.10.1](https://github.com/gfx-labs/jobshop/compare/v0.10.0...v0.10.1) (2026-11-10)
 
 
