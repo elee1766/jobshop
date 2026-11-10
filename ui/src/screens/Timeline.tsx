@@ -1,5 +1,5 @@
 import { useSetAtom } from 'jotai';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
@@ -33,17 +33,23 @@ const maxZoom = 64;
 
 // One bar per ticket on a shared time axis, nested by parent, with
 // arrows for blocking edges (#1103). Rows come from ticket.timeline in
-// tree order; open bars grow to the "now" line.
+// tree order; open bars grow to the "now" line. While the details are shown
+// instead (#1181) it stays mounted and hidden, so zoom, folds, the chosen
+// segment and the scroll position are where the operator left them.
 export function Timeline({
   timeline,
   sessions,
   selected,
+  hidden,
   onSelect,
+  onDetails,
 }: {
   timeline: TimelineResult;
   sessions?: Record<string, HolderInfo>;
   selected: string;
+  hidden: boolean;
   onSelect: (id: string) => void;
+  onDetails: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [zoom, setZoom] = useState(1);
@@ -85,13 +91,22 @@ export function Timeline({
   const chart = useRef<HTMLElement | null>(null);
   const pickRow = index.get(pick?.id ?? '');
   const found = pick !== undefined && pickRow !== undefined;
+  // A hidden element loses its scroll offset: keep the last visible one and
+  // put it back when the chart returns.
+  const offset = useRef({ top: 0, left: 0 });
+  useLayoutEffect(() => {
+    const el = chart.current;
+    if (hidden || !el) return;
+    el.scrollTop = offset.current.top;
+    el.scrollLeft = offset.current.left;
+  }, [hidden]);
   useEffect(() => {
     const el = chart.current;
-    if (!el || !found) return;
+    if (hidden || !el || !found) return;
     const top = axisH + pickRow * rowH;
     if (top < el.scrollTop + axisH) el.scrollTop = Math.max(0, top - axisH);
     else if (top + rowH > el.scrollTop + el.clientHeight) el.scrollTop = top + rowH - el.clientHeight;
-  }, [pickRow, found]);
+  }, [pickRow, found, hidden]);
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -106,13 +121,21 @@ export function Timeline({
     `${text(s)}\n${exactLabel(s.start)} to ${s.end ? exactLabel(s.end) : 'now'} (${durationLabel(segmentEnd(s, now) - Date.parse(s.start))})\n${row.id}`;
 
   return (
-    <section aria-label="Ticket timeline" className="ticket-timeline">
+    <section aria-label="Ticket timeline" className="ticket-timeline" hidden={hidden}>
       <div className="tag graph-heading">
         <h2>timeline</h2>
         <span className="muted">
           {timeline.rows.length} tickets · {timeline.arrows.length} arrows
         </span>
-        <div className="graph-controls push-right" aria-label="Timeline zoom">
+        <button
+          className="push-right"
+          aria-label={'Show details of ' + (pick?.id ?? selected)}
+          title={'Show the details of ' + (pick?.id ?? selected) + ' in place of the timeline'}
+          onClick={onDetails}
+        >
+          details
+        </button>
+        <div className="graph-controls" aria-label="Timeline zoom">
           <button
             aria-label="Zoom out"
             disabled={zoom <= minZoom}
@@ -146,6 +169,10 @@ export function Timeline({
           scrollRef(node);
         }}
         aria-label="Timeline chart"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.clientWidth > 0) offset.current = { top: el.scrollTop, left: el.scrollLeft };
+        }}
       >
         <div className="tl-canvas" style={{ width: labelW + chartW + 16 + 'px' }}>
           <div className="tl-axis" style={{ height: axisH + 'px' }}>

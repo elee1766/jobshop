@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails } from './trace-view.js';
 
 // Creates tickets only on an explicitly opted-in disposable controller.
 test.skip(!process.env.DESK_MUTATE, 'set DESK_MUTATE=1 against an isolated controller');
@@ -36,6 +37,7 @@ test('trace search finds completed tickets beyond the first page and opens their
     const targetLink = results.getByRole('link', { name: target.title, exact: true });
     await expect(targetLink).toHaveAttribute('title', target.id);
     await targetLink.click();
+    await showDetails(page);
     await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await expect(input).toHaveValue(target.id);
     await input.fill(repo + '#4520');
@@ -52,9 +54,11 @@ test('trace search finds completed tickets beyond the first page and opens their
     await expect(targetLink).toBeVisible();
     await results.getByRole('button', { name: 'dismiss', exact: true }).click();
     await expect(results).toHaveCount(0);
+    await showDetails(page);
     await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await input.fill(repo + '#4520');
     await form.getByRole('button', { name: 'open', exact: true }).click();
+    await showDetails(page);
     await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await expect(page).toHaveURL(new RegExp('ref=' + encodeURIComponent(repo + '#4520')));
     const bounds = await form.evaluate(node => ({ right: node.getBoundingClientRect().right, width: innerWidth }));

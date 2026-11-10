@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails } from './trace-view.js';
 
 // Creates tickets only on an explicitly opted-in disposable controller.
 test.skip(!process.env.DESK_MUTATE, 'set DESK_MUTATE=1 against an isolated controller');
@@ -34,6 +35,7 @@ test('Markdown links in titles open their destination and leave the row action a
     await relationships.getByRole('button', { name: `Plain ${key} *not italic* <b>not bold</b>`, exact: false }).click();
     await expect(page.locator('.ticket-overview > h2')).toContainText('Plain ' + key);
     await page.goto(`./?view=trace&ref=${plain.id}`);
+    await showDetails(page);
     const child = page.getByLabel('Ticket details', { exact: true }).locator('.ticket-parent');
     await expect(child.getByRole('button', { name: new RegExp(`^Parent ${key} JOB-117 and jobshop#1021`) })).toBeVisible();
     await child.getByRole('link', { name: 'JOB-117', exact: true }).evaluate((a) => a.addEventListener('click', (e) => e.preventDefault()));

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { showDetails, showTimeline } from "./trace-view.js";
 
 // Opt in only against an isolated controller: this creates and closes a task.
 test.skip(
@@ -104,6 +105,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     ).toBeTruthy();
     expect(new Set(replay.map((event) => event.seq)).size).toBe(replay.length);
     await waiting.getByRole('link', { name: 'Trace ' + ticket.id, exact: true }).click();
+    await showDetails(page);
     await expect(page.locator(".ticket-overview > h2")).toContainText(
       title + " during disconnect",
     );
@@ -114,6 +116,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(page.locator(".ticket-overview > h2")).toContainText(
       title + " watched trace",
     );
+    await showTimeline(page);
     const timeline = page.getByRole('region', { name: 'Ticket timeline' });
     await expect(timeline).toContainText(title + ' watched trace');
     const dependency = await call('ticket.create', {
@@ -129,7 +132,9 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(timeline.locator('.tl-row')).toHaveCount(3);
     // Parent edge, the waits_for gate and the wait on the run set above.
     await expect(timeline.locator('path.tl-arrow')).not.toHaveCount(0);
+    await showTimeline(page);
     await timeline.locator(`button.tl-name[title$="(${child.id})"]`).click();
+    await showDetails(page);
     await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
     // The relations tab holds the relationship groups (JOB-185).
     await page.getByRole('tab', { name: /^relations/ }).click();
@@ -153,7 +158,9 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(historyLink).toHaveCSS('cursor', 'pointer');
     await historyLink.click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
+    await showTimeline(page);
     await timeline.locator(`button.tl-name[title$="(${child.id})"]`).click();
+    await showDetails(page);
     await page.getByRole('tab', { name: /^relations/ }).click();
     await relationships.locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
@@ -176,14 +183,17 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(comment.getByRole('link', { name: 'Authored PR', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/49');
     await expect(comment.getByRole('link')).toHaveCount(9);
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
+    await showDetails(page);
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
     await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
     await page.getByRole('tab', { name: /^relations/ }).click();
     await page.getByLabel('Ticket relationships', { exact: true }).locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
+    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);
-    await expect(row('Required evidence').locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     await expect(page.locator('.ticket-overview .ticket-status')).toHaveAttribute('aria-label', 'closed · done');
+    await showTimeline(page);
+    await expect(row('Required evidence').locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     if (isMobile) {
       await page.getByRole('navigation', { name: 'Mobile', exact: true }).getByRole('button', { name: /^waiting/ }).click();
