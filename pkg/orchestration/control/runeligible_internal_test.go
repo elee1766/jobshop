@@ -132,7 +132,7 @@ func TestRunStartEligibleGate(t *testing.T) {
 
 	// Eligible: starts without --force.
 	f.set(false)
-	_, err = c.runCancel(t.Context(), admin, rpc.IDParams{ID: first.Run.ID})
+	_, err = c.runCancel(t.Context(), admin, rpc.RunCancelParams{ID: first.Run.ID})
 	require.NoError(t, err)
 	third, err := start(false)
 	require.NoError(t, err)

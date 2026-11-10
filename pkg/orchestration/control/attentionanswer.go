@@ -30,7 +30,7 @@ func (c *Controller) executeAttention(ctx context.Context, sc scope, a attention
 	case attention.VerbResume:
 		_, err = c.runResume(ctx, sc, rpc.RunResumeParams{ID: a.Target, Step: a.Step})
 	case attention.VerbCancel:
-		_, err = c.runCancel(ctx, sc, rpc.IDParams{ID: a.Target})
+		_, err = c.runCancel(ctx, sc, rpc.RunCancelParams{ID: a.Target})
 	case attention.VerbUnquarantine:
 		_, err = c.poolUnquarantine(ctx, sc, rpc.PoolParams{Pool: a.Target})
 	case attention.VerbProbe:

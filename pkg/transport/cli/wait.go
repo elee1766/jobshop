@@ -15,7 +15,7 @@ import (
 type waitCmd struct {
 	Add   waitAddCmd   `cmd:"" help:"Park a ticket until conditions hold; a held ticket is released (not a failed attempt). End the turn after."`
 	List  waitListCmd  `cmd:"" help:"List waiting tickets."`
-	Clear waitClearCmd `cmd:"" help:"Remove a ticket's wait; it becomes ready."`
+	Clear waitClearCmd `cmd:"" aliases:"rm" help:"Remove a ticket's wait; it becomes ready."`
 }
 
 type waitAddCmd struct {

@@ -20,7 +20,7 @@ type linearCmd struct {
 	APIURL string `name:"api-url" hidden:"" env:"JOBSHOP_LINEAR_URL" help:"Linear GraphQL endpoint (tests)."`
 	// AllowSecretFindings skips the outbound secret check (#574); admin only.
 	AllowSecretFindings bool              `name:"allow-secret-findings" help:"Send writes that hold a secret finding (admin callers only)."`
-	Issue               linearIssueCmd    `cmd:"" help:"Print a Linear issue with its comments as JSON."`
+	Issue               linearIssueCmd    `cmd:"" aliases:"show" help:"Print a Linear issue with its comments as JSON."`
 	Comment             linearCommentCmd  `cmd:"" help:"Comment on a Linear issue (e.g. the PR link)."`
 	State               linearStateCmd    `cmd:"" help:"Move a Linear issue to a state of its team by name (e.g. Done on merge)."`
 	Context             linearContextCmd  `cmd:"" help:"Print an issue with labels, blockers, relations, children, assignee, state and recent comments as JSON."`

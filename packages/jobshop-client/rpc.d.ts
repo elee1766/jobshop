@@ -60,6 +60,7 @@ export interface RpcMethods {
   "learn.list": { params: LearnListParams; result: Learning[] };
   "learn.update": { params: LearnUpdateParams; result: Learning[] };
   "linear.intake": { params: LinearIntakeParams; result: LinearIntakeResult };
+  "linear.teams": { params: Record<string, never>; result: LinearTeamsResult };
   "memory.show": { params: MemoryShowParams; result: MemoryShowResult };
   "memory.write": { params: MemoryWriteParams; result: MemoryEdit };
   "pool.list": { params: PoolListParams; result: PoolStatusResult };
@@ -75,7 +76,7 @@ export interface RpcMethods {
   "resource.list": { params: Record<string, never>; result: ResourceListResult };
   "resource.remove": { params: SlotParams; result: Slot };
   "resource.unhealthy": { params: SlotParams; result: SlotResult };
-  "run.cancel": { params: IDParams; result: RunResult };
+  "run.cancel": { params: RunCancelParams; result: RunResult };
   "run.list": { params: RunListParams; result: Ticket[] };
   "run.resume": { params: RunResumeParams; result: RunResult };
   "run.show": { params: IDParams; result: RunResult };
@@ -1056,6 +1057,10 @@ export interface LinearIntakeResult {
   states?: string[];
 }
 
+export interface LinearTeamsResult {
+  teams: string[];
+}
+
 export interface ListParams {
   query?: string;
   project?: string;
@@ -1328,6 +1333,11 @@ export interface ResourceWait {
   ahead: number;
   held: number;
   capacity: number;
+}
+
+export interface RunCancelParams {
+  id?: string;
+  reason?: string;
 }
 
 export interface RunListParams {

@@ -68,7 +68,7 @@ Commands:
   ticket create <title> [flags]
     Create a ticket.
 
-  ticket show [<id>]
+  ticket show [<id>] [flags]
     Show a ticket with edges, comments and history.
 
   ticket trace [<id>] [flags]
@@ -98,7 +98,7 @@ Commands:
   close [<id>] [flags]
     Close a ticket (default: the session's current one).
 
-  comment <body> [flags]
+  comment <body> ... [flags]
     Comment on a ticket.
 
   guard <action> [flags]
@@ -115,7 +115,7 @@ Commands:
   wait list [flags]
     List waiting tickets.
 
-  wait clear <id> [flags]
+  wait clear (rm) <id> [flags]
     Remove a ticket's wait; it becomes ready.
 
   decision <action> <id> [flags]
@@ -390,7 +390,7 @@ Commands:
     git credential helper: get returns an installation token for the repo in the
     request. Set credential.useHttpPath=true.
 
-  linear issue <key> [flags]
+  linear issue (show) <key> [flags]
     Print a Linear issue with its comments as JSON.
 
   linear comment <key> <body> [flags]
@@ -403,10 +403,10 @@ Commands:
     Print an issue with labels, blockers, relations, children, assignee,
     state and recent comments as JSON.
 
-  linear list --team=STRING [flags]
+  linear list [flags]
     List a team's issues as JSON, one page at a time.
 
-  linear search --team=STRING <query> [flags]
+  linear search <query> [flags]
     Search a team's issues as JSON, one page at a time.
 
   linear catalog --team=STRING <kind> [flags]
@@ -933,7 +933,7 @@ Commands:
   ticket create <title> [flags]
     Create a ticket.
 
-  ticket show [<id>]
+  ticket show [<id>] [flags]
     Show a ticket with edges, comments and history.
 
   ticket trace [<id>] [flags]
@@ -997,7 +997,7 @@ Flags:
 ## jobshop ticket show
 
 ```
-Usage: jobshop ticket show [<id>]
+Usage: jobshop ticket show [<id>] [flags]
 
 Show a ticket with edges, comments and history.
 
@@ -1012,6 +1012,8 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --json             Accepted and ignored: the output is always JSON.
 ```
 
 ## jobshop ticket trace
@@ -1127,7 +1129,7 @@ Flags:
                               request_changes is the request_changes resolution.
       --output-file=STRING    Structured workflow step output as a JSON object,
                               validated before closing. Use - to read stdin.
-      --comment=STRING        Comment added before closing; with
+  -m, --comment=STRING        Comment added before closing; with
                               request_changes, the findings for the reopened
                               step (required). Use - to read stdin.
 ```
@@ -1235,7 +1237,7 @@ Flags:
                               request_changes is the request_changes resolution.
       --output-file=STRING    Structured workflow step output as a JSON object,
                               validated before closing. Use - to read stdin.
-      --comment=STRING        Comment added before closing; with
+  -m, --comment=STRING        Comment added before closing; with
                               request_changes, the findings for the reopened
                               step (required). Use - to read stdin.
 ```
@@ -1243,12 +1245,13 @@ Flags:
 ## jobshop comment
 
 ```
-Usage: jobshop comment <body> [flags]
+Usage: jobshop comment <body> ... [flags]
 
 Comment on a ticket.
 
 Arguments:
-  <body>    Comment text. Use - to read stdin.
+  <body> ...    Comment text, or a ticket id then the text. Use - as the text to
+                read stdin.
 
 Flags:
   -h, --help             Show context-sensitive help.
@@ -1260,6 +1263,7 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
   -t, --ticket=STRING    Ticket id (default: the session's current ticket).
+                         Same as giving the ticket first.
 ```
 
 ## jobshop guard
@@ -1336,7 +1340,7 @@ Commands:
   wait list [flags]
     List waiting tickets.
 
-  wait clear <id> [flags]
+  wait clear (rm) <id> [flags]
     Remove a ticket's wait; it becomes ready.
 ```
 
@@ -1408,7 +1412,7 @@ Flags:
 ## jobshop wait clear
 
 ```
-Usage: jobshop wait clear <id> [flags]
+Usage: jobshop wait clear (rm) <id> [flags]
 
 Remove a ticket's wait; it becomes ready.
 
@@ -1597,7 +1601,7 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
       --to=STRING        Pool to move the ticket to.
-      --note=STRING      Comment to add for the next holder.
+  -r, --note=STRING      Comment to add for the next holder.
       --force            Hand off even though the current git branch has commits
                          no remote has.
 ```
@@ -2279,6 +2283,7 @@ Flags:
       --key=STRING         Only runs with this key (exact), closed ones
                            included.
   -n, --limit=INT          Max results (default 500).
+      --json               Accepted and ignored: the output is always JSON.
 ```
 
 ## jobshop run cancel
@@ -2300,6 +2305,8 @@ Flags:
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
+  -r, --reason=STRING    Why the run is cancelled: added as a comment on the run
+                         before it is cancelled.
       --json             Print JSON.
 ```
 
@@ -3945,7 +3952,7 @@ Flags:
                                  callers only).
 
 Commands:
-  linear issue <key> [flags]
+  linear issue (show) <key> [flags]
     Print a Linear issue with its comments as JSON.
 
   linear comment <key> <body> [flags]
@@ -3958,10 +3965,10 @@ Commands:
     Print an issue with labels, blockers, relations, children, assignee,
     state and recent comments as JSON.
 
-  linear list --team=STRING [flags]
+  linear list [flags]
     List a team's issues as JSON, one page at a time.
 
-  linear search --team=STRING <query> [flags]
+  linear search <query> [flags]
     Search a team's issues as JSON, one page at a time.
 
   linear catalog --team=STRING <kind> [flags]
@@ -4001,7 +4008,7 @@ Commands:
 ## jobshop linear issue
 
 ```
-Usage: jobshop linear issue <key> [flags]
+Usage: jobshop linear issue (show) <key> [flags]
 
 Print a Linear issue with its comments as JSON.
 
@@ -4102,7 +4109,7 @@ Flags:
 ## jobshop linear list
 
 ```
-Usage: jobshop linear list --team=STRING [flags]
+Usage: jobshop linear list [flags]
 
 List a team's issues as JSON, one page at a time.
 
@@ -4119,7 +4126,8 @@ Flags:
       --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
-      --team=STRING              Team key, e.g. ENG.
+      --team=STRING              Team key, e.g. ENG. Default: the host's Linear
+                                 team when it has exactly one.
       --state=STRING             State name, e.g. Todo.
       --label=STRING             Label name.
       --assignee=STRING          Assignee name, or me.
@@ -4130,7 +4138,7 @@ Flags:
 ## jobshop linear search
 
 ```
-Usage: jobshop linear search --team=STRING <query> [flags]
+Usage: jobshop linear search <query> [flags]
 
 Search a team's issues as JSON, one page at a time.
 
@@ -4150,7 +4158,8 @@ Flags:
       --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
-      --team=STRING              Team key, e.g. ENG.
+      --team=STRING              Team key, e.g. ENG. Default: the host's Linear
+                                 team when it has exactly one.
       --state=STRING             State name, e.g. Todo.
       --label=STRING             Label name.
       --assignee=STRING          Assignee name, or me.

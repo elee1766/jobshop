@@ -511,7 +511,8 @@ func (c ticketCreateCmd) Run(g *Globals) error {
 }
 
 type ticketShowCmd struct {
-	ID string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
+	ID   string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
+	JSON bool   `help:"Accepted and ignored: the output is always JSON."`
 }
 
 func (c ticketShowCmd) Run(g *Globals) error {
@@ -591,7 +592,7 @@ type closeCmd struct {
 	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), request_changes (a review step: reopen the step it reviews with --comment as findings), cancelled. A workflow step takes only these; put text in a comment."`
 	Outcome    string `help:"Workflow step outcome word (approve, reject, ...); later steps' when: conditions read it. request_changes is the request_changes resolution."`
 	OutputFile string `help:"Structured workflow step output as a JSON object, validated before closing. Use - to read stdin." type:"path"`
-	Comment    string `help:"Comment added before closing; with request_changes, the findings for the reopened step (required). Use - to read stdin."`
+	Comment    string `short:"m" aliases:"message" help:"Comment added before closing; with request_changes, the findings for the reopened step (required). Use - to read stdin."`
 }
 
 func (c closeCmd) Run(g *Globals) error {
@@ -640,16 +641,42 @@ func (c decisionCmd) Run(g *Globals) error {
 }
 
 type commentCmd struct {
-	Body string `arg:"" help:"Comment text. Use - to read stdin."`
-	ID   string `short:"t" name:"ticket" help:"Ticket id (default: the session's current ticket)."`
+	Args []string `arg:"" name:"body" help:"Comment text, or a ticket id then the text. Use - as the text to read stdin."`
+	ID   string   `short:"t" name:"ticket" help:"Ticket id (default: the session's current ticket). Same as giving the ticket first."`
+}
+
+// target splits the positionals: one is the body, two are the ticket and
+// the body (agents write `comment <ticket> <body>`). Naming the ticket
+// twice is an error.
+func (c commentCmd) target() (id, body string, err error) {
+	switch len(c.Args) {
+	case 1:
+		return c.ID, c.Args[0], nil
+	case 2:
+		if c.ID != "" {
+			return "", "", errors.New("give the ticket with -t or as the first argument, not both")
+		}
+		return c.Args[0], c.Args[1], nil
+	}
+	return "", "", fmt.Errorf("want [ticket] body, got %d arguments: quote the comment text", len(c.Args))
+}
+
+// Validate makes a bad argument list a parse error.
+func (c commentCmd) Validate() error {
+	_, _, err := c.target()
+	return err
 }
 
 func (c commentCmd) Run(g *Globals) error {
-	body, err := readBody(c.Body)
+	id, body, err := c.target()
 	if err != nil {
 		return err
 	}
-	return g.call(rpc.MethodCommentAdd, rpc.CommentParams{ID: c.ID, Body: body}, nil)
+	body, err = readBody(body)
+	if err != nil {
+		return err
+	}
+	return g.call(rpc.MethodCommentAdd, rpc.CommentParams{ID: id, Body: body}, nil)
 }
 
 type assignCmd struct {
@@ -718,7 +745,7 @@ func (c releaseCmd) Run(g *Globals) error {
 type handoffCmd struct {
 	ID    string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
 	To    string `required:"" help:"Pool to move the ticket to."`
-	Note  string `help:"Comment to add for the next holder."`
+	Note  string `short:"r" aliases:"reason" help:"Comment to add for the next holder."`
 	Force bool   `help:"Hand off even though the current git branch has commits no remote has."`
 }
 

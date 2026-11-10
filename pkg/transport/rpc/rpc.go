@@ -91,6 +91,7 @@ const (
 	MethodVersion          = "version"
 	MethodRecall           = "recall"
 	MethodLinearIntake     = "linear.intake"
+	MethodLinearTeams      = "linear.teams"
 	MethodAttention        = "attention"
 	MethodIdentityList     = "identity.list"
 	MethodIdentityCheck    = "identity.check"
@@ -1121,6 +1122,13 @@ type LinearIntakeResult struct {
 	States  []string `json:"states,omitempty"`
 }
 
+// LinearTeamsResult lists the Linear team keys of the host's identities
+// (config ActivityTeams), so `linear list` and `linear search` can default
+// --team when there is exactly one (JOB-201).
+type LinearTeamsResult struct {
+	Teams []string `json:"teams"`
+}
+
 // RecallParams is a recall search (#265). Sessions always search their own
 // project; admin may set Project or leave it empty for all.
 type RecallParams struct {
@@ -1428,6 +1436,13 @@ type RunStartParams struct {
 	// Force skips the intake gate a workflow with a Linear issue var runs
 	// first (`linear eligible`, JOB-69).
 	Force bool `json:"force,omitempty"`
+}
+
+// RunCancelParams cancels a run. Reason, when set, is added as a comment on
+// the run before it is cancelled (JOB-201).
+type RunCancelParams struct {
+	ID     string `json:"id,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // RunResult is a run ticket and its steps in order.

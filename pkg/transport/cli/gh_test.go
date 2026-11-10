@@ -137,6 +137,8 @@ type fakeController struct {
 	keys map[string]string
 	// intake answers linear.intake; nil is method not found.
 	intake *rpc.LinearIntakeResult
+	// teams answers linear.teams.
+	teams []string
 }
 
 func (f *fakeController) serve(t *testing.T) string {
@@ -190,6 +192,8 @@ func (f *fakeController) serve(t *testing.T) string {
 					if f.intake != nil {
 						return *f.intake, nil
 					}
+				case rpc.MethodLinearTeams:
+					return rpc.LinearTeamsResult{Teams: f.teams}, nil
 				case rpc.MethodSecretScan:
 					// As the controller, with the built-in rules.
 					var p rpc.SecretScanParams

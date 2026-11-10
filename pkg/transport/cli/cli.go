@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/alecthomas/kong"
 	host "github.com/gfx-labs/acphost/pkg/acphost"
 	"github.com/gfx-labs/jobshop/pkg/config"
 	"github.com/gfx-labs/jobshop/pkg/execution/session"
@@ -62,6 +63,9 @@ func (g *Globals) root() (config.Root, error) {
 // root is the kong command tree.
 type root struct {
 	Globals
+
+	// Version is `jobshop --version`, the same line as `jobshop version`.
+	VersionFlag versionFlag `name:"version" hidden:"" help:"Print version information and exit (same as the version command)."`
 
 	Init     initCmd     `cmd:"" help:"Create a Jobshop root (jobshop.yaml and pack.yaml) in a directory."`
 	Serve    serveCmd    `cmd:"" help:"Run the controller for the root."`
@@ -172,6 +176,18 @@ func (c helpCmd) Run() error {
 
 type versionCmd struct {
 	Server bool `help:"Print the running controller's version instead of this binary's. A session's own binary is fixed when it starts, so deploy checks use this (#180)."`
+}
+
+// versionFlag is --version (JOB-201). Like kong.VersionFlag it prints and
+// exits before the rest is parsed, but prints what versionCmd does.
+type versionFlag bool
+
+func (versionFlag) BeforeReset(app *kong.Kong) error {
+	if err := (versionCmd{}).Run(nil); err != nil {
+		return err
+	}
+	app.Exit(0)
+	return nil
 }
 
 func (c versionCmd) Run(g *Globals) error {
