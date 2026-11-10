@@ -47,6 +47,16 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		if err != nil {
 			return "", err
 		}
+		// A reload since the invocation was queued: move the run to the
+		// live callbacks first. That changes the run, so this invocation
+		// is superseded and the next drain queues it again.
+		moved, _, err := c.followLive(ctx, run, fields)
+		if err != nil {
+			return "", err
+		}
+		if moved.Revision != run.Revision {
+			return "superseded", nil
+		}
 		// Before evaluation, so a run2 run without its scope runs no code.
 		return "", runScopeRecorded(fields.Automation)
 	}
@@ -214,6 +224,14 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 				}
 			}
 		}
+		// A reload since the plan was journaled: a run that follows the
+		// live callbacks moves to them first. The move changes the run, so
+		// this plan is superseded and its callback runs again under them.
+		if moved, _, err := c.followLiveLocked(ctx, run, f); err != nil {
+			return err
+		} else if moved.Revision != run.Revision {
+			return fmt.Errorf("%w: run moved to the live callbacks", domain.ErrConflict)
+		}
 	case len(in.Plan.Tickets) > 0:
 		// Stable IDs were journaled before Apply. The graph is all-or-nothing.
 		if _, err := c.store.Get(ctx, in.Plan.Tickets[0].ID); err == nil {
@@ -245,7 +263,7 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		if in.RunInput == nil {
 			return errors.New("planned workflow hook has no accepted run input")
 		}
-		pinned = hooks.RunPinned(lc.hooks, lc.cfg, in.RunInput.Workflow, in.Digest)
+		pinned = hooks.RunAllowed(lc.hooks, lc.cfg, in.RunInput.Workflow, in.Digest)
 	}
 	if !pinned {
 		return errors.New("planned hook manifest changed: restore the accepted configuration before applying actions")

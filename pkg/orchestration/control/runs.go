@@ -622,6 +622,11 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if t.Status == domain.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", domain.ErrClosed, t.ID)
 	}
+	// A run of a workflow that follows the live callbacks, stranded before
+	// that was the default, moves to them here; --repin then has nothing left.
+	if t, f, err = c.followLiveLocked(ctx, t, f); err != nil {
+		return nil, err
+	}
 	if p.Repin {
 		// It swaps the code and authority the run executes under.
 		if err := requireAdmin(sc, "run resume --repin"); err != nil {

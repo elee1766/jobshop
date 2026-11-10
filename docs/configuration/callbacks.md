@@ -24,6 +24,19 @@ explicit asset directory. A callback workflow must return an explicit
 `finish_run` when its work is complete. Having no more static steps does
 not complete it automatically.
 
+By default an open run follows the live callbacks: after a reload, its next
+callback, script step, planned-action apply or resume uses the workflow's
+current entry points, code, host grants and reference scope, and the run
+records the move in one comment. An edit that the run's existing steps and
+output do not fit fails in the callback and the run goes `needs_human` with
+that error. This includes changed grants and scope, widened or narrowed: the
+operator controls the configuration, so a reload needs no admin action and the
+run's recorded reference scope moves with it. A workflow that needs the
+old guarantee sets `pin_callbacks: true` (callback workflows only): its runs
+stop on a changed manifest until `run resume --repin`. The option is read from
+the live configuration, not recorded on the run. See
+`docs/notes/JOB-188-unpinned-callbacks.md`.
+
 A trigger declares a handler plus static `args`, rather than a static
 `run`, `ticket` or `command` action:
 
@@ -535,7 +548,8 @@ jobshop run resume <run-id>
 
 `run resume` is a write, not an audit command. It can requeue a failed hook
 even before that hook created a step. It preserves the invocation identity,
-requires the pinned code digest, refreshes the run/step read set, and reuses
+requires the code digest the run is pinned to (a run that follows the live
+callbacks is always at the live one), refreshes the run/step read set, and reuses
 only safe completed calls. Unknown, failed or redacted call observations
 refuse retry. There is no force option that turns them into unexecuted
 calls. Reconciling an external outcome does not itself rewrite its journal
@@ -549,12 +563,14 @@ callback evaluation and from retrying an external effect. A code bug in a
 pinned callback is not fixed by silently swapping in a new script for the
 old invocation. Preserve the source or use the migration/drain procedure.
 
-When a deploy replaced the callbacks of runs already open (`hook manifest
-changed`, run `needs_human`), an operator on the admin socket can move one
-run to the live callbacks and resume it with `jobshop run resume <run-id>
---repin`. The run records the repin as a comment. Review the new callbacks
-first: the run keeps its progress but runs the new code and grants. See
-`docs/notes/1012-hook-repin.md`.
+A run of a `pin_callbacks: true` workflow stops with `hook manifest changed`
+when a deploy replaced its callbacks (run `needs_human`, plain `run resume`
+refuses). An operator on the admin socket can move one run to the live
+callbacks and resume it with `jobshop run resume <run-id> --repin`, recorded as
+a run comment. Review the new callbacks first: the run keeps its progress but
+runs the new code and grants. On a workflow that follows the live callbacks
+`--repin` is accepted and does nothing extra, and plain `run resume` moves a
+run stranded earlier. See `docs/notes/1012-hook-repin.md`.
 
 ## Event wakeups and reconciliation
 

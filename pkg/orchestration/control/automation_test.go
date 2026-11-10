@@ -52,6 +52,18 @@ triggers:
 	return root
 }
 
+// pinCallbacks sets pin_callbacks on the test root's dynamic workflow
+// (JOB-188), for tests of the pinned behaviour.
+func pinCallbacks(t *testing.T, root config.Root) {
+	t.Helper()
+	path := filepath.Join(root.Dir, "pack.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	pack := strings.Replace(string(data), "    on_start: hooks.star:begin\n", "    pin_callbacks: true\n    on_start: hooks.star:begin\n", 1)
+	require.NotEqual(t, string(data), pack)
+	require.NoError(t, os.WriteFile(path, []byte(pack), 0o600))
+}
+
 func TestHookCapabilitiesOutsideControllerLocksAndCancelDiscardsActions(t *testing.T) {
 	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -537,6 +549,7 @@ def handle(event, args):
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := hookTestRoot(t, script)
+			pinCallbacks(t, root)
 			path := filepath.Join(root.Dir, "pack.yaml")
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
@@ -920,6 +933,7 @@ def completed(run, step):
 def handle(event, args):
     return []
 `)
+	pinCallbacks(t, root)
 	c := controltest.Start(t, root, control.Options{})
 	var run rpc.RunResult
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic"}, &run)

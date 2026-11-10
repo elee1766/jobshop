@@ -29,6 +29,11 @@ type Workflow struct {
 	Project         string `yaml:"project,omitempty"`
 	OnStart         string `yaml:"on_start,omitempty"`
 	OnStepCompleted string `yaml:"on_step_completed,omitempty"`
+	// PinCallbacks pins each run to the callbacks it last ran under (code,
+	// grants, entry points, reference scope): a reload that changes them stops
+	// the run until an operator repins it (JOB-188). Off by default, a run
+	// follows the live callbacks. Only for a callback workflow.
+	PinCallbacks bool `yaml:"pin_callbacks,omitempty"`
 	// Enabled false keeps the workflow validated but not loaded (JOB-24).
 	Enabled *bool `yaml:"enabled,omitempty"`
 	// Vars are the var names a run must supply. Pack vars give defaults.
@@ -435,6 +440,9 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		if err := c.checkEscalation(w.Escalate); err != nil {
 			return fmt.Errorf("escalate: %w", err)
 		}
+	}
+	if w.PinCallbacks && w.OnStart == "" {
+		return errors.New("pin_callbacks needs a callback workflow (on_start and on_step_completed)")
 	}
 	if w.OnStart != "" || w.OnStepCompleted != "" {
 		if w.OnStart == "" || w.OnStepCompleted == "" || len(w.Steps) != 0 {

@@ -36,7 +36,12 @@ func hookReference(cfg *config.Config, in hooks.Invocation, a *domain.RunAutomat
 	if err := runScopeRecorded(a); err != nil {
 		return "", err
 	}
-	return cfg.ResolvePinnedHookReference("workflows."+in.RunInput.Workflow, kind, name, a.Scope)
+	scope := a.Scope
+	if hooks.FollowsLive(cfg, in.RunInput.Workflow) {
+		// The run follows the live configuration, references included.
+		scope = nil
+	}
+	return cfg.ResolvePinnedHookReference("workflows."+in.RunInput.Workflow, kind, name, scope)
 }
 
 // runScopeRecorded fails closed for a run2 pin whose run lost the scope it
@@ -80,7 +85,9 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *domain.RunA
 				return err
 			}
 			w := cfg.Workflows[f.Workflow]
-			if (f.Automation != nil) != (w.OnStart != "") || f.Automation != nil && cfg.HookRunPins[f.Workflow] != f.Automation.Digest {
+			// A workflow that follows the live callbacks moves the planned run to
+			// them once it starts, so only a pinned one rechecks the digest.
+			if (f.Automation != nil) != (w.OnStart != "") || f.Automation != nil && !hooks.FollowsLive(cfg, f.Workflow) && cfg.HookRunPins[f.Workflow] != f.Automation.Digest {
 				return fmt.Errorf("planned workflow %s changed", f.Workflow)
 			}
 			want["workflow:"+action.Workflow] = f.Workflow

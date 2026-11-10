@@ -52,6 +52,9 @@ def handle(event, args):
     return []
 `)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "credential"), []byte(hostSecret), 0o600))
+	// The rotated manifest must reject the prepared graph, which only a
+	// pinned workflow does (JOB-188).
+	pinCallbacks(t, root)
 	data, err := os.ReadFile(root.Config())
 	require.NoError(t, err)
 	grants := fmt.Sprintf("automation:\n  http: true\n  credentials:\n    api:\n      origins: [%q]\n      header: X-API-Key\n      secret: credential\n", server.URL)

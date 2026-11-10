@@ -11,6 +11,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
@@ -161,7 +162,9 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 	if f.Automation != nil {
 		// Legacy full-manifest pins also differ here, which is right: a
 		// repin moves them to the run pin.
-		if pin := cfg.HookRunPins[f.Workflow]; pin != "" && pin != f.Automation.Digest {
+		// A workflow that follows the live callbacks is moved by the
+		// controller and needs no repin (JOB-188).
+		if pin := cfg.HookRunPins[f.Workflow]; pin != "" && pin != f.Automation.Digest && !hooks.FollowsLive(cfg, f.Workflow) {
 			fmt.Fprintf(&b, "The run's pinned callbacks no longer match the loaded configuration (a deploy or reload changed them). To continue it under the live callbacks, `jobshop run resume %s --repin` on the admin socket; or cancel it.\n", run.ID)
 		}
 	}

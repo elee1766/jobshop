@@ -15,8 +15,9 @@ import (
 // run the controller pinned: it reads the live callback runtime.
 
 // scriptInputs loads the run and step envelopes and the program the run
-// pinned. A run whose callback code changed since it started fails the
-// attempt rather than running new code against old state.
+// pinned. A run of a pin_callbacks workflow whose callback code changed
+// since it started fails the attempt rather than running new code against
+// old state.
 func (c *Controller) scriptInputs(ctx context.Context, t domain.Ticket, sf domain.StepFields) (stepexec.ScriptInputs, error) {
 	runTicket, err := c.store.Get(ctx, sf.Run)
 	if err != nil {
@@ -29,8 +30,12 @@ func (c *Controller) scriptInputs(ctx context.Context, t domain.Ticket, sf domai
 	if rf.Automation == nil {
 		return stepexec.ScriptInputs{}, errors.New("script step outside a callback workflow")
 	}
+	// A workflow that follows the live callbacks moves the run to them first.
+	if runTicket, rf, err = c.followLive(ctx, runTicket, rf); err != nil {
+		return stepexec.ScriptInputs{}, err
+	}
 	runtime := c.live.Load().runtime
-	if !hooks.RunPinned(runtime.Programs, runtime.Config, rf.Workflow, rf.Automation.Digest) {
+	if !hooks.RunAllowed(runtime.Programs, runtime.Config, rf.Workflow, rf.Automation.Digest) {
 		return stepexec.ScriptInputs{}, errors.New("workflow callback code changed since the run started: restore it or cancel the run")
 	}
 	program := runtime.Programs[sf.ScriptHook]
