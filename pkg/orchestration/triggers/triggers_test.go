@@ -2,6 +2,7 @@ package triggers
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -59,4 +60,29 @@ func TestPollDue(t *testing.T) {
 	// cases cover the ones that decide without it.
 	assert.True(t, e.pollDue("a", config.Trigger{}), "no on, no fallback: every tick")
 	assert.False(t, e.pollDue("b", config.Trigger{On: []config.TriggerEvent{{Source: "github"}}}), "on without when conditions never polls")
+}
+
+// pollClock is a Host that has only a clock, which is all pollDue reads.
+type pollClock struct {
+	Host
+	now time.Time
+}
+
+func (p *pollClock) Now() time.Time { return p.now }
+
+// TestPollDueFallbackWithoutOn: a trigger with fallback and no on: polls
+// once per fallback, not every tick (JOB-191: selfdev's evaluate trigger).
+func TestPollDueFallbackWithoutOn(t *testing.T) {
+	t.Parallel()
+	h := &pollClock{now: time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)}
+	e := New(h)
+	tr := config.Trigger{Fallback: "10m", Handler: "triggers.star:start"}
+	assert.True(t, e.pollDue("evaluate", tr), "first tick polls")
+	h.now = h.now.Add(50 * time.Millisecond)
+	assert.False(t, e.pollDue("evaluate", tr), "the next tick does not")
+	h.now = h.now.Add(9 * time.Minute)
+	assert.False(t, e.pollDue("evaluate", tr), "nor before the fallback")
+	h.now = h.now.Add(time.Minute)
+	assert.True(t, e.pollDue("evaluate", tr), "at the fallback")
+	assert.True(t, e.pollDue("other", tr), "each trigger has its own clock")
 }

@@ -18,10 +18,11 @@ import (
 // here take those answers as arguments.
 
 // StepStore is a Store that can also list tickets, which the gate reads to
-// measure a window of steps.
+// measure a window of steps, and count the runs in one.
 type StepStore interface {
 	Store
 	List(ctx context.Context, f store.Filter) ([]domain.Ticket, error)
+	CountRuns(ctx context.Context, pools []string, r store.TimeRange) (int, error)
 }
 
 // Measure reads the steps and learnings of [from, to) and computes the
@@ -59,19 +60,32 @@ func RecordPREdit(ctx context.Context, st StepStore, pr string, cited []domain.L
 	return AddPREdit(ctx, st, e)
 }
 
-// EditDue reports whether a pending edit has enough evidence: runs runs
-// in its pools since the merge, or age since the merge. It returns the
-// metrics it measured for the decision.
-func EditDue(ctx context.Context, st StepStore, e domain.MemoryEdit, runs int, age time.Duration, now time.Time) (bool, domain.PoolMetrics, error) {
+// EditDue reports whether a pending edit has enough evidence: age since
+// the merge, or runs runs in its pools since it. The age is checked first
+// with no query, and the runs are counted by the store, not by loading
+// every step and learning of the window (JOB-191): the gate polls this.
+// Measure takes the metrics once an edit is due.
+func EditDue(ctx context.Context, st StepStore, e domain.MemoryEdit, runs int, age time.Duration, now time.Time) (bool, error) {
+	if !now.Before(e.MergedAt.Add(age)) || runs <= 0 {
+		return true, nil
+	}
+	n, err := CountEditRuns(ctx, st, e, now)
+	return n >= runs, err
+}
+
+// CountEditRuns counts the runs with a step in e's pools between its merge
+// and now: PoolMetrics.Runs of the window after the edit.
+func CountEditRuns(ctx context.Context, st StepStore, e domain.MemoryEdit, now time.Time) (int, error) {
+	return st.CountRuns(ctx, e.Pools, store.TimeRange{Since: e.MergedAt, Until: now})
+}
+
+// MeasureEdit measures the window after e's merge, to settle it.
+func MeasureEdit(ctx context.Context, st StepStore, e domain.MemoryEdit, now time.Time) (domain.PoolMetrics, error) {
 	cited, err := GetLearnings(ctx, st, e.Learnings)
 	if err != nil {
-		return false, domain.PoolMetrics{}, err
+		return domain.PoolMetrics{}, err
 	}
-	after, err := Measure(ctx, st, cited, e.Pools, e.MergedAt, now, true)
-	if err != nil {
-		return false, after, err
-	}
-	return after.Runs >= runs || !now.Before(e.MergedAt.Add(age)), after, nil
+	return Measure(ctx, st, cited, e.Pools, e.MergedAt, now, true)
 }
 
 // SettleEdit decides e from its baseline and the measured after, stores

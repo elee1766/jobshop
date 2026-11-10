@@ -329,6 +329,17 @@ type Store interface {
 	// feeds events.subscribe; n < 0 reads only Last.
 	Changes(ctx context.Context, after int64, n int) (ChangePage, error)
 
+	// CountRuns counts the distinct runs that own a step created in r,
+	// in pools (any pool when empty): the run count of the memory-edit
+	// gate, without loading the steps (JOB-191).
+	CountRuns(ctx context.Context, pools []string, r TimeRange) (int, error)
+
+	// Maintain refreshes what the backend's planner needs to pick
+	// indexes (SQLite statistics, JOB-191). It is cheap when nothing
+	// changed much; the controller calls it on a slow interval. Open
+	// already ran it once.
+	Maintain(ctx context.Context) error
+
 	// Apply writes g in one transaction and returns the created tickets
 	// in order (#579: replaces Create, CreateGraph, ApplyGraph, AddEdge
 	// and RemoveEdge). Each Unclaimed id must be open and unheld inside

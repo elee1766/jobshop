@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/gfx-labs/jobshop/pkg/domain"
 	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 var gateT0 = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
@@ -126,4 +128,71 @@ func TestDecide(t *testing.T) {
 	}
 	got, _ := knowledge.DecideEdit(domain.PoolMetrics{}, domain.PoolMetrics{Steps: 5, Recurrence: 1})
 	assert.Equal(t, domain.EditNotHelped, got, "recurs after none in the baseline")
+}
+
+// TestCountEditRunsMatchesMeasure: the run count the store computes in SQL
+// equals the one EditMetrics derives from the listed steps, on the same
+// data, and EditDue decides on it (JOB-191).
+func TestCountEditRunsMatchesMeasure(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	now := gateT0.Add(-3 * time.Hour)
+	s := open(t, &now)
+	h := time.Hour
+	// Creation times only go up, so the runs come first and the steps
+	// follow in time order.
+	mkRun := func(name string) string {
+		t.Helper()
+		r, err := store.Create(ctx, s, "test", store.NewTicket{
+			Project: "js", Kind: domain.KindRun, Title: name,
+			Fields: json.RawMessage(fmt.Sprintf(`{"workflow":"w","key":%q,"state":"running"}`, name)),
+		})
+		require.NoError(t, err)
+		return r.ID
+	}
+	mkStep := func(run, pool string, at time.Time) {
+		t.Helper()
+		now = at
+		_, err := store.Create(ctx, s, "test", store.NewTicket{
+			Project: "js", Kind: domain.KindStep, Pool: pool, ParentID: run,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"a","index":0}`, run)),
+		})
+		require.NoError(t, err)
+	}
+	r1, r2, r3, r4, r5 := mkRun("r1"), mkRun("r2"), mkRun("r3"), mkRun("r4"), mkRun("r5")
+	mkStep(r1, "dev", gateT0.Add(-h)) // before the merge
+	mkStep(r2, "dev", gateT0.Add(h))
+	mkStep(r2, "dev", gateT0.Add(2*h)) // a second step of the same run
+	mkStep(r3, "dev", gateT0.Add(3*h))
+	mkStep(r3, "review", gateT0.Add(3*h)) // another pool of a counted run
+	mkStep(r4, "review", gateT0.Add(4*h)) // a pool the edit does not scope
+	mkStep(r5, "dev", gateT0.Add(30*h))   // after the window
+
+	e := domain.MemoryEdit{ID: 1, Pools: []string{"dev"}, MergedAt: gateT0}
+	end := gateT0.Add(24 * h)
+	now = end
+
+	for _, pools := range [][]string{{"dev"}, {"review"}, {"dev", "review"}, nil} {
+		e.Pools = pools
+		m, err := knowledge.Measure(ctx, s, nil, pools, e.MergedAt, end, true)
+		require.NoError(t, err)
+		n, err := knowledge.CountEditRuns(ctx, s, e, end)
+		require.NoError(t, err)
+		assert.Equal(t, m.Runs, n, "pools %v", pools)
+	}
+	e.Pools = []string{"dev"}
+	n, err := knowledge.CountEditRuns(ctx, s, e, end)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n, "r2 and r3 in dev inside the window")
+
+	due := func(runs int, age time.Duration) bool {
+		t.Helper()
+		ok, err := knowledge.EditDue(ctx, s, e, runs, age, end)
+		require.NoError(t, err)
+		return ok
+	}
+	assert.True(t, due(2, 72*h), "enough runs")
+	assert.False(t, due(3, 72*h), "too few runs, too young")
+	assert.True(t, due(3, 24*h), "old enough, however few runs")
+	assert.True(t, due(0, 72*h), "no run threshold: due at once, as 0 >= 0 was")
 }

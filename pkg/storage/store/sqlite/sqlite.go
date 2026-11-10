@@ -59,6 +59,13 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Statistics let the planner pick field indexes (JOB-191). A full
+	// analysis, not a sampled one: with analysis_limit the planner went
+	// back to records_created for the same queries.
+	if _, err := db.ExecContext(ctx, optimizeSQL); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("optimize: %w", err)
+	}
 	// Reads get their own connections so a slow writer pass does not
 	// stall every API read. WAL readers see the last committed
 	// transaction, the same as reading after it on the writer.

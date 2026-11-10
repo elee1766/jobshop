@@ -98,7 +98,7 @@ func TestTickTraces(t *testing.T) {
 		"sweep", "provider_pass", "run_triggers", "place_steps", "supervise", "run_auto_steps",
 		"report_orphans", "scan_sessions", "sweep_runs", "sweep_escalation_chats", "sweep_attention_chats",
 		"sweep_batches", "sweep_linear_asks", "sweep_linear_agent_sessions", "prune_inbox", "prune_write_keys",
-		"prune_artifacts", "compress_journals",
+		"prune_artifacts", "compress_journals", "maintain_store",
 	}
 	for _, s := range steps {
 		sp, ok := byName["tick "+s]
