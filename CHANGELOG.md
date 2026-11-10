@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.4](https://github.com/gfx-labs/jobshop/compare/v0.10.3...v0.10.4) (2026-11-10)
+
+
+### Features
+
+* **control:** pool max_tickets for single-use sessions (JOB-189) ([#1171](https://github.com/gfx-labs/jobshop/issues/1171)) ([efa0ae5](https://github.com/gfx-labs/jobshop/commit/efa0ae5dae2a1606c07a95beef5d2c8ccfbafa1c))
+
+
+### Bug fixes
+
+* **control:** write a failed callback reason with the run state, and fix a test file race ([#1168](https://github.com/gfx-labs/jobshop/issues/1168)) ([82867bb](https://github.com/gfx-labs/jobshop/commit/82867bb7acb5724b8ee186f26d6034429a56e9ff))
+
 ## [0.10.3](https://github.com/gfx-labs/jobshop/compare/v0.10.2...v0.10.3) (2026-11-10)
 
 
