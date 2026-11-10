@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -113,6 +114,36 @@ func TestStepOutputSchemaAndRetryIntent(t *testing.T) {
 	}
 	if result.Actions[1].Reason != "single attempt policy" || result.Actions[2].Reason != "all required work complete" {
 		t.Fatalf("lost ordinary policy rationale: %#v", result.Actions)
+	}
+}
+
+func TestCommandStepAction(t *testing.T) {
+	engine := hook(t, `def handle():
+    return [
+        start_step(id="gate",type="command",pool="gate",run=["make","","check"],timeout="10m",retry_after="1m",on_restart="fail",worktree=True,retries=3,needs_resources=["emu"]),
+        start_step(id="shell",type="command",pool="gate",run="make check"),
+        start_step(id="agent",type="agent",pool="dev",prompt="implement"),
+    ]
+`, automation.Options{})
+	first, err := engine.Invoke(t.Context(), "main.star:handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := first.Actions[0]
+	argv, ok := gate.Run.([]string)
+	if !ok || !slices.Equal(argv, []string{"make", "", "check"}) || gate.Type != "command" || gate.Timeout != "10m" || gate.RetryAfter != "1m" || gate.OnRestart != "fail" || !gate.Worktree || gate.Retries != 3 || !gate.RetriesSet || !slices.Equal(gate.NeedsResources, []string{"emu"}) {
+		t.Fatalf("lost command step fields: %#v", gate)
+	}
+	if first.Actions[1].Run != "make check" || first.Actions[2].Type != "agent" || first.Actions[2].Run != nil {
+		t.Fatalf("wrong shell or agent step: %#v", first.Actions[1:])
+	}
+	argv[0] = "mutated"
+	second, err := engine.Invoke(t.Context(), "main.star:handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := second.Actions[0].Run.([]string); got[0] != "make" {
+		t.Fatalf("caller mutation corrupted frozen argv: %v", got)
 	}
 }
 
@@ -392,6 +423,25 @@ func TestStartStepFieldValidation(t *testing.T) {
 		{"resources not list", `start_step(id="a",pool="p",prompt="x",needs_resources="emu")`, "needs_resources"},
 		{"resources blank", `start_step(id="a",pool="p",prompt="x",needs_resources=[""])`, "nonempty strings"},
 		{"retry_after agent", `start_step(id="a",pool="p",prompt="x",retry_after="1m")`, "retry_after needs script"},
+		{"command no run", `start_step(id="a",type="command",pool="p")`, "needs run"},
+		{"command blank run", `start_step(id="a",type="command",pool="p",run=" ")`, "run must be nonempty"},
+		{"command empty argv", `start_step(id="a",type="command",pool="p",run=[])`, "run must be nonempty"},
+		{"command blank executable", `start_step(id="a",type="command",pool="p",run=["", "x"])`, "executable must be nonblank"},
+		{"command non-string argv", `start_step(id="a",type="command",pool="p",run=["make", 1])`, "list of strings"},
+		{"command prompt", `start_step(id="a",type="command",pool="p",run="true",prompt="x")`, "command excludes"},
+		{"command output_schema", `start_step(id="a",type="command",pool="p",run="true",output_schema={})`, "command excludes"},
+		{"command on_restart", `start_step(id="a",type="command",pool="p",run="true",on_restart="ignore")`, "on_restart"},
+		{"command retry_after", `start_step(id="a",type="command",pool="p",run="true",retry_after="0s")`, "retry_after must be a positive duration"},
+		{"command timeout", `start_step(id="a",type="command",pool="p",run="true",timeout="-1m")`, "timeout must be a positive duration"},
+		{"command retry_pool", `start_step(id="a",type="command",pool="p",run="true",retry_pool="q")`, "excludes retry_pool"},
+		{"command nul shell", `start_step(id="a",type="command",pool="p",run="true\x00")`, "NUL"},
+		{"command nul argv", `start_step(id="a",type="command",pool="p",run=["make", "a\x00b"])`, "NUL"},
+		{"command placement", `start_step(id="a",type="command",run="true",placement={"options":[{"pool":"p"}]})`, "placement is for agent steps"},
+		{"command rounds", `start_step(id="a",type="command",pool="p",run="true",max_review_rounds=1)`, "max_review_rounds is for agent steps"},
+		{"command request changes", `start_step(id="a",type="command",pool="p",run="true",needs=["b"],on_request_changes="b")`, "on_request_changes is for agent steps"},
+		{"agent run", `start_step(id="a",pool="p",prompt="x",run="true")`, "need type"},
+		{"agent on_restart", `start_step(id="a",type="agent",pool="p",prompt="x",on_restart="fail")`, "need type"},
+		{"unknown type", `start_step(id="a",type="http",pool="p",prompt="x")`, "must be agent or command"},
 		{"rounds negative", `start_step(id="a",pool="p",prompt="x",max_review_rounds=-1)`, "max_review_rounds"},
 		{"rounds string", `start_step(id="a",pool="p",prompt="x",max_review_rounds="2")`, "max_review_rounds"},
 		{"request changes not a need", `start_step(id="a",pool="p",prompt="x",needs=["b"],on_request_changes="c")`, "on_request_changes"},

@@ -113,6 +113,9 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *domain.RunA
 				if f.Type == domain.StepScript {
 					want["pool:"+action.Pool] = f.ScriptPool
 				}
+				if f.CommandSpec != nil {
+					want["pool:"+action.Pool] = f.CommandSpec.Pool
+				}
 			}
 			if action.RetryPool != "" || f.RetryPool != "" {
 				want["pool:"+action.RetryPool] = f.RetryPool
@@ -327,7 +330,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				}
 			}
 			prompt := ""
-			if action.Script == "" {
+			if action.Script == "" && action.Type != config.StepCommand {
 				prompt, err = program.Prompt(action)
 				if err != nil {
 					return g, err
@@ -363,6 +366,22 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			f := domain.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
 			f.Resources, f.Placement, f.RetryAfter, f.MaxReviewRounds = resources, placement, action.RetryAfter, action.MaxReviewRounds
 			ticketPool := pool
+			if action.Type == config.StepCommand {
+				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
+					return g, fmt.Errorf("step %s: worktree needs a pool with a repo, %s has none", action.ID, pool)
+				}
+				argv, err := (config.Step{Run: action.Run}).Argv()
+				if err != nil {
+					return g, fmt.Errorf("step %s: %w", action.ID, err)
+				}
+				// No ticket pool, as for a script step. The spec has its own
+				// retry_after, so the script field stays empty.
+				f.Type, f.RetryAfter, ticketPool = config.StepCommand, "", ""
+				f.CommandSpec = &domain.CommandSpec{
+					Argv: slices.Clone(argv), Pool: pool, Timeout: action.Timeout,
+					RetryAfter: action.RetryAfter, OnRestart: action.OnRestart, Worktree: action.Worktree,
+				}
+			}
 			if action.Script != "" {
 				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
 					return g, fmt.Errorf("step %s: worktree needs a pool with a repo, %s has none", action.ID, pool)
@@ -376,6 +395,9 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				f.OnRequestChanges = action.OnRequestChanges
 			case slices.Contains(action.Needs, previous):
 				f.OnRequestChanges = previous
+			}
+			if err := f.Validate(); err != nil {
+				return g, fmt.Errorf("step %s: %w", action.ID, err)
 			}
 			data, err := json.Marshal(f)
 			if err != nil {

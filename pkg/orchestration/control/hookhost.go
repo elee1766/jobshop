@@ -249,7 +249,8 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		return errors.New("planned hook manifest changed: restore the accepted configuration before applying actions")
 	}
 	// A run pin survives unrelated reloads, so recheck every pool the plan
-	// can route a ticket to: its pool, a step's retry pool and placements.
+	// can route a ticket to or run a step in: its pool, a step's retry,
+	// script and command pools, and placements.
 	for _, ticket := range in.Plan.Tickets {
 		pools := []string{ticket.Pool}
 		if ticket.Kind == domain.KindStep {
@@ -257,7 +258,10 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
 				return err
 			}
-			pools = append(pools, f.RetryPool)
+			pools = append(pools, f.RetryPool, f.ScriptPool)
+			if f.CommandSpec != nil {
+				pools = append(pools, f.CommandSpec.Pool)
+			}
 			if f.Placement != nil {
 				for _, option := range f.Placement.Options {
 					pools = append(pools, option.Pool)

@@ -6,10 +6,18 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 )
 
-// StepInput is a step ticket as a callback sees it.
+// StepInput is a step ticket as a callback sees it. A callback command
+// step's ticket has no pool, so its pool is the one its spec recorded.
 func StepInput(t domain.Ticket) (Step, error) {
 	f, err := domain.DecodeFields[domain.StepFields](t)
-	return Step{ID: f.Step, TicketID: t.ID, Pool: t.Pool, Status: string(t.Status), Resolution: t.Resolution, Outcome: f.Outcome, Output: f.StructuredOutput, Inputs: f.Inputs, Failures: f.Failures, Retries: f.Retries}, err
+	if err != nil {
+		return Step{}, err
+	}
+	pool := t.Pool
+	if f.CommandSpec != nil {
+		pool = f.CommandSpec.Pool
+	}
+	return Step{ID: f.Step, TicketID: t.ID, Pool: pool, Status: string(t.Status), Resolution: t.Resolution, Outcome: f.Outcome, Output: f.StructuredOutput, Inputs: f.Inputs, Failures: f.Failures, Retries: f.Retries}, nil
 }
 
 // RunSnapshot is a run and its steps as a callback sees them, and the

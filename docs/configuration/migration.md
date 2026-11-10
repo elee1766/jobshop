@@ -186,14 +186,17 @@ def ci_completed(run, step):
 ```
 
 - `when: {step: implement, outcome: pr}` becomes an `if` on `step.outcome`.
-- A `command:` step becomes `start_step(script = fn, worktree = True)`;
-  `fn(run, step)` calls `shell()` in the pool's sandbox and worktree.
+- A `command:` step becomes `start_step(type = "command", run = [...],
+  worktree = True)`, or `start_step(script = fn, worktree = True)` when
+  it needs logic: `fn(run, step)` calls `shell()` in the pool's sandbox
+  and worktree. A callback `run` is passed as written, not filled as a
+  Go template.
 - `retry_pool`, `needs`, `retries`, `output_schema`, `needs_resources`,
   `placement`, `max_review_rounds` and `on_request_changes` are
   `start_step` arguments (a placement option has no `when`: branch in
-  Starlark). A script step's `retry_after` is read when it returns
-  `result(not_yet=True)`. Step IDs and prompt files stay the same, so
-  prompts need no change beyond the renames.
+  Starlark). `retry_after` is read when a script step returns
+  `result(not_yet=True)` or a command step exits 75. Step IDs and prompt
+  files stay the same, so prompts need no change beyond the renames.
 
 ## 5. Triggers
 
