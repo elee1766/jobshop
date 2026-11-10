@@ -325,6 +325,7 @@ const node = (id: string, o: Record<string, unknown> = {}) => ({
 });
 const graph: GraphResult = {
   root: 'r',
+  requested: 'r',
   nodes: [
     node('r', { kind: 'run' }),
     node('a'),
