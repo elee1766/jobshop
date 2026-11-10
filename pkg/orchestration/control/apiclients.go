@@ -31,13 +31,18 @@ type apiClients struct {
 func (c *Controller) linearFor(name string) *linear.Client {
 	c.clients.mu.Lock()
 	defer c.clients.mu.Unlock()
-	if cl, ok := c.clients.linear[name]; ok && cl.URL == linearBase(c.linearURL) {
+	// The identity's api_url wins; linearURL is the in-process tests' fake.
+	url := c.linearURL
+	if u := c.config().Identities[name].APIURL; u != "" {
+		url = u
+	}
+	if cl, ok := c.clients.linear[name]; ok && cl.URL == linearBase(url) {
 		return cl
 	}
 	if c.clients.linear == nil {
 		c.clients.linear = map[string]*linear.Client{}
 	}
-	cl := linear.New(c.linearURL, identitySource{c: c, name: name})
+	cl := linear.New(url, identitySource{c: c, name: name})
 	c.clients.linear[name] = cl
 	return cl
 }

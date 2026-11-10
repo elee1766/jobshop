@@ -1,6 +1,7 @@
 package control
 
 import (
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -56,4 +57,27 @@ identities:
 	require.ErrorContains(t, err, "pass team=")
 	_, err = host.LinearClient(t.Context(), "SALES")
 	require.ErrorContains(t, err, "no Linear identity covers team SALES")
+
+	// An identity's api_url selects its endpoint over the controller default.
+	var own int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		own++
+		_, _ = w.Write([]byte(`{"data":{"viewer":{"id":"u","name":"bot"}}}`))
+	}))
+	t.Cleanup(fake.Close)
+	cfg := *c.config()
+	cfg.Identities = maps.Clone(cfg.Identities)
+	id := cfg.Identities["ops"]
+	id.APIURL = fake.URL
+	cfg.Identities["ops"] = id
+	lc := *c.live.Load()
+	lc.cfg = &cfg
+	c.live.Store(&lc)
+	moved, err := host.LinearClient(t.Context(), "OPS")
+	require.NoError(t, err)
+	assert.NotSame(t, ops, moved, "a changed endpoint replaces the cached client")
+	_, err = moved.Viewer(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, own)
+	assert.Len(t, auth, 2, "the default endpoint saw no further call")
 }

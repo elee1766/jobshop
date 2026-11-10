@@ -50,7 +50,9 @@ type Identity struct {
 	// "<slug>[bot]" (JOB-108). An App identity may set it to skip GET /app.
 	Slug string `yaml:"slug"`
 	// Linear: TokenFile holds the API key, Workspace names the workspace,
-	// Teams are the team keys covered ("*" for all).
+	// Teams are the team keys covered ("*" for all). APIURL is the GraphQL
+	// endpoint, default https://api.linear.app/graphql (tests point it at a
+	// fake).
 	TokenFile Secret   `yaml:"token_file"`
 	Workspace string   `yaml:"workspace"`
 	Teams     []string `yaml:"teams"`
@@ -136,7 +138,7 @@ func checkIdentity(i Identity) error {
 			return errors.New("token_file, workspace and teams are required")
 		}
 		if i.githubSet() {
-			return errors.New("app_id, private_key_file, installations, repos and api_url are for GitHub kinds")
+			return errors.New("app_id, private_key_file, installations, repos and slug are for GitHub kinds")
 		}
 		if i.linearAppSet() {
 			return errors.New("client_id_file, client_secret_file, scopes and token_url are for kind linear-app")
@@ -149,7 +151,7 @@ func checkIdentity(i Identity) error {
 			return errors.New("token_file is for kind linear; linear-app mints its own token")
 		}
 		if i.githubSet() {
-			return errors.New("app_id, private_key_file, installations, repos and api_url are for kind github-app")
+			return errors.New("app_id, private_key_file, installations, repos and slug are for GitHub kinds")
 		}
 		for _, s := range i.Scopes {
 			if s == "" || strings.ContainsAny(s, ", ") {
@@ -172,7 +174,7 @@ func checkRepoGlobs(repos []string) error {
 }
 
 func (i Identity) githubSet() bool {
-	return i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != "" || i.Slug != ""
+	return i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 || len(i.Repos) > 0 || i.Slug != ""
 }
 
 func (i Identity) linearAppSet() bool {

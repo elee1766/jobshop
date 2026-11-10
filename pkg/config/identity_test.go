@@ -27,6 +27,10 @@ identities:
 	_, found = c.IdentityFor([]string{"gh"}, "other/jobshop")
 	assert.False(t, found)
 
+	c, err = config.Parse([]byte("identities: {lin: {kind: linear, token_file: /t, workspace: w, teams: [ENG], api_url: \"http://127.0.0.1:1/graphql\"}}"))
+	require.NoError(t, err, "a Linear identity may set its GraphQL endpoint")
+	assert.Equal(t, "http://127.0.0.1:1/graphql", c.Identities["lin"].APIURL)
+
 	for name, bad := range map[string]string{
 		"unknown kind":       "identities: {x: {kind: gitlab}}",
 		"no installations":   "identities: {x: {kind: github-app, app_id: 1, private_key_file: /k, repos: [a/b]}}",
