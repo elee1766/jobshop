@@ -113,6 +113,30 @@ type SessionFields struct {
 	// here so a controller restart or a host respawn that reloads the
 	// conversation does not resend it; cleared with a new conversation.
 	Injected map[string]string `json:"injected,omitempty"`
+	// The next five are runner state that must outlive a controller
+	// restart (JOB-196); docs/notes/JOB-196-runner-restart-state.md lists
+	// what is recomputed or reset on purpose. The runner writes them as
+	// they change and saveFields keeps the stored values.
+	//
+	// BackoffUntil is the end of a provider rate limit or outage backoff.
+	// The restarted runner waits it out before prompting again.
+	BackoffUntil *time.Time `json:"backoff_until,omitempty"`
+	// Delivered is when the session last ran a message turn. A chat takes
+	// its pool prompt turn while this is unset. Cleared with a new
+	// conversation, like Injected.
+	Delivered *time.Time `json:"delivered,omitempty"`
+	// LastClaim is when the session last claimed a ticket; the scaler
+	// cordons the least recently used first (#281).
+	LastClaim *time.Time `json:"last_claim,omitempty"`
+	// SeedDue: a new conversation was started in place of one that could
+	// not be reloaded and its first prompt has not carried the journal
+	// summary yet. RecoveryDue is the same for the recovery note after a
+	// host respawn.
+	SeedDue     bool `json:"seed_due,omitempty"`
+	RecoveryDue bool `json:"recovery_due,omitempty"`
+	// SystemDue: a host was started and no turn has carried the system
+	// prompt rules to it yet.
+	SystemDue bool `json:"system_due,omitempty"`
 	// Follow is a question chat waiting on the asking worker's reaction
 	// to the answer it relayed (JOB-52).
 	Follow *QuestionFollow `json:"follow,omitempty"`

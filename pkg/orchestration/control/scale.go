@@ -199,6 +199,11 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions [
 				continue
 			}
 			s.Exempt = f.Resumed
+			// Stored by the runner (JOB-196), so the least recently used
+			// order survives a controller restart.
+			if f.LastClaim != nil {
+				s.LastClaim = *f.LastClaim
+			}
 			if f.Cordoned != nil {
 				s.Cordon = f.Cordoned.Reason
 			}
@@ -208,13 +213,6 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions [
 		if !s.Idle {
 			working++
 		}
-		c.mu.Lock()
-		if r := c.runners[t.ID]; r != nil {
-			if lc := r.lastClaimAt(); !lc.IsZero() {
-				s.LastClaim = lc
-			}
-		}
-		c.mu.Unlock()
 		out = append(out, s)
 	}
 	return out, working, parked, nil
