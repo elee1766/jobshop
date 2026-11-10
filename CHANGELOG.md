@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.33](https://github.com/elee1766/jobshop/compare/v0.9.32...v0.9.33) (2026-11-10)
+
+
+### Features
+
+* **identity:** api_url on Linear identities ([#1153](https://github.com/elee1766/jobshop/issues/1153)) ([9f0f5fa](https://github.com/elee1766/jobshop/commit/9f0f5fa04f44bfee26eef2b577b7bc7a5929b4a7))
+
 ## [0.9.32](https://github.com/elee1766/jobshop/compare/v0.9.31...v0.9.32) (2026-11-10)
 
 
