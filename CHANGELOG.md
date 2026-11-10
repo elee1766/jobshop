@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.28](https://github.com/elee1766/jobshop/compare/v0.9.27...v0.9.28) (2026-11-10)
+
+
+### Features
+
+* **desk:** list a PR or issue's runs under linked work ([#1143](https://github.com/elee1766/jobshop/issues/1143)) ([f99e19b](https://github.com/elee1766/jobshop/commit/f99e19bf1388f886de41328d17a66296d01196f9))
+
 ## [0.9.27](https://github.com/elee1766/jobshop/compare/v0.9.26...v0.9.27) (2026-11-09)
 
 
