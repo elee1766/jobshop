@@ -163,6 +163,15 @@ func (c *Controller) stopFailedRun(ctx context.Context, id, comment string) bool
 }
 
 func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
+	// New tickets are the only readiness change a callback makes (edges
+	// only join new steps to existing ones). Command and http steps start
+	// and sessions are sized in the pass, so ask for one now instead of
+	// leaving the new step to the ticker (JOB-193). An invocation that
+	// created nothing asks for nothing: a run with nothing due applies no
+	// invocation, so a pass cannot cause the next one.
+	if in.Plan != nil && len(in.Plan.Tickets) > 0 {
+		h.c.wakePass()
+	}
 	if in.Run == "" {
 		return
 	}

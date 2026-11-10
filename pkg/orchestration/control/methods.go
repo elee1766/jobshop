@@ -411,6 +411,11 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 	}
 	if t.Kind == domain.KindStep && t.ParentID != "" {
 		c.checkRun(ctx, cfg, t.ParentID)
+		// The steps after this one may be ready now (JOB-193). Not in
+		// checkRun: sweepRuns calls that every pass.
+		if domain.StepFinished(t) {
+			c.wakePass()
+		}
 	}
 	if t.Kind == domain.KindSession {
 		c.stopRunner(t.ID)
