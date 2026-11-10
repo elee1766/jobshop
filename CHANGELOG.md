@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.11](https://github.com/gfx-labs/jobshop/compare/v0.10.10...v0.10.11) (2026-11-10)
+
+
+### Features
+
+* **control:** close derived tickets with their cause (JOB-195) ([#1199](https://github.com/gfx-labs/jobshop/issues/1199)) ([999c76c](https://github.com/gfx-labs/jobshop/commit/999c76c0511fdc0c5ac4530536ec360398dd646b))
+
 ## [0.10.10](https://github.com/gfx-labs/jobshop/compare/v0.10.9...v0.10.10) (2026-11-10)
 
 
