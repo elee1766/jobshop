@@ -75,7 +75,7 @@ func (c *Controller) browseShow(ctx context.Context, sc scope, p rpc.BrowseShowP
 		return nil, err
 	}
 	if p.Cursor == "" {
-		d.Linked = append(d.Linked, c.browseRuns(ctx, d.Item)...)
+		d.Linked = append(d.Linked, c.browseRuns(ctx, d.Item, d.Linked)...)
 	}
 	return d, nil
 }
@@ -87,11 +87,12 @@ func (c *Controller) browseCatalog(ctx context.Context, sc scope, p rpc.BrowseCa
 	return c.browseService().Catalog(ctx, p)
 }
 
-// browseRuns are the Jobshop runs whose meta names item: meta.linear.issue
-// for a Linear issue, meta.github.repo with issue or pr for GitHub. They
-// come from the store at call time, never from the provider, so a link is
-// there only when a run really exists.
-func (c *Controller) browseRuns(ctx context.Context, it rpc.BrowseItem) []rpc.BrowseLinked {
+// browseRuns are the Jobshop runs that reference item (activityLinks),
+// then the runs of the work it is tied to: a Linear issue's attached PRs,
+// and the issues a PR closes or mentions. Those carry the relation
+// "via <ref>". They come from the store at call time, never from the
+// provider, so a link is there only when a run really exists.
+func (c *Controller) browseRuns(ctx context.Context, it rpc.BrowseItem, linked []rpc.BrowseLinked) []rpc.BrowseLinked {
 	links, err := c.activityLinks(ctx)
 	if err != nil {
 		c.log.WarnContext(ctx, "browse: run links", "ref", it.Ref, "err", err)
@@ -107,12 +108,25 @@ func (c *Controller) browseRuns(ctx context.Context, it rpc.BrowseItem) []rpc.Br
 		key = repo + "#" + n
 	}
 	var out []rpc.BrowseLinked
-	for _, id := range links[key] {
-		l := rpc.BrowseLinked{Kind: "run", Ref: id, Relation: "run"}
-		if t, err := c.store.Get(ctx, id); err == nil {
-			l.Title, l.State = t.Title, runState(t)
+	seen := map[string]bool{}
+	add := func(key, relation string) {
+		for _, id := range links[key] {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			l := rpc.BrowseLinked{Kind: "run", Ref: id, Relation: relation}
+			if t, err := c.store.Get(ctx, id); err == nil {
+				l.Title, l.State = t.Title, runState(t)
+			}
+			out = append(out, l)
 		}
-		out = append(out, l)
+	}
+	add(key, "run")
+	for _, l := range linked {
+		if l.Kind == "pr" || l.Relation == "closes" || l.Relation == "mentions" {
+			add(l.Ref, "via "+l.Ref)
+		}
 	}
 	return out
 }
