@@ -128,16 +128,38 @@ func (h hookHost) HookFailed(ctx context.Context, key string, in hooks.Invocatio
 		return
 	}
 	c := h.c
+	comment := "Automation invocation " + key + " failed: " + in.Error
 	c.runMu.Lock()
-	t, err := c.store.Get(ctx, in.Run)
-	if err == nil && t.Status != domain.StatusClosed {
-		f, decodeErr := domain.DecodeFields[domain.RunFields](t)
-		if decodeErr == nil && f.State == domain.RunRunning {
-			_, _ = c.setRunState(ctx, "controller", t, f, domain.RunNeedsHuman, "")
-		}
-	}
+	stopped := c.stopFailedRun(ctx, in.Run, comment)
 	c.runMu.Unlock()
-	_, _ = store.AddComment(ctx, c.store, "controller", in.Run, "Automation invocation "+key+" failed: "+in.Error)
+	if !stopped {
+		_, _ = store.AddComment(ctx, c.store, "controller", in.Run, comment)
+	}
+}
+
+// stopFailedRun moves a running run to needs_human and records why in one
+// write, so whoever sees the state also sees the reason. The caller holds
+// runMu. It reports whether the comment was written.
+func (c *Controller) stopFailedRun(ctx context.Context, id, comment string) bool {
+	t, err := c.store.Get(ctx, id)
+	if err != nil || t.Status == domain.StatusClosed {
+		return false
+	}
+	f, err := domain.DecodeFields[domain.RunFields](t)
+	if err != nil || f.State != domain.RunRunning {
+		return false
+	}
+	f.State = domain.RunNeedsHuman
+	b, err := json.Marshal(f)
+	if err != nil {
+		return false
+	}
+	if _, err := c.store.Update(ctx, "controller", t.ID, store.Update{Fields: b, Comment: comment, IfRevision: t.Revision}); err != nil {
+		return false
+	}
+	// A run wait reads the state: wake the waits on this run (#679).
+	c.wakeWaitsSubjects(workflow.RunSubject(t.ID))
+	return true
 }
 
 func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
