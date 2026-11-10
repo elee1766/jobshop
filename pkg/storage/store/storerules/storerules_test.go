@@ -68,6 +68,24 @@ func TestReleaseDeferIsNotFailure(t *testing.T) {
 	assert.Equal(t, domain.StatusOpen, tk.Status)
 }
 
+func TestReleaseDeferRecordsReasonOnStep(t *testing.T) {
+	tk := domain.Ticket{ID: "t", Kind: domain.KindStep, Status: domain.StatusInProgress, Holder: "h", Fence: 1, Fields: json.RawMessage(`{"run":"r","step":"implement","retries":3}`)}
+	until := now.Add(time.Hour)
+	_, _, err := storerules.Release(&tk, store.Claim{Holder: "h", Fence: 1}, "gather data", until, now)
+	require.NoError(t, err)
+	f, err := domain.DecodeFields[domain.StepFields](tk)
+	require.NoError(t, err)
+	require.NotNil(t, f.Defer)
+	assert.Equal(t, "gather data", f.Defer.Reason)
+	assert.True(t, f.Defer.Until.Equal(tk.DeferUntil))
+	assert.Equal(t, "implement", f.Step, "other fields are kept")
+
+	task := domain.Ticket{ID: "k", Kind: domain.KindTask, Status: domain.StatusInProgress, Holder: "h", Fence: 1}
+	_, _, err = storerules.Release(&task, store.Claim{Holder: "h", Fence: 1}, "later", until, now)
+	require.NoError(t, err)
+	assert.Empty(t, task.Fields, "only steps record the reason")
+}
+
 func TestCloseRebaseReopensStep(t *testing.T) {
 	tk := domain.Ticket{ID: "t", Kind: domain.KindStep, Status: domain.StatusInProgress, Holder: "h"}
 	_, note, err := storerules.Close(&tk, nil, domain.ResolutionRebase, now)

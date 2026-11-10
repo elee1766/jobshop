@@ -1,7 +1,7 @@
 import { atom } from 'jotai';
 import type { ChatSession } from '../../../packages/jobshop-client/index.js';
 import { flightsOf } from '../lib/model.ts';
-import { attention, chats, nowAtom, runs } from './live.ts';
+import { attention, chats, nowAtom, runs, systemAtom } from './live.ts';
 
 // Transient UI state (JOB-150). Navigation state (view, ref, filter, ...)
 // is the URL, read through lib/route.ts, not mirrored here.
@@ -61,6 +61,16 @@ export const flightsAtom = atom((get) =>
     minute(get(nowAtom)),
   ),
 );
+
+// The live state of one session, by id. System snapshots are reconciled, so
+// a row re-renders only when its own session changes.
+const liveSessions = new Map<string, ReturnType<typeof makeLiveSession>>();
+const makeLiveSession = (id: string) => atom((get) => get(systemAtom)?.sessions?.find((s) => s.id === id));
+export function liveSessionAtom(id: string) {
+  let a = liveSessions.get(id);
+  if (!a) liveSessions.set(id, (a = makeLiveSession(id)));
+  return a;
+}
 
 export const busyAtom = atom(false);
 

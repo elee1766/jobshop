@@ -399,6 +399,16 @@ type StepFields struct {
 	// Changes is the open change request against this step: set when a
 	// reviewer's request_changes reopens it, cleared when it closes done.
 	Changes *StepChanges `json:"changes,omitempty"`
+	// Defer is why the step was last released until a time (#1185). It
+	// is current only while defer_until still equals Defer.Until: other
+	// paths move defer_until without a reason.
+	Defer *StepDefer `json:"defer,omitempty"`
+}
+
+// StepDefer is the reason of a release until a time.
+type StepDefer struct {
+	Reason string    `json:"reason"`
+	Until  time.Time `json:"until"`
 }
 
 // ReviewRoundLimit is MaxReviewRounds or the default.

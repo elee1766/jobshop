@@ -40,7 +40,10 @@ export interface Flight {
   since: string;
   source: string;
   holder: string;
+  // The run's lifecycle state (running, needs_human). What its current
+  // step is doing is activityOf(), which needs the live session (#1185).
   state: string;
+  stepTicket?: Ticket;
   stalled: boolean;
   diagnosis: string;
   hold: boolean;
@@ -61,7 +64,7 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000, now = Date.n
     const source = meta.github?.head_at ? 'last push' : 'last run activity';
     const rw = run.waits?.find((w) => w.ticket === step?.id);
     let waiting =
-      f.state === 'needs_human' ? 'you' : rw ? rw.key + ' slot' : wait?.reason || (step?.holder ? 'agent' : 'queued');
+      f.state === 'needs_human' ? 'you' : rw ? rw.key + ' slot' : wait?.reason || (step?.holder ? 'held' : 'queued');
     const observed = wait?.conds
       ?.filter((c: any) => !c.met)
       .map((c: any) => c.note || c.type)
@@ -93,7 +96,8 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000, now = Date.n
       since,
       source,
       holder: step?.holder || '',
-      state: step?.holder ? 'active' : f.state || 'queued',
+      state: f.state || 'running',
+      stepTicket: step,
       stalled: f.state !== 'needs_human' && (old || repeated || mismatch),
       diagnosis: rw
         ? `${rw.key} ${rw.held}/${rw.capacity}, queued behind ${rw.ahead}`

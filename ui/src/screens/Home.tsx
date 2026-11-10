@@ -5,6 +5,7 @@ import { Markdown } from '../components/Markdown.tsx';
 import { TitleAction } from '../components/TitleAction.tsx';
 import { ticketMenuRef, TicketMenuButton } from '../components/TicketMenu.tsx';
 import { parseTitle } from '../../kit/titles.js';
+import { activityOf } from '../lib/activity.ts';
 import { ago, type Flight } from '../lib/model.ts';
 import { useDeskRoute, useUrlText } from '../lib/route.ts';
 import { useShortcuts } from '../lib/shortcuts.ts';
@@ -19,6 +20,7 @@ import {
   flightsAtom,
   focusedAtom,
   hideHoldsAtom,
+  liveSessionAtom,
   noteAtom,
   sortOldestAtom,
   watchedSessionAtom,
@@ -290,11 +292,13 @@ function InFlight() {
                   <th className="ref-col">issue</th>
                   <th className="ref-col">pr</th>
                   <th>step</th>
-                  <th>waiting</th>
+                  <th title="What the current step is doing now. A running run can be waiting.">activity</th>
                   <th>
                     <button onClick={() => setSortOldest(!sortOldest)}>age</button>
                   </th>
-                  <th className="wide">session</th>
+                  <th className="wide" title="The run's lifecycle state. Opens the holding session when there is one.">
+                    run
+                  </th>
                   <th aria-label="actions" />
                 </tr>
               </thead>
@@ -313,6 +317,8 @@ function InFlight() {
 
 const FlightRow = memo(function FlightRow({ row, now }: { row: Flight; now: number }) {
   const setWatched = useSetAtom(watchedSessionAtom);
+  const session = useAtomValue(liveSessionAtom(row.holder));
+  const activity = activityOf(row.run, row.stepTicket, row.holder ? session : undefined, now);
   const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
   const target = { id: row.id, ref: row.ref, session: row.holder };
   return (
@@ -361,8 +367,14 @@ const FlightRow = memo(function FlightRow({ row, now }: { row: Flight; now: numb
           : '–'}
       </td>
       <td>{row.step}</td>
-      <td>
-        <Markdown inline text={row.waiting} />
+      <td className={'activity ' + activity.kind} data-activity={activity.kind}>
+        <b>{activity.label}</b>
+        {activity.detail && (
+          <>
+            {' '}
+            <Markdown inline text={activity.detail} />
+          </>
+        )}
       </td>
       <td title={row.source}>{ago(row.since, now)}</td>
       <td className="wide">
