@@ -281,8 +281,6 @@ type failure struct {
 	block time.Duration
 }
 
-var scanner = redact.Builtin()
-
 // classify turns a provider error into a status. The message never carries
 // more than the provider's own short reason, scanned for secrets.
 func classify(err error, now time.Time) failure {
@@ -321,7 +319,10 @@ func classify(err error, now time.Time) failure {
 	if u := (*url.Error)(nil); errors.As(err, &u) {
 		return failure{rpc.BrowseCodeUnavailable, "The provider is unreachable.", downBackoff}
 	}
-	msg := scanner.Redactor(nil).Text(err.Error())
+	// Builtin compiles the rules on first use. Doing it in a package var
+	// cost ~0.35s at the start of every process linking this package under
+	// -race, including each fake agent a control test spawns (JOB-187).
+	msg := redact.Builtin().Redactor(nil).Text(err.Error())
 	if len(msg) > 200 {
 		msg = strings.ToValidUTF8(msg[:200], "") + "…"
 	}
