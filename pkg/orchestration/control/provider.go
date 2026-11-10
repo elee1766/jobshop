@@ -46,6 +46,9 @@ func (c *Controller) providerPass(ctx context.Context, cfg *config.Config) {
 	}
 	c.resetSlots(ctx, cfg)
 	c.slots().Pass(ctx, cfg)
+	// A slot can turn ready here, which readies the tickets waiting on
+	// it. No ticket write says so, so wake the idle runners (JOB-197).
+	c.wakeAllPools()
 }
 
 // resetSlots asks the provider to reset each slot whose claim ended,

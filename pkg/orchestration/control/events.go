@@ -97,7 +97,7 @@ func (c *Controller) pumpEvents() {
 			c.events.mu.Lock()
 			after := c.events.last
 			c.events.mu.Unlock()
-			evs, err := c.changes(c.ctx, after)
+			evs, err := c.readChanges(c.ctx, after, c.noteChange)
 			if err != nil {
 				if c.ctx.Err() == nil {
 					c.log.Warn("events: read history", "err", err)
@@ -116,6 +116,12 @@ func (c *Controller) pumpEvents() {
 
 // changes reads one batch of history after seq as events.
 func (c *Controller) changes(ctx context.Context, after int64) ([]rpc.Event, error) {
+	return c.readChanges(ctx, after, nil)
+}
+
+// readChanges is changes that also hands each row and its ticket to note,
+// when set (the pump uses it to wake idle runners, JOB-197).
+func (c *Controller) readChanges(ctx context.Context, after int64, note func(store.HistoryEntry, *domain.Ticket)) ([]rpc.Event, error) {
 	page, err := c.store.Changes(ctx, after, 0)
 	if err != nil {
 		return nil, err
@@ -129,6 +135,9 @@ func (c *Controller) changes(ctx context.Context, after int64) ([]rpc.Event, err
 				t = &got
 			}
 			tickets[r.TicketID] = t
+		}
+		if note != nil {
+			note(r, t)
 		}
 		out = append(out, toEvent(r, t))
 	}

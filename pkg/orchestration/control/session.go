@@ -1019,6 +1019,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 	idle := config.Duration(pool.IdleTimeout, def)
 	idleSince := r.c.now()
 	for {
+		// Taken before anything below reads the store (messages, then the
+		// claim): work committed after it closes this channel, so the wait
+		// at the end of the loop ends at once (JOB-197).
+		wake := r.c.readyChan(r.pool)
 		if r.wantsRestart() {
 			return r.restart(nc)
 		}
@@ -1132,6 +1136,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			case <-ctx.Done():
 				return r.dropped(conn)
 			case <-r.restartWake:
+			case <-wake:
 			case <-r.c.after(r.c.opt.Poll):
 			}
 			continue
@@ -1882,29 +1887,45 @@ func (c *Controller) removeWorktree(cfg *config.Config, t domain.Ticket, caller 
 // supervise runs once per tick: heartbeats claims held by live sessions and
 // starts sessions for pools with waiting work.
 func (c *Controller) supervise(ctx context.Context, cfg *config.Config, lease time.Duration) {
-	live := c.liveRunners()
-	for _, id := range live {
-		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: domain.StatusInProgress})
-		if err != nil {
-			continue
+	// One read of every in-progress ticket serves the heartbeats, the
+	// gauges and the scale plan: N sessions cost one query (JOB-197).
+	inProgress, listErr := c.inProgress(ctx)
+	var held map[string]bool
+	if listErr == nil {
+		held = holdersOf(inProgress)
+		if held == nil {
+			held = map[string]bool{}
 		}
-		for _, t := range held {
-			cl := store.Claim{TicketID: t.ID, Holder: id, Fence: t.Fence}
+		live := map[string]bool{}
+		for _, id := range c.liveRunners() {
+			live[id] = true
+		}
+		for _, t := range inProgress {
+			if !live[t.Holder] {
+				continue
+			}
+			cl := store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence}
 			if _, err := c.store.Heartbeat(ctx, cl, lease); err != nil && !errors.Is(err, domain.ErrNotHolder) {
 				c.log.WarnContext(ctx, "heartbeat", "ticket", t.ID, "err", err)
 			}
 		}
 	}
-	c.recordGauges(ctx, cfg)
+	c.recordGauges(ctx, cfg, held)
 	if c.draining() {
 		return
 	}
-	c.reconcile(ctx, cfg)
+	// Without the held set the plan would see every session idle and
+	// scale a busy pool down: skip the pass, the next one retries.
+	if listErr != nil {
+		return
+	}
+	c.reconcile(ctx, cfg, held)
 }
 
 // recordGauges sets the session and ready-ticket gauges for each pool.
-// Session state is backoff, working (holds a ticket) or idle.
-func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config) {
+// Session state is backoff, working (holds a ticket) or idle. held is the
+// holders of the in-progress tickets; nil skips the session gauges.
+func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config, held map[string]bool) {
 	backoff := map[string]bool{}
 	c.mu.Lock()
 	for id, r := range c.runners {
@@ -1927,12 +1948,15 @@ func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config) {
 		state := "idle"
 		if backoff[s.ID] {
 			state = "backoff"
-		} else if held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: domain.StatusInProgress, Limit: 1}); err == nil && len(held) > 0 {
+		} else if held[s.ID] {
 			state = "working"
 		}
 		counts[[2]string{s.Pool, state}]++
 	}
 	for k, n := range counts {
+		if held == nil {
+			break // the in-progress read failed: no state to report
+		}
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
 	byPool := map[string][]string{}

@@ -9,7 +9,10 @@ OTLP) endpoint.
    and, when another reload was running, `wait reloadMu`. It never
    waits on `tickMu` (JOB-104).
 2. Find a `supervisor tick` trace. Its children are `tick sweep`,
-   `tick run_triggers`, ... `tick compress_journals`. Under
+   `tick run_triggers`, ... `tick sweep_linear_agent_sessions` (pruning,
+   journal compression and store maintenance run outside the tick since
+   JOB-197: a `housekeeping` trace with `housekeeping <step>` children and
+   `jobshop_housekeeping_duration_seconds{step}`). Under
    `tick run_triggers`, a `trigger <name>` span per due trigger with
    `jobshop.trigger.result`; under that, `exec sh` for a trigger check
    (attributes `process.command`, `jobshop.exec.label`,

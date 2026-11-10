@@ -17,7 +17,9 @@ How to read how long a supervisor tick takes, and what a quiet one costs.
    `run_triggers` p50 was 614ms (`trigger evaluate` 317ms) and `supervise`
    127ms.
 4. **Statistics.** On SQLite, `select count(*) from sqlite_stat1` on a copy
-   of the database is non-zero. `maintain_store` is the step that refreshes
+   of the database is non-zero. `maintain_store` (a housekeeping step since
+   JOB-197, `jobshop_housekeeping_duration_seconds{step="maintain_store"}`)
+   is what refreshes
    it every 6h and is a few microseconds when idle.
 5. **Planner check.** On a copy of the database, `EXPLAIN QUERY PLAN` of the
    claim query for `hook_invocations` with one state names
