@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 	"github.com/gfx-labs/jobshop/pkg/config"
 	"github.com/gfx-labs/jobshop/pkg/conversation"
 	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"

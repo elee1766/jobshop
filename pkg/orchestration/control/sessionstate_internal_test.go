@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/proc"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
+	"github.com/gfx-labs/acphost/pkg/proc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

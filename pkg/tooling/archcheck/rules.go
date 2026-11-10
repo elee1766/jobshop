@@ -3,7 +3,7 @@ package archcheck
 import "slices"
 
 const (
-	acphostRuntime = "github.com/elee1766/acphost/..."
+	acphostRuntime = "github.com/gfx-labs/acphost/..."
 	acpSDK         = "github.com/coder/acp-go-sdk"
 )
 
@@ -46,7 +46,7 @@ func rules() []Rule {
 				"./pkg/orchestration/control",
 				"./pkg/execution/session",
 				"./pkg/conversation",
-				"github.com/elee1766/acphost/pkg/acphost",
+				"github.com/gfx-labs/acphost/pkg/acphost",
 			},
 		},
 		{
@@ -197,7 +197,7 @@ func rules() []Rule {
 				"./pkg/orchestration/control", "./pkg/execution/session", "./pkg/orchestration/hooks",
 				"./pkg/storage/store/sqlite", "./pkg/storage/store/postgres",
 				"modernc.org/sqlite", "github.com/jackc/pgx/v5",
-				"github.com/elee1766/acphost/pkg/acphost",
+				"github.com/gfx-labs/acphost/pkg/acphost",
 			},
 		},
 		{

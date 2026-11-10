@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/elee1766/acphost/pkg/cgroup"
-	"github.com/elee1766/acphost/pkg/sandbox"
+	"github.com/gfx-labs/acphost/pkg/cgroup"
+	"github.com/gfx-labs/acphost/pkg/sandbox"
 
 	"github.com/gfx-labs/jobshop/pkg/domain"
 	execsandbox "github.com/gfx-labs/jobshop/pkg/execution/sandbox"

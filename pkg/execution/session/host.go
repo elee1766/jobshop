@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/elee1766/acphost/pkg/proc"
+	"github.com/gfx-labs/acphost/pkg/proc"
 )
 
 // HostStopWait is how long StopDetached waits for a host after SIGTERM

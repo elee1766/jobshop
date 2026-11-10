@@ -1,7 +1,7 @@
 package control
 
 import (
-	"github.com/elee1766/acphost/pkg/proc"
+	"github.com/gfx-labs/acphost/pkg/proc"
 
 	"github.com/gfx-labs/jobshop/pkg/execution/session"
 )

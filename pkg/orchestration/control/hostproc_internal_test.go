@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 
 	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
 	"github.com/gfx-labs/jobshop/pkg/execution/session"

@@ -38,7 +38,7 @@ workflows:
 activity:
   window: 24h
   max_items: 3
-  repos: [elee1766/acphost]
+  repos: [gfx-labs/acphost]
 `
 
 type fakeActivity struct {
@@ -101,14 +101,14 @@ func TestActivityPollListAndLinks(t *testing.T) {
 		ghItem("gfx-labs/jobshop", "2", "review", "elee-agent[bot]", "260", now.Add(-2*time.Hour)),
 		ghItem("gfx-labs/jobshop", "old", "push", "elee1766", "", now.Add(-48*time.Hour)),
 	}
-	src.gh["elee1766/acphost"] = []rpc.ActivityItem{ghItem("elee1766/acphost", "3", "ci", "elee1766", "", now.Add(-30*time.Minute))}
+	src.gh["gfx-labs/acphost"] = []rpc.ActivityItem{ghItem("gfx-labs/acphost", "3", "ci", "elee1766", "", now.Add(-30*time.Minute))}
 
 	assert.Equal(t, 3, c.pollActivity(t, src))
 	assert.Equal(t, 0, c.pollActivity(t, src), "items are deduped by id")
 
 	res := listActivity(t, c, rpc.ActivityListParams{})
 	require.Len(t, res.Items, 3, "the 48h-old push is outside the 24h window")
-	assert.Equal(t, []string{"github:elee1766/acphost", "github:gfx-labs/jobshop"}, res.Sources)
+	assert.Equal(t, []string{"github:gfx-labs/acphost", "github:gfx-labs/jobshop"}, res.Sources)
 	assert.Equal(t, "ci", res.Items[0].Kind, "newest first")
 	assert.Equal(t, []string{run.ID}, res.Items[1].Tickets, "issue links to its run")
 	assert.Equal(t, []string{run.ID}, res.Items[2].Tickets, "a step's PR links to the step's run")

@@ -30,9 +30,9 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/cgroup"
-	"github.com/elee1766/acphost/pkg/proc"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
+	"github.com/gfx-labs/acphost/pkg/cgroup"
+	"github.com/gfx-labs/acphost/pkg/proc"
 	"github.com/gfx-labs/jobshop/pkg/config"
 	"github.com/gfx-labs/jobshop/pkg/execution/session"
 	"github.com/gfx-labs/jobshop/pkg/orchestration/control"

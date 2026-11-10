@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/cgroup"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
+	"github.com/gfx-labs/acphost/pkg/cgroup"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/gfx-labs/jobshop/pkg/config"

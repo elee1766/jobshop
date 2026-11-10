@@ -5,7 +5,7 @@ import (
 	"github.com/gfx-labs/jobshop/pkg/domain"
 	"github.com/gfx-labs/jobshop/pkg/execution/session"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 )
 
 // The mapped uid, home and ACL work lives in execution/session and execution/sandbox (see
