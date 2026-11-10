@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.30](https://github.com/elee1766/jobshop/compare/v0.9.29...v0.9.30) (2026-11-10)
+
+
+### Features
+
+* **cli:** add --workflow and --key filters to run list (JOB-183) ([#1147](https://github.com/elee1766/jobshop/issues/1147)) ([4004bb4](https://github.com/elee1766/jobshop/commit/4004bb494a0da5e0f3611709843a8e52ba92c026))
+
 ## [0.9.29](https://github.com/elee1766/jobshop/compare/v0.9.28...v0.9.29) (2026-11-10)
 
 
