@@ -35,20 +35,35 @@ def finish(run, step):
     return [finish_run(outcome="done")]
 
 
-def _implement(run, tracker, issue):
-    return _step(run, "implement", run.inputs["dev_pool"], "Implement " + issue,
-                 "prompts/" + tracker + "/implement.md", retries=3, retry_pool="dev")
+# Route outcome to the pool of the one implement step. Only the selected
+# step is created; an unknown outcome fails the callback, which sends the
+# run to a human.
+_AUTHORS = {"scoped": "dev-sonnet", "primary": "dev"}
+
+
+def _route(run, tracker, issue):
+    return _step(run, "route", "triage", "Route " + issue, "prompts/" + tracker + "/route.md", retries=1)
+
+
+def _implement(run, step, tracker, issue):
+    if step.outcome not in _AUTHORS:
+        fail("unknown route outcome: " + repr(step.outcome))
+    # A failed attempt or a review resume moves the step to dev.
+    return _step(run, "implement", _AUTHORS[step.outcome], "Implement " + issue,
+                 "prompts/" + tracker + "/implement.md", retries=3, retry_pool="dev", needs=["route"])
 
 
 def pr_work_start(run):
-    return _implement(run, run.inputs["tracker"], "#" + str(run.inputs["issue"]))
+    return _route(run, run.inputs["tracker"], "#" + str(run.inputs["issue"]))
 
 
 def pr_work_linear_start(run):
-    return _implement(run, "linear", str(run.inputs["issue"]))
+    return _route(run, "linear", str(run.inputs["issue"]))
 
 
 def _pr_completed(run, step, tracker, issue):
+    if step.id == "route":
+        return _implement(run, step, tracker, issue)
     if step.id == "implement":
         if step.outcome != "pr":
             return finish(run, step)

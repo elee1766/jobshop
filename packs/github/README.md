@@ -10,11 +10,17 @@ identity (`automation.github`), never `gh`.
 ## Flow: one `pr-work` run per issue
 
 The planner files an issue and starts
-`jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run has
-three steps, each blocked on the one before (`docs/notes/89-runs.md`, `90-step-retries-escalation.md`):
+`jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run
+creates its steps one at a time, each blocked on the one before
+(`docs/notes/89-runs.md`, `90-step-retries-escalation.md`):
 
-1. `implement` (dev, 3 retries, `prompts/github/implement.md`): branch, PR,
-   green CI, comment `PR <url> head <sha>`, close `done`.
+0. `route` (triage, 1 retry, `prompts/<tracker>/route.md`): reads the
+   issue and closes with outcome `scoped` or `primary`. The run then
+   starts `implement` in `dev-sonnet` or `dev`. No step is made for the
+   route not taken. Any other outcome sends the run to `needs_human`.
+1. `implement` (the routed pool, 3 retries, `prompts/github/implement.md`): branch, PR,
+   green CI, comment `PR <url> head <sha>`, close `done`. A failed
+   attempt or a review resume moves it to `dev`.
 2. `review-merge` (refinery, 2 retries, `prompts/github/merge.md`): review
    against the issue, merge with `--match-head-commit`. Findings: comment
    them, `jobshop run resume <run> --step implement`, and close this step
@@ -189,8 +195,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `dev_model`, `dev_effort` | dev pool `model` and `effort`. Default empty: the agent's |
-| `dev_sonnet_sessions`, `dev_sonnet_model`, `dev_sonnet_effort` | The `dev-sonnet` pool for easier implement steps (JOB-59). Defaults 1, `claude-sonnet-5-5`, `high` |
-| `dev_pool` | Default pool of pr-work's `implement` step, also a run var (`--var dev_pool=dev-sonnet`). A failed attempt or review resume moves the step to `dev` (`retry_pool`). Default `{{.pack_prefix}}dev`, the instance's own dev pool |
+| `dev_sonnet_sessions`, `dev_sonnet_model`, `dev_sonnet_effort` | The `dev-sonnet` pool, where a `scoped` route puts the implement step. Defaults 1, `claude-sonnet-5-5`, `high` |
 | `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
 | `refinery_model`, `refinery_effort` | Refinery pool `model` and `effort` (#304). Default empty: the agent's |
 | `triage_model`, `triage_effort` | `triage` pool `model` and `effort`. Default empty: the agent's |
