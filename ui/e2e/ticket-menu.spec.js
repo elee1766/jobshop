@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 
 // JOB-136: ticket context menu on home rows, trace cards and relationship
 // entries. Creates and closes tickets, so only on an isolated controller.
@@ -36,7 +36,7 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     else await row.locator('.ticket-label').click({ button: 'right' });
     await expect(menu).toBeVisible();
     await expect(footer).toHaveText(run.id);
-    await expect(menu.getByRole('menuitem', { name: 'open in trace' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'open in TL' })).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: 'inspect' })).toHaveCount(0);
     const box = await menu.boundingBox();
     expect(inside(box, page.viewportSize())).toBe(true);
@@ -69,7 +69,7 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
 
     // Open in trace goes to this ticket.
     await trigger.click();
-    await menu.getByRole('menuitem', { name: 'open in trace' }).click();
+    await menu.getByRole('menuitem', { name: 'open in TL' }).click();
     await expect(page).toHaveURL(new RegExp('ref=' + run.id));
 
     // Trace: the detail pane and relationships carry the same menu with
@@ -91,6 +91,7 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await expect(page).toHaveURL(new RegExp('ref=' + run.id));
 
     // The inspected ticket no longer offers inspect.
+    await openTab(page, 'details');
     await page.getByLabel('Ticket details', { exact: true }).locator('.ticket-links').getByRole('button', { name: 'Actions for ' + child.id }).click();
     await expect(footer).toHaveText(child.id);
     await expect(menu.getByRole('menuitem', { name: 'inspect' })).toHaveCount(0);

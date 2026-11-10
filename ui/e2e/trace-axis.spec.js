@@ -41,9 +41,9 @@ test('trace bars share a height, keep bounded input and do not overflow', async 
     expect(bars.right).toBeLessThanOrEqual(bars.width);
     expect(bars.over).toBeLessThanOrEqual(1);
     await showDetails(page);
-    await expect(page.locator('.ticket-overview > p').first()).not.toContainText('open');
+    await expect(page.locator('.lower-who')).not.toContainText('open');
     // Search stays a plain form: no dropdown while typing.
-    await page.getByRole('textbox', { name: 'Trace reference' }).fill(key);
+    await page.getByRole('textbox', { name: 'TL reference' }).fill(key);
     await expect(page.getByRole('listbox')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Ticket search results' })).toHaveCount(0);
   } finally {

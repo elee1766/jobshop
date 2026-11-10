@@ -303,7 +303,7 @@ function LinkedTitle({
     return (
       <a
         href={`?view=trace&ref=${encodeURIComponent(link.ref)}`}
-        title={'Open the trace of ' + link.ref}
+        title={'Open the TL of ' + link.ref}
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
           e.preventDefault();

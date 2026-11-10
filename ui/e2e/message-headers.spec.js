@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 
 // JOB-137: sender headers in chat and the read-only session viewer. Needs an
 // isolated controller with the ACP test agent (see chat-responsiveness.spec.js).
@@ -47,7 +47,7 @@ test('human and agent messages carry sender headers in chat and the session view
 
     // Same presentation in the read-only viewer.
     await page.goto('./?view=trace&ref=' + session.id);
-    await showDetails(page);
+    await openTab(page, 'details');
     await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer.locator('.speaker-human').first()).toHaveText('you');
@@ -72,7 +72,7 @@ test('a ticket turn shows its prompt once', async ({ page, request }) => {
     }, { timeout: 30_000 })
     .toBe('closed');
   await page.goto('./?view=trace&ref=' + holder);
-  await showDetails(page);
+  await openTab(page, 'details');
   await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
   const viewer = page.getByRole('region', { name: 'Read-only session' });
   const turn = viewer.locator('.transcript-row').filter({ hasText: task.id });

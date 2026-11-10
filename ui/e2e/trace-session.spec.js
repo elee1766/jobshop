@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -45,7 +45,7 @@ test('converted escalation retains its transcript and claimed tickets expose a l
     task = await call('ticket.create', { title: 'Inspect live work ' + crypto.randomUUID() });
     await exec(process.env.JOBSHOP_BIN || 'jobshop', ['--root', process.env.DESK_ROOT, 'claim', task.id, '--holder', session], { env: { ...process.env, JOBSHOP_SOCKET: '' } });
     await page.goto('./?view=trace&ref=' + task.id);
-    await showDetails(page);
+    await openTab(page, 'details');
     await page.locator('button.watch-session').first().click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer).toBeVisible();

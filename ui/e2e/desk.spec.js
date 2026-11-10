@@ -66,8 +66,8 @@ for (const view of ['trace', 'improvements', 'system']) {
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     await page.goto('./?view=' + view);
-    await expect(page.locator('main .tag').first()).toContainText('/' + ({ improvements: 'learn' }[view] || view));
-    await expect(page.locator('.top nav .chosen')).toHaveText({ trace: 'trace', improvements: 'learn', system: 'sys' }[view]);
+    await expect(page.locator('main .tag').first()).toContainText('/' + ({ improvements: 'learn', trace: 'tl' }[view] || view));
+    await expect(page.locator('.top nav .chosen')).toHaveText({ trace: 'TL', improvements: 'learn', system: 'sys' }[view]);
     await expect(page.locator('.status')).toContainText('sys ok');
     expect(errors).toEqual([]);
   });
@@ -115,17 +115,17 @@ test('waiting references open their ticket trace and support Back and direct lin
   const item = items.find(item => ['decision', 'ticket', 'run', 'question', 'wait', 'guard'].includes(item.kind));
   test.skip(!item, 'The live controller has no waiting ticket.');
   const waiting = page.getByRole('region', { name: 'Waiting', exact: true });
-  const link = waiting.getByRole('link', { name: `Trace ${item.ref || item.id}`, exact: true });
+  const link = waiting.getByRole('link', { name: `TL ${item.ref || item.id}`, exact: true });
   const href = await link.getAttribute('href');
   await link.click();
-  await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(item.id);
+  await expect(page.getByRole('textbox', { name: 'TL reference', exact: true })).toHaveValue(item.id);
   await showDetails(page);
-  await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
+  await expect(page.locator('.lower-who')).toContainText(item.id);
   await page.goBack();
   await expect(waiting).toBeVisible();
   await page.goto(href);
   await showDetails(page);
-  await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
+  await expect(page.locator('.lower-who')).toContainText(item.id);
 });
 
 test('named draft clearly creates on first send and can be dismissed without writes', async ({ page, isMobile }) => {

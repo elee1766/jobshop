@@ -1,17 +1,10 @@
-import { useSetAtom } from 'jotai';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type {
-  HolderInfo,
-  ShowResult,
-  TimelineMarker,
-  TimelineResult,
-  TimelineRow,
-  TimelineSegment,
-} from '../../../packages/jobshop-client/rpc.js';
+import { useAtom, useSetAtom } from 'jotai';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
 import { setParams } from '../lib/route.ts';
-import { segmentChoiceAtom } from '../state/ui.ts';
+import { markAtom, segmentChoiceAtom } from '../state/ui.ts';
 import { useSize } from '../lib/useSize.ts';
 import {
   arrowPath,
@@ -19,6 +12,7 @@ import {
   clusterMarkers,
   durationLabel,
   holderState,
+  markerKey,
   markerText,
   parentIds,
   rowEnd,
@@ -29,7 +23,6 @@ import {
   visibleRows,
 } from '../lib/timeline.ts';
 import { axisTicks, exactLabel, fullLabel, relativeLabel } from '../lib/trace.ts';
-import { MarkerPanel } from './TimelineMarker.tsx';
 
 // Geometry in CSS pixels. The label column is also set in app.css (--tl-label).
 const rowH = 30;
@@ -42,34 +35,35 @@ const maxZoom = 64;
 
 // One bar per ticket on a shared time axis, nested by parent, with
 // arrows for blocking edges (#1103). Rows come from ticket.timeline in
-// tree order; open bars grow to the "now" line. While the details are shown
-// instead (#1181) it stays mounted and hidden, so zoom, folds, the chosen
-// segment and the scroll position are where the operator left them.
-// Comments and history events are ticks on their row's bar (#1182). A tick
-// opens its text under the chart on demand, so the chart holds no prose.
+// tree order; open bars grow to the "now" line. It is the page's primary
+// view (#1183): a click on a name, a bar or a tick selects, and what that is
+// shows in the panel under the chart (TicketDetails), never in the chart, so
+// the chart keeps its size. On a phone the panel is a popup over the page and
+// the chart stays mounted under it, with its zoom, folds and scroll.
+// Comments and history events are ticks on their row's bar (#1182). The
+// open tick is markAtom; the panel under the chart reads it.
+// The parent of the selected row is shaded softly and named in the row's
+// description, so the hierarchy shows without a relationship block.
 export function Timeline({
   timeline,
   sessions,
   selected,
-  detail,
-  hidden,
   onSelect,
-  onDetails,
+  onPick,
 }: {
   timeline: TimelineResult;
   sessions?: Record<string, HolderInfo>;
   selected: string;
-  // The selected ticket's thread: the full text behind a tick.
-  detail?: ShowResult;
-  hidden: boolean;
   onSelect: (id: string) => void;
-  onDetails: () => void;
+  // A person picked something on the chart (a selection that arrived by a
+  // link is not one): a phone opens the popup.
+  onPick: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [seg, setSeg] = useState<{ id: string; i: number } | null>(null);
-  const [mark, setMark] = useState<{ id: string; key: string } | null>(null);
+  const [mark, setMark] = useAtom(markAtom);
   const choose = useSetAtom(segmentChoiceAtom);
   const [scrollRef, { width }] = useSize<HTMLElement>();
 
@@ -99,15 +93,7 @@ export function Timeline({
   );
   const height = rows.length * rowH;
   const pick = byId.get(selected) || byId.get(timeline.root);
-  // The open marker is found again by its key, so a live update that adds
-  // ticks before it keeps the same one open. One that is gone closes.
-  const openRow = mark ? byId.get(mark.id) : undefined;
-  const openAt = openRow ? openRow.markers.findIndex((m) => markerKey(m) === mark?.key) : -1;
-  const panel = useRef<HTMLElement | null>(null);
-  const opened = mark?.key;
-  useEffect(() => {
-    if (opened) panel.current?.scrollIntoView({ block: 'nearest' });
-  }, [opened]);
+  const parentId = pick?.parent;
 
   // Opening a sub-item selects it where it sits in the whole graph, which may
   // be far down a large one: bring its row into the chart's own scroll (not
@@ -115,22 +101,13 @@ export function Timeline({
   const chart = useRef<HTMLElement | null>(null);
   const pickRow = index.get(pick?.id ?? '');
   const found = pick !== undefined && pickRow !== undefined;
-  // A hidden element loses its scroll offset: keep the last visible one and
-  // put it back when the chart returns.
-  const offset = useRef({ top: 0, left: 0 });
-  useLayoutEffect(() => {
-    const el = chart.current;
-    if (hidden || !el) return;
-    el.scrollTop = offset.current.top;
-    el.scrollLeft = offset.current.left;
-  }, [hidden]);
   useEffect(() => {
     const el = chart.current;
-    if (hidden || !el || !found) return;
+    if (!el || !found) return;
     const top = axisH + pickRow * rowH;
     if (top < el.scrollTop + axisH) el.scrollTop = Math.max(0, top - axisH);
     else if (top + rowH > el.scrollTop + el.clientHeight) el.scrollTop = top + rowH - el.clientHeight;
-  }, [pickRow, found, hidden]);
+  }, [pickRow, found]);
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -145,21 +122,13 @@ export function Timeline({
     `${text(s)}\n${exactLabel(s.start)} to ${s.end ? exactLabel(s.end) : 'now'} (${durationLabel(segmentEnd(s, now) - Date.parse(s.start))})\n${row.id}`;
 
   return (
-    <section aria-label="Ticket timeline" className="ticket-timeline" hidden={hidden}>
+    <section aria-label="Ticket timeline" className="ticket-timeline">
       <div className="tag graph-heading">
         <h2>timeline</h2>
         <span className="muted">
           {timeline.rows.length} tickets · {timeline.arrows.length} arrows
         </span>
-        <button
-          className="push-right"
-          aria-label={'Show details of ' + (pick?.id ?? selected)}
-          title={'Show the details of ' + (pick?.id ?? selected) + ' in place of the timeline'}
-          onClick={onDetails}
-        >
-          details
-        </button>
-        <div className="graph-controls" aria-label="Timeline zoom">
+        <div className="graph-controls push-right" aria-label="Timeline zoom">
           <button
             aria-label="Zoom out"
             disabled={zoom <= minZoom}
@@ -193,10 +162,6 @@ export function Timeline({
           scrollRef(node);
         }}
         aria-label="Timeline chart"
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          if (el.clientWidth > 0) offset.current = { top: el.scrollTop, left: el.scrollLeft };
-        }}
       >
         <div className="tl-canvas" style={{ width: labelW + chartW + 16 + 'px' }}>
           <div className="tl-axis" style={{ height: axisH + 'px' }}>
@@ -225,7 +190,9 @@ export function Timeline({
               return (
                 <div
                   key={row.id}
-                  className={'tl-row' + (row.id === pick?.id ? ' tl-picked' : '')}
+                  className={
+                    'tl-row' + (row.id === pick?.id ? ' tl-picked' : '') + (row.id === parentId ? ' tl-parent' : '')
+                  }
                   data-conflict={conflicts.has(row.id) || undefined}
                   data-status={row.status}
                   style={{ height: rowH + 'px' }}
@@ -246,9 +213,16 @@ export function Timeline({
                     <StatusLetter ticket={row} />
                     <button
                       className="tl-name"
-                      title={`${parseTitle(row.title).text || row.kind} (${row.id})`}
+                      title={
+                        `${parseTitle(row.title).text || row.kind} (${row.id})` +
+                        (row.id === parentId ? '\nparent of the selected ticket' : '')
+                      }
                       aria-pressed={row.id === pick?.id}
-                      onClick={() => onSelect(row.id)}
+                      onClick={() => {
+                        setMark(null);
+                        onSelect(row.id);
+                        onPick();
+                      }}
                     >
                       {parseTitle(row.title).text || row.kind}
                     </button>
@@ -273,9 +247,11 @@ export function Timeline({
                           onClick={() => {
                             setSeg({ id: row.id, i });
                             choose((prev) => ({ id: row.id, index: i, n: (prev?.n ?? 0) + 1 }));
-                            // The pane opens on its events tab, on this entry.
+                            // The panel opens on its events tab, on this entry.
+                            setMark(null);
                             setParams({ tab: '' });
                             onSelect(row.id);
+                            onPick();
                           }}
                         >
                           {s.state === 'working' &&
@@ -333,7 +309,9 @@ export function Timeline({
                           style={{ left: group.at + 'px' }}
                           onClick={() => {
                             setMark({ id: row.id, key: keys[0] });
+                            setParams({ tab: 'marker' });
                             onSelect(row.id);
+                            onPick();
                           }}
                         />
                       );
@@ -395,21 +373,6 @@ export function Timeline({
           </div>
         </div>
       </section>
-      {openRow && openAt >= 0 && (
-        <div ref={panel as React.RefObject<HTMLDivElement>}>
-          <MarkerPanel
-            row={openRow}
-            index={openAt}
-            detail={detail}
-            onStep={(to) => setMark({ id: openRow.id, key: markerKey(openRow.markers[to]) })}
-            onClose={() => setMark(null)}
-          />
-        </div>
-      )}
     </section>
   );
 }
-
-// A marker has no id of its own: its time, kind and the comment or history
-// row it came from name it.
-const markerKey = (m: TimelineMarker) => `${m.at}|${m.kind}|${m.comment ?? m.seq ?? ''}`;

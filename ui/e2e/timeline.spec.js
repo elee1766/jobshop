@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, showTimeline } from './trace-view.js';
 
 // The trace timeline (#1103). The live stream is mocked, so this runs against
 // any Desk and writes nothing.
@@ -309,71 +309,92 @@ test('an open claim of a holder Desk cannot describe is drawn as held, not as id
   await expect(idle).not.toHaveAttribute('aria-label', /idle between turns|host not alive/);
 });
 
-test('the timeline is the default and a button swaps it for the details and back (#1181)', async ({ page, isMobile }) => {
+test('the chart stays on top and a press shows its selection under it, tabs first (#1183)', async ({ page, isMobile }) => {
   await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl).toBeVisible();
-  await expect(page.getByLabel('Ticket details', { exact: true })).toHaveCount(0);
+  const lower = page.getByLabel('Ticket details', { exact: true });
 
-  // Zoom, fold and pick a segment, then leave and come back.
+  // Zoom, fold and pick a segment: the chart keeps its size and place.
   await tl.getByRole('button', { name: 'Zoom in' }).click();
   await tl.getByRole('button', { name: 'Collapse js-rev' }).click();
-  const before = await tl.locator('.tl-scroll').boundingBox();
+  const scroller = tl.locator('.tl-scroll');
+  const before = await scroller.boundingBox();
   await tl.locator('.tl-row').filter({ hasText: 'Implement #7' }).locator('.tl-seg[data-state="retry"]').click();
   await expect(page).toHaveURL(/inspect=js-dev/);
-  await expect(tl.getByRole('button', { name: 'Show details of js-dev' })).toBeVisible();
-  const scroller = tl.locator('.tl-scroll');
-  await scroller.evaluate((el) => (el.scrollLeft = 60));
-  const left = await scroller.evaluate((el) => el.scrollLeft);
-  expect(left).toBeGreaterThan(0);
-
-  await tl.getByRole('button', { name: 'Show details of js-dev' }).click();
-  await expect(tl).toBeHidden();
-  const detail = page.getByLabel('Ticket details', { exact: true });
-  await expect(detail.getByRole('heading', { level: 2 })).toContainText('Implement #7');
+  await expect(lower).toBeVisible();
+  await expect(lower.getByRole('heading', { level: 2 })).toHaveCount(1);
   // The chosen segment is the one the events tab is on.
-  await expect(detail.locator('ol.events > li.chosen')).toContainText('failed attempt');
-  const box = await page.getByRole('region', { name: 'Details view' }).locator('.trace-bottom').boundingBox();
-  expect(box.height).toBeGreaterThan(300);
-  if (!isMobile) expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize().height + 1);
+  await expect(lower.locator('ol.events > li.chosen')).toContainText('failed attempt');
+  // Only the chosen panel is drawn, and the tabs come before it.
+  await expect(lower.getByRole('tab', { selected: true })).toHaveText('events');
+  await expect(lower.getByRole('tabpanel')).toHaveCount(1);
+  const tabs = await lower.getByRole('tablist').boundingBox();
+  const panel = await lower.getByRole('tabpanel').boundingBox();
+  expect(tabs.y + tabs.height).toBeLessThanOrEqual(panel.y + 1);
 
-  await page.getByRole('button', { name: 'Show the timeline', exact: true }).click();
+  if (isMobile) {
+    // A full-screen popup over the page, dismissed to the same chart.
+    const popup = page.getByRole('dialog', { name: 'Selected item' });
+    const size = await popup.boundingBox();
+    expect(size.width).toBeGreaterThanOrEqual(page.viewportSize().width - 1);
+    expect(size.height).toBeGreaterThanOrEqual(page.viewportSize().height - 1);
+    await page.getByRole('button', { name: 'Close and return to the timeline', exact: true }).click();
+    await expect(popup).toHaveCount(0);
+  } else {
+    const chart = await scroller.boundingBox();
+    expect(chart.y + chart.height).toBeLessThanOrEqual(tabs.y + 1);
+  }
   await expect(tl).toBeVisible();
-  await expect(page.getByLabel('Ticket details', { exact: true })).toHaveCount(0);
   await expect(tl.locator('.tl-row')).toHaveCount(3);
   await expect(tl.getByRole('button', { name: 'Zoom out' })).toBeEnabled();
   await expect(tl.locator('.tl-seg[aria-pressed="true"]')).toHaveCount(1);
   await expect(tl.locator('.tl-row.tl-picked')).toContainText('Implement #7');
-  expect(await scroller.evaluate((el) => el.scrollLeft)).toBe(left);
-  const after = await tl.locator('.tl-scroll').boundingBox();
+  const after = await scroller.boundingBox();
   expect(after.height).toBe(before.height);
 });
 
-test('a deep link to a detail tab opens the details', async ({ page }) => {
+test("the selected row's parent is shaded and named, not described in a block (#1183)", async ({ page }) => {
+  await open(page, '&inspect=js-dev');
+  const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  const parent = tl.locator('.tl-row.tl-parent');
+  await expect(parent).toHaveCount(1);
+  await expect(parent).toContainText('pr-work for #7');
+  await expect(parent.locator('.tl-name')).toHaveAttribute('title', /parent of the selected ticket/);
+  await expect(tl.locator('.tl-row.tl-picked')).toContainText('Implement #7');
+  await expect(page.locator('.ticket-parent')).toHaveCount(0);
+  // Clearly weaker than the selection.
+  const bg = (row) => row.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await bg(parent)).not.toBe(await bg(tl.locator('.tl-row.tl-picked')));
+});
+
+test('a deep link to a detail tab opens that tab under the chart', async ({ page, isMobile }) => {
   await open(page, '&inspect=js-dev&tab=raw');
-  await expect(page.getByRole('region', { name: 'Details view' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'raw' })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: 'Show the timeline', exact: true }).click();
+  await showTimeline(page);
   await expect(page.getByRole('region', { name: 'Ticket timeline' })).toBeVisible();
+  if (!isMobile) await expect(page.getByRole('tab', { name: 'raw' })).toBeVisible();
 });
 
 // #1182: comments and history events sit on the bars at their times. Their
-// text is opened on demand under the chart, not drawn in it.
-test('markers open their comment or event under the chart, with author, time and full text', async ({ page }) => {
+// text is shown in the marker tab under the chart, not drawn in it.
+test('markers open their comment or event in the marker tab, with author, time and full text', async ({ page }) => {
   await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
-  await expect(tl.getByRole('region', { name: 'Marker detail' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Marker detail' })).toHaveCount(0);
   // No prose in the chart: a marker is a tick with a name, not text.
   await expect(tl.locator('.tl-marker')).toHaveCount(4);
   await expect(tl.locator('.tl-marker').first()).toHaveText('');
 
   const review = tl.locator('.tl-row').filter({ hasText: 'Review #7' });
   await review.getByRole('button', { name: /comment: Looks fine, one nit/ }).click();
-  const panel = tl.getByRole('region', { name: 'Marker detail' });
+  const panel = page.getByRole('region', { name: 'Marker detail' });
+  await expect(page.getByRole('tab', { name: 'marker', selected: true })).toBeVisible();
   await expect(panel).toContainText('alice');
   await expect(panel.locator('time')).toHaveAttribute('datetime', /\d{4}-\d\d-\d\dT/);
   await expect(panel.locator('.markdown')).toContainText('Please rename');
   await expect(panel.locator('.markdown strong')).toHaveText('count');
+  await showTimeline(page);
   await expect(review.locator('.tl-marker')).toHaveAttribute('aria-pressed', 'true');
 
   // A history event shows its label and the raw row; a PR marker its link.
@@ -381,6 +402,7 @@ test('markers open their comment or event under the chart, with author, time and
   await dev.getByRole('button', { name: /event: label added: ci/ }).click();
   await expect(panel).toContainText('label added: ci');
   await expect(panel.locator('pre')).toContainText('"label": "ci"');
+  await showTimeline(page);
   await dev.getByRole('button', { name: /pr: PR opened/ }).click();
   await expect(panel.getByRole('link', { name: /acme\/widget PR #7/ })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/7');
 
@@ -391,6 +413,7 @@ test('markers open their comment or event under the chart, with author, time and
   await expect(panel.getByRole('button', { name: 'Next marker' })).toBeDisabled();
   await panel.getByRole('button', { name: 'Close marker detail' }).click();
   await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'events', selected: true })).toBeVisible();
 
   // Phone and desktop alike: the page does not overflow.
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -403,7 +426,7 @@ test('a marker is reachable by keyboard', async ({ page }) => {
   const marker = tl.locator('.tl-row').filter({ hasText: 'Review #7' }).locator('.tl-marker');
   await marker.focus();
   await page.keyboard.press('Enter');
-  await expect(tl.getByRole('region', { name: 'Marker detail' })).toContainText('Please rename');
+  await expect(page.getByRole('region', { name: 'Marker detail' })).toContainText('Please rename');
 });
 
 test('the trace has no bottom automation invocation line', async ({ page }) => {

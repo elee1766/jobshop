@@ -30,7 +30,7 @@ test('tabs follow the built-in views in configured order', async ({ page, isMobi
   const names = await nav(page).getByRole('button').allTextContents();
   expect(names).toEqual([
     'home',
-    'trace',
+    'TL',
     'learn',
     'sys',
     'linear',
@@ -210,7 +210,7 @@ for (const width of [1000, 899, 790, 700, 600]) {
 }
 
 async function expectTabsReachable(page) {
-  for (const name of ['home', 'trace', 'learn', 'sys', 'catch-up', 'Cross app', 'A rather long embed label']) {
+  for (const name of ['home', 'TL', 'learn', 'sys', 'catch-up', 'Cross app', 'A rather long embed label']) {
     const button = tab(page, name);
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeVisible();

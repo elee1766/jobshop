@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -73,7 +73,7 @@ test('the read-only session viewer shows the indicator too', async ({ page, requ
   const session = await post(request, 'api/chat/manage', { action: 'new', name: 'phase-' + tag, text: 'phases ' + tag });
   try {
     await page.goto('./?view=trace&ref=' + session.id);
-    await showDetails(page);
+    await openTab(page, 'details');
     await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer.locator('.turn-phase')).toHaveText('thinking…');

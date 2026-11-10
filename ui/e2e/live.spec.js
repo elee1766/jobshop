@@ -104,16 +104,16 @@ test("live state changes and reconnect snapshots need no browser refresh request
       ),
     ).toBeTruthy();
     expect(new Set(replay.map((event) => event.seq)).size).toBe(replay.length);
-    await waiting.getByRole('link', { name: 'Trace ' + ticket.id, exact: true }).click();
+    await waiting.getByRole('link', { name: 'TL ' + ticket.id, exact: true }).click();
     await showDetails(page);
-    await expect(page.locator(".ticket-overview > h2")).toContainText(
+    await expect(page.locator(".lower-who")).toContainText(
       title + " during disconnect",
     );
     await call("ticket.update", {
       id: ticket.id,
       title: title + " watched trace",
     });
-    await expect(page.locator(".ticket-overview > h2")).toContainText(
+    await expect(page.locator(".lower-who")).toContainText(
       title + " watched trace",
     );
     await showTimeline(page);
@@ -135,7 +135,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await showTimeline(page);
     await timeline.locator(`button.tl-name[title$="(${child.id})"]`).click();
     await showDetails(page);
-    await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
+    await expect(page.locator('.lower-who')).toContainText(child.id);
     // The relations tab holds the relationship groups (JOB-185).
     await page.getByRole('tab', { name: /^relations/ }).click();
     const relationships = page.getByLabel('Ticket relationships', { exact: true });
@@ -144,9 +144,9 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(dependencyRow.locator('.ticket-status')).toHaveAttribute('title', 'open');
     await expect(dependencyRow.locator('.ticket-label > span')).toHaveText('Required evidence');
     await expect(dependencyRow.locator('.ticket-label > small')).toHaveText(dependency.id);
-    await expect(page.locator('.ticket-parent')).toContainText('child of');
+    await expect(page.locator('.tl-row.tl-parent')).toHaveCount(1);
     await expect(relationships.getByRole('region', { name: 'waits for', exact: true })).toContainText('Required evidence');
-    await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(ticket.id);
+    await expect(page.getByRole('textbox', { name: 'TL reference', exact: true })).toHaveValue(ticket.id);
     // The events tab lists spans; every history row is behind a toggle.
     await page.getByRole('tab', { name: 'events' }).click();
     await page.getByLabel('every history row').check();
@@ -157,13 +157,13 @@ test("live state changes and reconnect snapshots need no browser refresh request
     const historyLink = history.getByRole('link', { name: new RegExp(dependency.id) });
     await expect(historyLink).toHaveCSS('cursor', 'pointer');
     await historyLink.click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
+    await expect(page.locator('.lower-who')).toContainText(dependency.id);
     await showTimeline(page);
     await timeline.locator(`button.tl-name[title$="(${child.id})"]`).click();
     await showDetails(page);
     await page.getByRole('tab', { name: /^relations/ }).click();
     await relationships.locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
+    await expect(page.locator('.lower-who')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).toHaveCount(0);
     await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).\n\nCompact https://github.com/elee1766/jobcity/pull/21?w=1#top, <https://linear.app/gfx-labs/issue/JOB-93/stall-triggers>. \`https://github.com/acme/widget/pull/47\` https://evilgithub.com/acme/widget/pull/48 [Authored PR](https://github.com/acme/widget/pull/49)` });
     // A comment is a marker on the timeline (#1182): it opens under the chart.
@@ -186,14 +186,14 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(comment.getByRole('link')).toHaveCount(9);
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await showDetails(page);
-    await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
-    await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
+    await expect(page.getByRole('textbox', { name: 'TL reference', exact: true })).toHaveValue(child.id);
+    await expect(page.locator('.lower-who')).toContainText(child.id);
     await page.getByRole('tab', { name: /^relations/ }).click();
     await page.getByLabel('Ticket relationships', { exact: true }).locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
+    await expect(page.locator('.lower-who')).toContainText(dependency.id);
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);
-    await expect(page.locator('.ticket-overview .ticket-status')).toHaveAttribute('aria-label', 'closed · done');
+    await expect(page.locator('.lower-who .ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     await showTimeline(page);
     await expect(row('Required evidence').locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);

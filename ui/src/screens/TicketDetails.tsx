@@ -1,4 +1,4 @@
-import { useAtomValue } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type {
   GraphNode,
@@ -27,11 +27,13 @@ import {
   type KV,
 } from '../lib/detail.ts';
 import { setParams, useDeskRoute } from '../lib/route.ts';
-import { durationLabel, holderState, liveText } from '../lib/timeline.ts';
+import { durationLabel, holderState, liveText, markerKey } from '../lib/timeline.ts';
 import { exactLabel, fullLabel, linkLabel, safeLinks, stepName } from '../lib/trace.ts';
 import { traceAtom } from '../state/live.ts';
-import { segmentChoiceAtom } from '../state/ui.ts';
+import { markAtom, segmentChoiceAtom } from '../state/ui.ts';
+import { SessionViewer } from './SessionViewer.tsx';
 import { TicketEvents, WaitList } from './TicketEvents.tsx';
+import { MarkerPanel } from './TimelineMarker.tsx';
 
 const pickTab = (id: DetailTab) => setParams({ tab: id === 'events' ? '' : id });
 
@@ -53,17 +55,23 @@ function useNow(open: boolean) {
   return now;
 }
 
-// The trace's detail pane (JOB-185): what happened to the selected ticket and
-// what it is doing now first, the detail behind tabs. Both layouts use it.
+// The lower area of the TL page (#1183), under the timeline. The tabs come
+// first, so they are never below a long panel, and only the chosen panel is
+// drawn: what happened to the selected ticket (JOB-185) and what it is doing
+// now, the tick that was pressed, the read-only session, and the rest of the
+// ticket's detail.
 export function TicketDetails({
   detail,
   graph,
+  watched,
   onSelect,
   onTrace,
   onWatch,
 }: {
   detail: ShowResult;
   graph: GraphResult;
+  // The session shown in the session tab, if any.
+  watched: string;
   onSelect: (id: string) => void;
   onTrace: (id: string) => void;
   onWatch: (id: string) => void;
@@ -76,6 +84,7 @@ export function TicketDetails({
   // A wait target in this graph is selected, not opened again (JOB-190).
   const target = (id: string) => (graph.nodes.some((n) => n.id === id) ? onSelect(id) : onTrace(id));
   const parent = graph.nodes.find((n) => n.id === ticket.parent_id);
+  const [mark, setMark] = useAtom(markAtom);
   const timeline = trace?.timeline;
   const row = useMemo(() => timeline?.rows.find((r) => r.id === ticket.id), [timeline, ticket.id]);
   const open = ticket.status !== 'closed';
@@ -91,8 +100,15 @@ export function TicketDetails({
   const current = nowOf(ticket, row, kids, holder, history);
   const step = stepName(ticket.fields);
 
+  // The open tick is found again by its key, so a live update that adds ticks
+  // before it keeps the same one open. One that is gone closes.
+  const markAt = mark && row && mark.id === ticket.id ? row.markers.findIndex((m) => markerKey(m) === mark.key) : -1;
+
   // Tabs that have nothing to show are left out, not shown empty.
   const tabs: [DetailTab, string][] = [['events', 'events']];
+  if (markAt >= 0) tabs.push(['marker', 'marker']);
+  if (watched) tabs.push(['session', 'session']);
+  tabs.push(['details', 'details']);
   if (hasIO(ticket)) tabs.push(['io', 'input / result']);
   const related = relationCount(groups);
   tabs.push(['relations', 'relations' + (related ? ' ' + related : '')]);
@@ -111,6 +127,10 @@ export function TicketDetails({
 
   // A segment chosen on the chart (it also resets the tab to events).
   const chosen = choice && choice.id === ticket.id ? choice : null;
+
+  function stepMarker(to: number) {
+    if (row && mark) setMark({ id: row.id, key: markerKey(row.markers[to]) });
+  }
 
   function keys(event: KeyboardEvent<HTMLButtonElement>) {
     const at = tabs.findIndex(([id]) => id === tab);
@@ -146,27 +166,40 @@ export function TicketDetails({
     </>
   );
 
-  return (
-    <div className="inspector" aria-label="Ticket details">
+  const actions = (
+    <div className="ticket-links">
+      <TicketMenuButton target={menuTarget(ticket)} />
+      {ticket.kind === 'session' && (
+        <button className="watch-session" onClick={() => onWatch(ticket.id)}>
+          view session ↗
+        </button>
+      )}
+    </div>
+  );
+
+  // The details tab: the whole summary of the ticket (#1181), off the page
+  // until asked for (#1183).
+  const overview = (
+    <>
+      {ticket.parent_id && (
+        <div
+          className="ticket-parent"
+          ref={ticketMenuRef(parent ? menuTarget(parent) : menuTarget({ id: ticket.parent_id }))}
+        >
+          <span className="muted">child of</span>
+          {parent ? (
+            <>
+              {link(parent)}
+              <TicketMenuButton target={menuTarget(parent)} />
+            </>
+          ) : (
+            <button className="mono" onClick={() => onSelect(ticket.parent_id!)}>
+              {ticket.parent_id}
+            </button>
+          )}
+        </div>
+      )}
       <header className="ticket-overview" ref={ticketMenuRef(menuTarget(ticket))}>
-        {ticket.parent_id && (
-          <div
-            className="ticket-parent"
-            ref={ticketMenuRef(parent ? menuTarget(parent) : menuTarget({ id: ticket.parent_id }))}
-          >
-            <span className="muted">child of</span>
-            {parent ? (
-              <>
-                {link(parent)}
-                <TicketMenuButton target={menuTarget(parent)} />
-              </>
-            ) : (
-              <button className="mono" onClick={() => onSelect(ticket.parent_id!)}>
-                {ticket.parent_id}
-              </button>
-            )}
-          </div>
-        )}
         <h2>
           <StatusLetter ticket={ticket} /> <TitleText title={ticket.title} fallback={ticket.id} />
           {ticket.title && <small className="mono muted">{ticket.id}</small>}
@@ -260,65 +293,85 @@ export function TicketDetails({
         )
       )}
 
-      <section className="now-block" data-kind={current.kind} aria-label={open ? 'Now' : 'How it ended'}>
-        <span className="now-label">{open ? 'now' : 'ended'}</span>
-        <div>
-          <p>
-            <b data-live={current.kind === 'lost' ? 'lost' : undefined}>{current.text}</b>
-            {current.since !== undefined && open && (
-              <span className="muted">
-                {' '}
-                · for{' '}
-                <time dateTime={new Date(current.since).toISOString()} title={exactLabel(current.since)}>
-                  {durationLabel(now - current.since)}
-                </time>
-              </span>
-            )}
-            {current.until !== undefined && (
-              <span>
-                {' '}
-                until{' '}
-                <time dateTime={new Date(current.until).toISOString()} title={exactLabel(current.until)}>
-                  {new Date(current.until).toLocaleString()}
-                </time>
-              </span>
-            )}
-          </p>
-          {current.waits.length > 0 && <WaitList waits={current.waits} onTrace={target} />}
-          {current.kind === 'human' && ticket.body && (
-            <p>
-              <button onClick={() => pickTab('body')}>read the question</button>
-            </p>
-          )}
-        </div>
-      </section>
+      {actions}
+    </>
+  );
 
-      <div className="ticket-links">
-        <TicketMenuButton target={menuTarget(ticket)} />
-        {ticket.kind === 'session' && (
-          <button className="watch-session" onClick={() => onWatch(ticket.id)}>
-            view session ↗
-          </button>
+  const nowBlock = (
+    <section className="now-block" data-kind={current.kind} aria-label={open ? 'Now' : 'How it ended'}>
+      <span className="now-label">{open ? 'now' : 'ended'}</span>
+      <div>
+        <p>
+          <b data-live={current.kind === 'lost' ? 'lost' : undefined}>{current.text}</b>
+          {current.since !== undefined && open && (
+            <span className="muted">
+              {' '}
+              · for{' '}
+              <time dateTime={new Date(current.since).toISOString()} title={exactLabel(current.since)}>
+                {durationLabel(now - current.since)}
+              </time>
+            </span>
+          )}
+          {current.until !== undefined && (
+            <span>
+              {' '}
+              until{' '}
+              <time dateTime={new Date(current.until).toISOString()} title={exactLabel(current.until)}>
+                {new Date(current.until).toLocaleString()}
+              </time>
+            </span>
+          )}
+        </p>
+        {current.waits.length > 0 && <WaitList waits={current.waits} onTrace={target} />}
+        {current.kind === 'human' && ticket.body && (
+          <p>
+            <button onClick={() => pickTab('body')}>read the question</button>
+          </p>
         )}
       </div>
+    </section>
+  );
 
-      <div className="tag detail-tabs" role="tablist" aria-label="Ticket detail">
-        {tabs.map(([id, label]) => (
-          <button
-            key={id}
-            id={'detail-tab-' + id}
-            role="tab"
-            aria-selected={tab === id}
-            aria-controls="detail-panel"
-            className={tab === id ? 'chosen' : undefined}
-            onClick={() => pickTab(id)}
-            onKeyDown={keys}
-          >
-            {label}
-          </button>
-        ))}
+  return (
+    <div className="inspector lower" aria-label="Ticket details">
+      <div className="tag lower-bar">
+        <div className="detail-tabs" role="tablist" aria-label="Ticket detail">
+          {tabs.map(([id, label]) => (
+            <button
+              key={id}
+              id={'detail-tab-' + id}
+              role="tab"
+              aria-selected={tab === id}
+              aria-controls="detail-panel"
+              className={tab === id ? 'chosen' : undefined}
+              onClick={() => pickTab(id)}
+              onKeyDown={keys}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <h2 className="lower-who" title={ticket.id}>
+          <StatusLetter ticket={ticket} /> <TitleText title={ticket.title} fallback={ticket.id} />
+          {ticket.title && <small className="mono muted"> {ticket.id}</small>}
+        </h2>
       </div>
       <div id="detail-panel" role="tabpanel" aria-labelledby={'detail-tab-' + tab} className="detail-panel">
+        {tab === 'marker' && row && markAt >= 0 && (
+          <MarkerPanel
+            row={row}
+            index={markAt}
+            detail={detail}
+            onStep={stepMarker}
+            onClose={() => {
+              setMark(null);
+              pickTab('events');
+            }}
+          />
+        )}
+        {tab === 'session' && watched && <SessionViewer key={watched} id={watched} onClose={() => onWatch('')} />}
+        {tab === 'details' && overview}
+        {tab === 'events' && nowBlock}
         {tab === 'events' && (
           <TicketEvents
             ticket={ticket}

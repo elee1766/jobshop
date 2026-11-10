@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 
 // Creates tickets only on an explicitly opted-in disposable controller.
 test.skip(!process.env.DESK_MUTATE, 'set DESK_MUTATE=1 against an isolated controller');
@@ -20,7 +20,7 @@ test('Markdown links in titles open their destination and leave the row action a
     created.push(plain.id, unsafe.id);
     await page.goto(`./?view=trace&tab=relations&ref=${parent.id}`);
     const relationships = page.getByLabel('Ticket relationships', { exact: true });
-    const heading = page.locator('.ticket-overview > h2');
+    const heading = page.locator('.lower-who');
     await expect(heading.getByRole('link', { name: 'JOB-117', exact: true })).toHaveAttribute('href', 'https://linear.app/gfx-labs/issue/JOB-117');
     await expect(heading.getByRole('link', { name: 'jobshop#1021', exact: true })).toHaveAttribute('target', '_blank');
     // Plain text stays literal and unsafe destinations keep their label without a link.
@@ -33,19 +33,19 @@ test('Markdown links in titles open their destination and leave the row action a
     expect(await page.locator('a a, a button, button a, button button').count()).toBe(0);
     // Clicking a title link opens its destination and does not select the ticket.
     await relationships.getByRole('button', { name: `Plain ${key} *not italic* <b>not bold</b>`, exact: false }).click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText('Plain ' + key);
+    await expect(page.locator('.lower-who')).toContainText('Plain ' + key);
     await page.goto(`./?view=trace&ref=${plain.id}`);
-    await showDetails(page);
+    await openTab(page, 'details');
     const child = page.getByLabel('Ticket details', { exact: true }).locator('.ticket-parent');
     await expect(child.getByRole('button', { name: new RegExp(`^Parent ${key} JOB-117 and jobshop#1021`) })).toBeVisible();
     await child.getByRole('link', { name: 'JOB-117', exact: true }).evaluate((a) => a.addEventListener('click', (e) => e.preventDefault()));
     await child.getByRole('link', { name: 'JOB-117', exact: true }).click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText('Plain ' + key);
+    await expect(page.locator('.lower-who')).toContainText('Plain ' + key);
     await child.getByRole('button', { name: new RegExp(`^Parent ${key}`) }).click();
-    await expect(page.locator('.ticket-overview > h2')).toContainText('Parent ' + key);
+    await expect(page.locator('.lower-who')).toContainText('Parent ' + key);
     // Title search matches the readable text, not the Markdown source.
-    await page.getByRole('textbox', { name: 'Trace reference', exact: true }).fill(`Parent ${key}`);
-    await page.getByRole('textbox', { name: 'Trace reference', exact: true }).press('Enter');
+    await page.getByRole('textbox', { name: 'TL reference', exact: true }).fill(`Parent ${key}`);
+    await page.getByRole('textbox', { name: 'TL reference', exact: true }).press('Enter');
     const results = page.getByRole('region', { name: 'Ticket search results' });
     await expect(results.getByRole('link', { name: 'JOB-117', exact: true })).toHaveAttribute('href', 'https://linear.app/gfx-labs/issue/JOB-117');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
