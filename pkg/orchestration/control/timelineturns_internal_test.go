@@ -16,17 +16,17 @@ import (
 
 var turnBase = time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 
-func tm(min int) time.Time { return turnBase.Add(time.Duration(min) * time.Minute) }
+func tm(mins int) time.Time { return turnBase.Add(time.Duration(mins) * time.Minute) }
 
 type hist []store.HistoryEntry
 
-func (h hist) add(min int, actor, op string, diff any) hist {
+func (h hist) add(mins int, actor, op string, diff any) hist {
 	d, _ := json.Marshal(diff)
-	return append(h, store.HistoryEntry{Seq: int64(len(h) + 1), At: tm(min), Actor: actor, Op: op, Diff: d})
+	return append(h, store.HistoryEntry{Seq: int64(len(h) + 1), At: tm(mins), Actor: actor, Op: op, Diff: d})
 }
 
-func (h hist) turnEnd(min int, actor, stop string) hist {
-	return h.add(min, actor, domain.OpTurnEnd, domain.TurnDiff{Stop: stop})
+func (h hist) turnEnd(mins int, actor, stop string) hist {
+	return h.add(mins, actor, domain.OpTurnEnd, domain.TurnDiff{Stop: stop})
 }
 
 // turnRow replays a task created at minute 0 with the given history.

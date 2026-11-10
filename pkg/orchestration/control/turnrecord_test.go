@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,13 +19,22 @@ import (
 // and ticket.timeline lists the two turns on the working span.
 func TestTurnRows(t *testing.T) {
 	root, start := poolRoot(t, "1m")
+	// The first turn blocks until "go", so the fake clock can move inside the
+	// claim: a claim with no length is not drawn.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "noclose"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
 	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "work", Pool: "dev"}, &task))
+	passEventually(t, root.Dir, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, "first turn started")
+	advance(t, root.Dir, time.Minute)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	var got rpc.ShowResult
 	ends := func() int {
 		n := 0
