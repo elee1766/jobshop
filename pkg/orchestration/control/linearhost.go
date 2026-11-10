@@ -106,7 +106,7 @@ func (h linearHost) Context() context.Context { return h.c.ctx }
 func (h linearHost) Go(fn func())             { h.c.wg.Go(fn) }
 func (h linearHost) CanMint() bool            { return h.c.minter != nil }
 
-func (h linearHost) Client(name string) *linear.Client { return h.c.linearFor(name) }
+func (h linearHost) Client(name string) *linear.Client { return h.c.linearFor(h.c.config(), name) }
 
 func (h linearHost) ClientIn(cfg *config.Config, key string) (*linear.Client, error) {
 	return h.c.linearClientIn(cfg, key)

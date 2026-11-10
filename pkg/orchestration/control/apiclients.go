@@ -27,13 +27,13 @@ type apiClients struct {
 	host *github.Client
 }
 
-// linearFor returns identity name's shared Linear client.
-func (c *Controller) linearFor(name string) *linear.Client {
+// linearFor returns identity name's shared Linear client under cfg.
+func (c *Controller) linearFor(cfg *config.Config, name string) *linear.Client {
 	c.clients.mu.Lock()
 	defer c.clients.mu.Unlock()
 	// The identity's api_url wins; linearURL is the in-process tests' fake.
 	url := c.linearURL
-	if u := c.config().Identities[name].APIURL; u != "" {
+	if u := cfg.Identities[name].APIURL; u != "" {
 		url = u
 	}
 	if cl, ok := c.clients.linear[name]; ok && cl.URL == linearBase(url) {
@@ -53,7 +53,7 @@ func (c *Controller) linearForTeam(cfg *config.Config, team string) (*linear.Cli
 	if !ok {
 		return nil, fmt.Errorf("no identity covers team %s", team)
 	}
-	return c.linearFor(name), nil
+	return c.linearFor(cfg, name), nil
 }
 
 // githubFor returns identity name's shared GitHub client for repo: a

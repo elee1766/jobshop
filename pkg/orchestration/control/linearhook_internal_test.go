@@ -46,7 +46,7 @@ identities:
 	again, err := host.LinearClient(t.Context(), "ENG")
 	require.NoError(t, err)
 	assert.Same(t, eng, again, "one client per identity")
-	assert.Same(t, eng, c.linearFor("eng"), "the controller's own callers share it")
+	assert.Same(t, eng, c.linearFor(c.config(), "eng"), "the controller's own callers share it")
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "eng"), []byte("lin_api_rotated\n"), 0o600))
 	_, err = eng.Viewer(t.Context())
