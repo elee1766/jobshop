@@ -76,6 +76,17 @@ func (c *Controller) linearIntakeRPC(_ context.Context, _ scope, p rpc.LinearInt
 	return rpc.LinearIntakeResult{Watched: watched, States: states}, nil
 }
 
+// linearTeamsRPC is linear.teams (JOB-201): the Linear teams of the host's
+// identities, so a CLI call without --team can default it. Team keys only,
+// no credentials; the token call still checks the caller may use the team.
+func (c *Controller) linearTeamsRPC(_ context.Context, _ scope, _ struct{}) (any, error) {
+	teams := c.config().ActivityTeams()
+	if teams == nil {
+		teams = []string{}
+	}
+	return rpc.LinearTeamsResult{Teams: teams}, nil
+}
+
 // linearAnswers takes replies to open questions' ask comments out of cs
 // and answers those questions with them; the rest is returned for normal
 // delivery. A failed answer leaves the reply in cs so it is not lost.

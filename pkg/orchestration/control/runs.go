@@ -569,7 +569,7 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t domain.Tic
 	return t, err
 }
 
-func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
+func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.RunCancelParams) (any, error) {
 	res, err := c.cancelRun(ctx, sc, p)
 	if err == nil {
 		c.runBatchEvent(ctx, p.ID)
@@ -577,7 +577,7 @@ func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.IDParams) (a
 	return res, err
 }
 
-func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
+func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.RunCancelParams) (any, error) {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	t, f, err := c.getRun(ctx, sc, p.ID)
@@ -586,6 +586,14 @@ func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (a
 	}
 	if t.Status == domain.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", domain.ErrClosed, t.ID)
+	}
+	// The reason first: a failed cancel keeps it, and a run closed by the
+	// cancel can take no comment.
+	if reason := strings.TrimSpace(p.Reason); reason != "" {
+		c.redactWrite(sc, "comment on", t.ID, &reason)
+		if _, err := store.AddComment(ctx, c.store, sc.actor, t.ID, "Cancelled: "+reason); err != nil {
+			return nil, err
+		}
 	}
 	steps, err := store.Children(ctx, c.store, t.ID)
 	if err != nil {

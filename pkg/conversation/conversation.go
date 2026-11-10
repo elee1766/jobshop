@@ -209,7 +209,7 @@ var ReadOnlyMethods = []string{
 	rpc.MethodReady, rpc.MethodRecall, rpc.MethodRunShow, rpc.MethodRunList, rpc.MethodBatchShow,
 	rpc.MethodBatchList, rpc.MethodAttention, rpc.MethodConfigShow, rpc.MethodPoolList, rpc.MethodSessionList,
 	rpc.MethodSessionJournal, rpc.MethodJournalSearch, rpc.MethodTriggerList, rpc.MethodActivityList,
-	rpc.MethodLearnList, rpc.MethodMemoryShow, rpc.MethodReportIncidents, rpc.MethodLinearIntake,
+	rpc.MethodLearnList, rpc.MethodMemoryShow, rpc.MethodReportIncidents, rpc.MethodLinearIntake, rpc.MethodLinearTeams,
 	// Naming itself changes only its label (#626).
 	rpc.MethodSessionRename,
 }

@@ -53,6 +53,7 @@ type runListCmd struct {
 	Workflow string `help:"Only runs of this workflow (exact name)."`
 	Key      string `help:"Only runs with this key (exact), closed ones included."`
 	Limit    int    `short:"n" help:"Max results (default 500)."`
+	JSON     bool   `help:"Accepted and ignored: the output is always JSON."`
 }
 
 func (c runListCmd) Run(g *Globals) error {
@@ -60,12 +61,13 @@ func (c runListCmd) Run(g *Globals) error {
 }
 
 type runCancelCmd struct {
-	ID   string `arg:"" help:"Run id."`
-	JSON bool   `help:"Print JSON."`
+	ID     string `arg:"" help:"Run id."`
+	Reason string `short:"r" help:"Why the run is cancelled: added as a comment on the run before it is cancelled."`
+	JSON   bool   `help:"Print JSON."`
 }
 
 func (c runCancelCmd) Run(g *Globals) error {
-	return g.runCall(rpc.MethodRunCancel, rpc.IDParams{ID: c.ID}, c.JSON)
+	return g.runCall(rpc.MethodRunCancel, rpc.RunCancelParams{ID: c.ID, Reason: c.Reason}, c.JSON)
 }
 
 type runResumeCmd struct {

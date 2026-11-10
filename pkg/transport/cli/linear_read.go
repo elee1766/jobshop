@@ -22,7 +22,7 @@ type linearContextCmd struct {
 }
 
 type linearFilterFlags struct {
-	Team     string `required:"" help:"Team key, e.g. ENG."`
+	Team     string `help:"Team key, e.g. ENG. Default: the host's Linear team when it has exactly one."`
 	State    string `help:"State name, e.g. Todo."`
 	Label    string `help:"Label name."`
 	Assignee string `help:"Assignee name, or me."`
@@ -32,6 +32,27 @@ type linearFilterFlags struct {
 
 func (f linearFilterFlags) filter() linear.Filter {
 	return linear.Filter{Team: f.Team, State: f.State, Label: f.Label, Assignee: f.Assignee, Limit: f.Limit, After: f.After}
+}
+
+// withTeam fills in --team when it was left out: the host's one Linear
+// team, asked of the controller (the CLI never reads the config). None or
+// several is an error naming them, so the caller picks (JOB-201).
+func (f linearFilterFlags) withTeam(g *Globals) (linearFilterFlags, error) {
+	if strings.TrimSpace(f.Team) != "" {
+		return f, nil
+	}
+	var r rpc.LinearTeamsResult
+	if err := g.call(rpc.MethodLinearTeams, nil, &r); err != nil {
+		return f, fmt.Errorf("--team not given and the host's teams are unknown: %w", err)
+	}
+	switch len(r.Teams) {
+	case 1:
+		f.Team = r.Teams[0]
+		return f, nil
+	case 0:
+		return f, errors.New("--team is required: the host has no Linear team configured")
+	}
+	return f, fmt.Errorf("--team is required: the host has several Linear teams (%s)", strings.Join(r.Teams, ", "))
 }
 
 type linearListCmd struct {
@@ -79,12 +100,16 @@ func (c linearContextCmd) Run(g *Globals, l *linearCmd) error {
 func teamKey(team string) string { return strings.ToUpper(strings.TrimSpace(team)) + "-1" }
 
 func (c linearListCmd) Run(g *Globals, l *linearCmd) error {
-	cl, ctx, cancel, err := l.client(g, teamKey(c.Team))
+	f, err := c.withTeam(g)
+	if err != nil {
+		return err
+	}
+	cl, ctx, cancel, err := l.client(g, teamKey(f.Team))
 	if err != nil {
 		return err
 	}
 	defer cancel()
-	p, err := cl.List(ctx, c.filter())
+	p, err := cl.List(ctx, f.filter())
 	if err != nil {
 		return err
 	}
@@ -92,12 +117,16 @@ func (c linearListCmd) Run(g *Globals, l *linearCmd) error {
 }
 
 func (c linearSearchCmd) Run(g *Globals, l *linearCmd) error {
-	cl, ctx, cancel, err := l.client(g, teamKey(c.Team))
+	f, err := c.withTeam(g)
+	if err != nil {
+		return err
+	}
+	cl, ctx, cancel, err := l.client(g, teamKey(f.Team))
 	if err != nil {
 		return err
 	}
 	defer cancel()
-	p, err := cl.Search(ctx, c.Query, c.filter())
+	p, err := cl.Search(ctx, c.Query, f.filter())
 	if err != nil {
 		return err
 	}
