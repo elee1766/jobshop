@@ -46,7 +46,7 @@ test('human and agent messages carry sender headers in chat and the session view
 
     // Same presentation in the read-only viewer.
     await page.goto('./?view=trace&ref=' + session.id);
-    await page.locator(`button.tl-name[title$="(${session.id})"]`).click();
+    await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer.locator('.speaker-human').first()).toHaveText('you');
     await expect(viewer.locator('.speaker-agent').first()).toBeVisible();
@@ -70,7 +70,7 @@ test('a ticket turn shows its prompt once', async ({ page, request }) => {
     }, { timeout: 30_000 })
     .toBe('closed');
   await page.goto('./?view=trace&ref=' + holder);
-  await page.locator(`button.tl-name[title$="(${holder})"]`).click();
+  await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
   const viewer = page.getByRole('region', { name: 'Read-only session' });
   const turn = viewer.locator('.transcript-row').filter({ hasText: task.id });
   await expect(turn.locator('.controller-context')).toHaveCount(1);
