@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    runs-on: ubicloud-standard-2
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
@@ -35,7 +35,7 @@ jobs:
   desk-ui:
     needs: release-please
     if: needs.release-please.outputs.created == 'true'
-    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    runs-on: ubicloud-standard-2
     steps:
       - uses: actions/checkout@v5
         with:
@@ -56,7 +56,7 @@ jobs:
   binaries:
     needs: [release-please, desk-ui]
     if: needs.release-please.outputs.created == 'true'
-    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    runs-on: ubicloud-standard-2
     strategy:
       matrix:
         goos: [linux]
@@ -95,7 +95,7 @@ jobs:
 
   upload:
     needs: [release-please, binaries]
-    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    runs-on: ubicloud-standard-2
     permissions:
       contents: write
     steps:
@@ -116,7 +116,7 @@ jobs:
   nix:
     needs: release-please
     if: needs.release-please.outputs.created == 'true'
-    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    runs-on: ubicloud-standard-2
     steps:
       - uses: actions/checkout@v5
         with:
