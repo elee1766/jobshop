@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails } from './trace-view.js';
 
 test('chat attachments stay local until sending and can be removed or dismissed', async ({ page, isMobile }) => {
   const writes = [];
@@ -118,10 +119,12 @@ test('waiting references open their ticket trace and support Back and direct lin
   const href = await link.getAttribute('href');
   await link.click();
   await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(item.id);
+  await showDetails(page);
   await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
   await page.goBack();
   await expect(waiting).toBeVisible();
   await page.goto(href);
+  await showDetails(page);
   await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
 });
 
