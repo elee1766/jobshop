@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.16](https://github.com/gfx-labs/jobshop/compare/v0.10.15...v0.10.16) (2026-11-10)
+
+
+### Bug fixes
+
+* **desk:** label a workflow's working span as running, not in a turn ([#1184](https://github.com/gfx-labs/jobshop/issues/1184)) ([#1215](https://github.com/gfx-labs/jobshop/issues/1215)) ([ff06ab6](https://github.com/gfx-labs/jobshop/commit/ff06ab66107c76240eb1dccf50a6d56e669f05c5))
+
 ## [0.10.15](https://github.com/gfx-labs/jobshop/compare/v0.10.14...v0.10.15) (2026-11-10)
 
 
