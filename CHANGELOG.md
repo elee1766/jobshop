@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.10](https://github.com/gfx-labs/jobshop/compare/v0.10.9...v0.10.10) (2026-11-10)
+
+
+### Features
+
+* **learn:** add expired learning status and learn expire (JOB-198) ([#1200](https://github.com/gfx-labs/jobshop/issues/1200)) ([d5aa6d2](https://github.com/gfx-labs/jobshop/commit/d5aa6d27c1378228050d775a05c1229a512d4446))
+
 ## [0.10.9](https://github.com/gfx-labs/jobshop/compare/v0.10.8...v0.10.9) (2026-11-10)
 
 
