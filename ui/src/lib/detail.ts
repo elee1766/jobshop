@@ -1,11 +1,9 @@
 import type {
-  Comment,
   GraphNode,
   GraphResult,
   HistoryEntry,
   HolderInfo,
   Ticket,
-  TimelineMarker,
   TimelineRow,
   TimelineSegment,
   TimelineWait,
@@ -220,8 +218,6 @@ function nowOfSegment(
 
 export type EventItem =
   | { type: 'segment'; key: string; at: number; index: number; seg: TimelineSegment; ended: string }
-  | { type: 'marker'; key: string; at: number; marker: TimelineMarker }
-  | { type: 'comment'; key: string; at: number; comment: Comment }
   | { type: 'close'; key: string; at: number; resolution: string; by: string; note: string };
 
 // Ops that never end a span the way a reader cares about.
@@ -257,9 +253,9 @@ export function endedBy(seg: TimelineSegment, history: HistoryEntry[]): string {
 }
 
 // One entry per span of the ticket's life (a claim, a wait, a human hold,
-// time queued or deferred), with comments, PR markers and the close in place
-// by time. Newest first.
-export function eventItems(row: TimelineRow, history: HistoryEntry[], comments: Comment[]): EventItem[] {
+// time queued or deferred) and the close, by time. Newest first. Comments and
+// the history rows no span shows are markers on the timeline (#1182).
+export function eventItems(row: TimelineRow, history: HistoryEntry[]): EventItem[] {
   const items: EventItem[] = row.segments.map((seg, index) => ({
     type: 'segment',
     key: 'seg:' + index,
@@ -268,15 +264,6 @@ export function eventItems(row: TimelineRow, history: HistoryEntry[], comments: 
     seg,
     ended: endedBy(seg, history),
   }));
-  // A "PR <url>" comment has its own marker: it is shown once, as the marker.
-  const marked = new Set(row.markers.filter((m) => m.kind === 'pr').map((m) => at(m.at)));
-  row.markers.forEach((marker, i) => {
-    if (marker.kind !== 'comment') items.push({ type: 'marker', key: 'mark:' + i, at: at(marker.at), marker });
-  });
-  for (const comment of comments) {
-    if (marked.has(at(comment.created_at))) continue;
-    items.push({ type: 'comment', key: 'comment:' + comment.id, at: at(comment.created_at), comment });
-  }
   if (row.closed_at) {
     const last = history.findLast((e) => e.op === 'close');
     const diff = (last?.diff || {}) as { note?: string; reason?: string };

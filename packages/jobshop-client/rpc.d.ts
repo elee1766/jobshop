@@ -1704,6 +1704,8 @@ export interface TimelineMarker {
   label?: string;
   actor?: string;
   url?: string;
+  comment?: number;
+  seq?: number;
 }
 
 export interface TimelineResult {

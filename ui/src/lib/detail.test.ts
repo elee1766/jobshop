@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type {
-  Comment,
   GraphResult,
   HistoryEntry,
   Ticket,
@@ -229,26 +228,21 @@ test('how a span ended comes from the row written at its end', () => {
   assert.equal(endedBy(seg('waiting', 30, 50, { ended: 'met' }), history), '');
 });
 
-test('events: one entry per span plus markers, comments and the close, newest first', () => {
-  const comments: Comment[] = [
-    { id: 1, ticket_id: 'js-1', author: 'a', body: 'looks fine\nmore', created_at: t(20) },
-    { id: 2, ticket_id: 'js-1', author: 'a', body: 'PR https://github.com/acme/w/pull/7', created_at: t(25) },
-  ];
+test('events: one entry per span and the close, newest first, without comments or markers', () => {
   const r = row({
     ...retried,
     markers: [
-      { at: t(20), kind: 'comment', label: 'looks fine' },
-      { at: t(25), kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/w/pull/7' },
+      { at: t(20), kind: 'comment', label: 'looks fine', comment: 1 },
+      { at: t(25), kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/w/pull/7', comment: 2 },
+      { at: t(26), kind: 'event', label: 'label added: x', seq: 9 },
     ],
   });
-  const items = eventItems(r, [entry(50, 'close', 'js-s-2', { resolution: 'done' })], comments);
+  const items = eventItems(r, [entry(50, 'close', 'js-s-2', { resolution: 'done' })]);
   assert.deepEqual(
     items.map((i) => i.type),
-    // close, waiting span, PR marker, comment, working, retry, working, queued
-    ['close', 'segment', 'marker', 'comment', 'segment', 'segment', 'segment', 'segment'],
+    // close, waiting span, working, retry, working, queued: markers are on the timeline
+    ['close', 'segment', 'segment', 'segment', 'segment', 'segment'],
   );
-  // The PR comment appears once, as the marker.
-  assert.equal(items.filter((i) => i.type === 'comment').length, 1);
   // Segments keep their timeline index, so a chart click can find its entry.
   const segs = items.flatMap((i) => (i.type === 'segment' ? [i.index] : []));
   assert.deepEqual(segs, [4, 3, 2, 1, 0]);

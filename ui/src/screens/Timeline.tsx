@@ -1,6 +1,13 @@
 import { useSetAtom } from 'jotai';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
+import type {
+  HolderInfo,
+  ShowResult,
+  TimelineMarker,
+  TimelineResult,
+  TimelineRow,
+  TimelineSegment,
+} from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
 import { setParams } from '../lib/route.ts';
@@ -9,6 +16,7 @@ import { useSize } from '../lib/useSize.ts';
 import {
   arrowPath,
   arrowShape,
+  clusterMarkers,
   durationLabel,
   holderState,
   markerText,
@@ -21,6 +29,7 @@ import {
   visibleRows,
 } from '../lib/timeline.ts';
 import { axisTicks, exactLabel, fullLabel, relativeLabel } from '../lib/trace.ts';
+import { MarkerPanel } from './TimelineMarker.tsx';
 
 // Geometry in CSS pixels. The label column is also set in app.css (--tl-label).
 const rowH = 30;
@@ -36,10 +45,13 @@ const maxZoom = 64;
 // tree order; open bars grow to the "now" line. While the details are shown
 // instead (#1181) it stays mounted and hidden, so zoom, folds, the chosen
 // segment and the scroll position are where the operator left them.
+// Comments and history events are ticks on their row's bar (#1182). A tick
+// opens its text under the chart on demand, so the chart holds no prose.
 export function Timeline({
   timeline,
   sessions,
   selected,
+  detail,
   hidden,
   onSelect,
   onDetails,
@@ -47,6 +59,8 @@ export function Timeline({
   timeline: TimelineResult;
   sessions?: Record<string, HolderInfo>;
   selected: string;
+  // The selected ticket's thread: the full text behind a tick.
+  detail?: ShowResult;
   hidden: boolean;
   onSelect: (id: string) => void;
   onDetails: () => void;
@@ -55,6 +69,7 @@ export function Timeline({
   const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [seg, setSeg] = useState<{ id: string; i: number } | null>(null);
+  const [mark, setMark] = useState<{ id: string; key: string } | null>(null);
   const choose = useSetAtom(segmentChoiceAtom);
   const [scrollRef, { width }] = useSize<HTMLElement>();
 
@@ -84,6 +99,15 @@ export function Timeline({
   );
   const height = rows.length * rowH;
   const pick = byId.get(selected) || byId.get(timeline.root);
+  // The open marker is found again by its key, so a live update that adds
+  // ticks before it keeps the same one open. One that is gone closes.
+  const openRow = mark ? byId.get(mark.id) : undefined;
+  const openAt = openRow ? openRow.markers.findIndex((m) => markerKey(m) === mark?.key) : -1;
+  const panel = useRef<HTMLElement | null>(null);
+  const opened = mark?.key;
+  useEffect(() => {
+    if (opened) panel.current?.scrollIntoView({ block: 'nearest' });
+  }, [opened]);
 
   // Opening a sub-item selects it where it sits in the whole graph, which may
   // be far down a large one: bring its row into the chart's own scroll (not
@@ -279,15 +303,41 @@ export function Timeline({
                         style={{ left: x(end) + 'px', height: barH + 'px' }}
                       />
                     )}
-                    {row.markers.map((m, i) => (
-                      <span
-                        key={i}
-                        className="tl-marker"
-                        data-kind={m.kind}
-                        title={markerText(m) + '\n' + exactLabel(m.at)}
-                        style={{ left: x(Date.parse(m.at)) + 'px' }}
-                      />
-                    ))}
+                    {clusterMarkers(row.markers, x).map((group) => {
+                      const first = row.markers[group.indexes[0]];
+                      const n = group.indexes.length;
+                      const keys = group.indexes.map((i) => markerKey(row.markers[i]));
+                      return (
+                        <button
+                          key={keys[0]}
+                          className="tl-marker"
+                          data-kind={first.kind}
+                          data-count={n > 1 ? n : undefined}
+                          aria-label={
+                            (n > 1 ? `${n} markers from ` : '') +
+                            markerText(first) +
+                            ', ' +
+                            exactLabel(first.at) +
+                            ', ' +
+                            row.id
+                          }
+                          aria-pressed={mark?.id === row.id && !!mark.key && keys.includes(mark.key)}
+                          title={
+                            n > 1
+                              ? row.markers
+                                  .slice(group.indexes[0], group.indexes[0] + n)
+                                  .map(markerText)
+                                  .join('\n')
+                              : markerText(first) + '\n' + exactLabel(first.at)
+                          }
+                          style={{ left: group.at + 'px' }}
+                          onClick={() => {
+                            setMark({ id: row.id, key: keys[0] });
+                            onSelect(row.id);
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -345,6 +395,21 @@ export function Timeline({
           </div>
         </div>
       </section>
+      {openRow && openAt >= 0 && (
+        <div ref={panel as React.RefObject<HTMLDivElement>}>
+          <MarkerPanel
+            row={openRow}
+            index={openAt}
+            detail={detail}
+            onStep={(to) => setMark({ id: openRow.id, key: markerKey(openRow.markers[to]) })}
+            onClose={() => setMark(null)}
+          />
+        </div>
+      )}
     </section>
   );
 }
+
+// A marker has no id of its own: its time, kind and the comment or history
+// row it came from name it.
+const markerKey = (m: TimelineMarker) => `${m.at}|${m.kind}|${m.comment ?? m.seq ?? ''}`;

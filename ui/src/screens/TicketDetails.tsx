@@ -97,7 +97,14 @@ export function TicketDetails({
   const related = relationCount(groups);
   tabs.push(['relations', 'relations' + (related ? ' ' + related : '')]);
   if (ticket.body) tabs.push(['body', 'body']);
-  if (comments.length) tabs.push(['comments', 'comments ' + comments.length]);
+  // Comments of a ticket on the timeline are markers there (#1182). Those
+  // beyond the newest markers the server sends, and every comment of a ticket
+  // the timeline does not draw, stay in the comments tab.
+  const unmarked = useMemo(
+    () => (row ? comments.filter((c) => !row.markers.some((m) => m.comment === c.id)) : comments),
+    [row, comments],
+  );
+  if (unmarked.length) tabs.push(['comments', 'comments ' + unmarked.length]);
   tabs.push(['raw', 'raw']);
   const wanted = detailTab(route.tab);
   const tab = tabs.some(([id]) => id === wanted) ? wanted : 'events';
@@ -317,7 +324,6 @@ export function TicketDetails({
             ticket={ticket}
             row={row}
             history={history}
-            comments={comments}
             graph={graph}
             sessions={sessions}
             now={now}
@@ -350,7 +356,7 @@ export function TicketDetails({
         )}
         {tab === 'body' && <Markdown text={ticket.body || ''} />}
         {tab === 'comments' &&
-          comments.map((comment) => (
+          unmarked.map((comment) => (
             <article className="ticket-comment" key={comment.id}>
               <p className="muted">
                 {comment.author} ·{' '}

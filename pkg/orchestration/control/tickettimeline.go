@@ -26,7 +26,11 @@ import (
 // claim (JOB-184), from the turn_start and turn_end rows the runner records.
 
 // maxCommentMarkers bounds the comment ticks on one bar: the newest.
-const maxCommentMarkers = 40
+// maxEventMarkers does the same for history rows that no bar shows.
+const (
+	maxCommentMarkers = 40
+	maxEventMarkers   = 40
+)
 
 // tlDiff is the part of a history diff the timeline reads.
 type tlDiff struct {
@@ -35,6 +39,9 @@ type tlDiff struct {
 	Resolution string    `json:"resolution"`
 	Label      string    `json:"label"`
 	Labels     []string  `json:"labels"`
+	Pool       string    `json:"pool"`     // handoff
+	To         string    `json:"to"`       // edge_add, edge_remove
+	Kind       string    `json:"kind"`     // edge_add, edge_remove
 	Stop       string    `json:"stop"`     // turn_end
 	Failures   *int      `json:"failures"` // set when the event counted a failed attempt
 	Fields     *struct {
@@ -228,6 +235,7 @@ func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.
 	}
 	var lastActor string
 	var turnRows []store.HistoryEntry
+	var events []rpc.TimelineMarker
 	for i, h := range hist {
 		b.tick(h.At)
 		if h.Op == domain.OpTurnStart || h.Op == domain.OpTurnEnd {
@@ -287,6 +295,9 @@ func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.
 		case "label_remove":
 			b.st.labels = slices.DeleteFunc(b.st.labels, func(l string) bool { return l == d.Label })
 		}
+		if m, ok := eventMarker(h, d); ok {
+			events = append(events, m)
+		}
 		b.apply(h.At, fail, why)
 	}
 	b.tick(end)
@@ -299,8 +310,60 @@ func timelineRow(cfg *config.Config, t domain.Ticket, th store.Thread, now time.
 	row.Segments = withTurns(b.segs, turnRows, end, busy)
 	row.Markers = append(row.Markers, b.marks...)
 	row.Markers = append(row.Markers, commentMarkers(th.Comments)...)
+	row.Markers = append(row.Markers, newestEvents(events)...)
 	slices.SortStableFunc(row.Markers, func(a, c rpc.TimelineMarker) int { return a.At.Compare(c.At) })
 	return row
+}
+
+// eventMarker is the tick for a history row that no bar shows: the ones
+// that change a ticket without moving it between states. Claims, releases,
+// closes and waits are the bars themselves, comments have their own tick.
+func eventMarker(h store.HistoryEntry, d tlDiff) (rpc.TimelineMarker, bool) {
+	m := rpc.TimelineMarker{At: h.At, Kind: rpc.MarkerEvent, Actor: h.Actor, Seq: h.Seq}
+	switch h.Op {
+	case "handoff":
+		m.Label = "handed off"
+		if d.Pool != "" {
+			m.Label += " to " + d.Pool
+		}
+	case "reopen":
+		m.Label = "reopened"
+	case "label_add":
+		m.Label = "label added: " + d.Label
+	case "label_remove":
+		m.Label = "label removed: " + d.Label
+	case "edge_add", "edge_remove":
+		what := "relationship added"
+		if h.Op == "edge_remove" {
+			what = "relationship removed"
+		}
+		m.Label = strings.TrimSpace(what + ": " + d.Kind + " " + d.To)
+	case "update":
+		// A wait, a run state or a deferral is already a bar: only edits show.
+		var keys map[string]json.RawMessage
+		_ = json.Unmarshal(h.Diff, &keys)
+		var edited []string
+		for _, k := range []string{"title", "body", "pool", "priority", "holder", "meta"} {
+			if _, ok := keys[k]; ok {
+				edited = append(edited, k)
+			}
+		}
+		if len(edited) == 0 {
+			return m, false
+		}
+		m.Label = "updated: " + strings.Join(edited, ", ")
+	default:
+		return m, false
+	}
+	return m, true
+}
+
+// newestEvents keeps the newest maxEventMarkers of events, in time order.
+func newestEvents(events []rpc.TimelineMarker) []rpc.TimelineMarker {
+	if len(events) > maxEventMarkers {
+		return events[len(events)-maxEventMarkers:]
+	}
+	return events
 }
 
 // commentMarkers are the ticks for comments (the newest maxCommentMarkers)
@@ -309,14 +372,14 @@ func commentMarkers(comments []domain.Comment) []rpc.TimelineMarker {
 	var out []rpc.TimelineMarker
 	for _, cm := range comments {
 		if m := stepPRComment.FindStringSubmatch(cm.Body); m != nil {
-			out = append(out, rpc.TimelineMarker{At: cm.CreatedAt, Kind: rpc.MarkerPR, Label: "PR opened", Actor: cm.Author, URL: m[1]})
+			out = append(out, rpc.TimelineMarker{At: cm.CreatedAt, Kind: rpc.MarkerPR, Label: "PR opened", Actor: cm.Author, URL: m[1], Comment: cm.ID})
 			continue
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(cm.Body), "\n")
 		if r := []rune(first); len(r) > 80 {
 			first = string(r[:79]) + "…"
 		}
-		out = append(out, rpc.TimelineMarker{At: cm.CreatedAt, Kind: rpc.MarkerComment, Label: first, Actor: cm.Author})
+		out = append(out, rpc.TimelineMarker{At: cm.CreatedAt, Kind: rpc.MarkerComment, Label: first, Actor: cm.Author, Comment: cm.ID})
 	}
 	n := 0
 	for i := len(out) - 1; i >= 0; i-- {

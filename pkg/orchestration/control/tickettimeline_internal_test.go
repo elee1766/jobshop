@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -202,4 +203,50 @@ func TestTimelinePartial(t *testing.T) {
 	assert.True(t, row.Partial)
 	assert.Equal(t, []string{"unknown", "queued"}, segStates(row))
 	assert.Equal(t, now, row.Segments[0].End)
+}
+
+// TestTimelineMarkers (#1182): comments and the history rows no bar shows
+// are ticks at their own times, each with the id that finds the full text or
+// raw row. Claims and closes are bars and add no tick.
+func TestTimelineMarkers(t *testing.T) {
+	t.Parallel()
+	c, clk, _, _ := waitController(t)
+	ctx := t.Context()
+	s1 := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "t", Pool: "dev"})
+	other := mkTicket(t, c, store.NewTicket{Title: "o", Pool: "dev"})
+	clk.advance(time.Minute)
+	cm, err := store.AddComment(ctx, c.store, "alice", tk.ID, "first line\nsecond line")
+	require.NoError(t, err)
+	clk.advance(time.Minute)
+	require.NoError(t, store.AddLabel(ctx, c.store, "admin", tk.ID, "blocked-upstream"))
+	clk.advance(time.Minute)
+	_, _, err = c.store.Claim(ctx, tk.ID, s1.ID, time.Hour)
+	require.NoError(t, err)
+	clk.advance(time.Minute)
+	require.NoError(t, store.AddEdge(ctx, c.store, "admin", domain.Edge{From: tk.ID, To: other.ID, Kind: domain.EdgeWaitsFor}))
+	clk.advance(time.Minute)
+	title := "renamed"
+	_, err = c.store.Update(ctx, "admin", tk.ID, store.Update{Title: &title})
+	require.NoError(t, err)
+
+	row := rowOf(t, timelineOf(t, c, tk.ID), tk.ID)
+	var labels []string
+	for _, m := range row.Markers {
+		labels = append(labels, m.Kind+": "+m.Label)
+		switch m.Kind {
+		case rpc.MarkerComment:
+			assert.Equal(t, cm.ID, m.Comment, "the comment is found by id")
+			assert.Equal(t, "alice", m.Actor)
+		case rpc.MarkerEvent:
+			assert.NotZero(t, m.Seq, "the history row is found by seq")
+		}
+	}
+	assert.Equal(t, []string{
+		"comment: first line",
+		"event: label added: blocked-upstream",
+		"event: relationship added: waits_for " + other.ID,
+		"event: updated: title",
+	}, labels)
+	assert.True(t, slices.IsSortedFunc(row.Markers, func(a, b rpc.TimelineMarker) int { return a.At.Compare(b.At) }))
 }

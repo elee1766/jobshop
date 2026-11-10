@@ -1239,15 +1239,21 @@ const (
 	MarkerPR      = "pr"      // a PR opened (the step's "PR <url>" comment)
 	MarkerMerged  = "merged"  // a github.pr wait for merged was met
 	MarkerSession = "session" // another session took over
+	MarkerEvent   = "event"   // a history row no bar shows: a label, a relationship, a handoff, a reopen, an edit
 )
 
-// TimelineMarker is a point on a ticket's bar.
+// TimelineMarker is a point on a ticket's bar. Label is one line: the first
+// line of a comment, or what a history row did. Comment is the comment's id
+// (comment and pr markers) and Seq the history row's (event markers), so the
+// full text or the raw diff can be found in the ticket's own detail.
 type TimelineMarker struct {
-	At    time.Time `json:"at"`
-	Kind  string    `json:"kind"`
-	Label string    `json:"label,omitempty"`
-	Actor string    `json:"actor,omitempty"`
-	URL   string    `json:"url,omitempty"`
+	At      time.Time `json:"at"`
+	Kind    string    `json:"kind"`
+	Label   string    `json:"label,omitempty"`
+	Actor   string    `json:"actor,omitempty"`
+	URL     string    `json:"url,omitempty"`
+	Comment int64     `json:"comment,omitempty"`
+	Seq     int64     `json:"seq,omitempty"`
 }
 
 // TimelineRow is one ticket: a bar of segments. Rows come in tree order

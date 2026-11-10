@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  Comment,
   GraphResult,
   HistoryEntry,
   HolderInfo,
@@ -66,20 +65,15 @@ export function TurnList({ seg, now }: { seg: TimelineSegment; now: number }) {
   );
 }
 
-const firstLine = (text: string) => {
-  const line = text.trim().split('\n')[0];
-  return line.length > 120 ? line.slice(0, 119) + '…' : line;
-};
-
-// The events tab (JOB-185): one entry per span of the ticket's life, with
-// comments and PR markers in place by time, newest first. A toggle lists
-// every history row instead. A segment chosen on the timeline chart is
-// highlighted and scrolled to.
+// The events tab (JOB-185): one entry per span of the ticket's life and its
+// close, newest first. Comments and other events are markers on the timeline
+// (#1182). A toggle lists every history row instead, the raw rows no marker
+// covers. A segment chosen on the timeline chart is highlighted and scrolled
+// to.
 export function TicketEvents({
   ticket,
   row,
   history,
-  comments,
   graph,
   sessions,
   now,
@@ -90,7 +84,6 @@ export function TicketEvents({
   ticket: Ticket;
   row?: TimelineRow;
   history: HistoryEntry[];
-  comments: Comment[];
   graph: GraphResult;
   sessions?: Record<string, HolderInfo>;
   now: number;
@@ -102,7 +95,7 @@ export function TicketEvents({
   // rows are all there is.
   const [raw, setRaw] = useState(false);
   const showRaw = raw || !row;
-  const items = useMemo(() => (row ? eventItems(row, history, comments) : []), [row, history, comments]);
+  const items = useMemo(() => (row ? eventItems(row, history) : []), [row, history]);
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => {
     if (!chosen || showRaw) return;
@@ -198,43 +191,6 @@ function Entry({
         </li>
       );
     }
-    case 'marker': {
-      const m = item.marker;
-      return (
-        <li data-kind="marker">
-          <div className="event-head">
-            <span className="tl-marker tl-marker-sample" data-kind={m.kind} aria-hidden="true" />
-            {m.url && web.test(m.url) ? (
-              <a href={m.url} target="_blank" rel="noopener noreferrer">
-                {m.label || m.kind}
-              </a>
-            ) : (
-              m.label || m.kind
-            )}
-          </div>
-          <p className="muted event-when">
-            <time dateTime={m.at} title={exactLabel(m.at)}>
-              {fullLabel(m.at)}
-            </time>
-            {m.actor ? ' · ' + m.actor : ''}
-          </p>
-        </li>
-      );
-    }
-    case 'comment':
-      return (
-        <li data-kind="comment">
-          <div className="event-head">
-            <span className="muted">comment</span> {firstLine(item.comment.body)}
-          </div>
-          <p className="muted event-when">
-            <time dateTime={item.comment.created_at} title={exactLabel(item.comment.created_at)}>
-              {fullLabel(item.comment.created_at)}
-            </time>
-            {' · ' + item.comment.author}
-          </p>
-        </li>
-      );
     case 'close':
       return (
         <li data-kind="close">

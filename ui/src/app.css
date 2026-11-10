@@ -1123,10 +1123,28 @@ span.tl-fold { display: inline-block; }
 @media (prefers-reduced-motion: reduce) { .tl-seg[data-live="running"] { animation: none; } }
 .tl-end { position: absolute; top: 50%; width: 0; transform: translateY(-50%); border-right: 3px solid var(--tl-done); pointer-events: none; }
 .tl-end[data-resolution="failed"], .tl-end[data-resolution="cancelled"] { border-right-color: var(--tl-retry); }
-.tl-marker { position: absolute; top: 3px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--ink); pointer-events: auto; }
+/* A marker is a button (#1182): a triangle for a comment, a PR or a takeover,
+   a small square for a history event. It sits in the strip above the bars
+   (the bar is 14px in a 30px row), so it never covers one. The ::after widens
+   the touch target within that strip. */
+.tl-marker { position: absolute; top: 0; width: 0; height: 0; margin-left: -4px; padding: 0; border: 4px solid transparent; border-top-color: var(--ink); border-radius: 0; background: transparent; pointer-events: auto; }
+.tl-marker::after { content: ''; position: absolute; left: -10px; top: -4px; width: 20px; height: 11px; }
+.tl-marker:hover { background: transparent; border-top-color: var(--status-running); }
+.tl-marker:focus-visible, .tl-marker[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; z-index: 1; }
 .tl-marker[data-kind="pr"], .tl-marker[data-kind="merged"] { border-top-color: var(--tl-done); }
 .tl-marker[data-kind="session"] { border-top-color: var(--tl-human); }
-.tl-marker-sample { position: static; display: inline-block; vertical-align: middle; margin-left: 0; }
+.tl-marker[data-kind="event"] { top: 2px; margin-left: -3px; border: 1px solid var(--ink); border-top-color: var(--ink); width: 4px; height: 4px; background: var(--paper); }
+.tl-marker[data-kind="event"]:hover { background: var(--hi); border-top-color: var(--ink); }
+/* Several markers on one pixel run: a flat block, still above the bars. */
+.tl-marker[data-count] { top: 0; width: 10px; height: 4px; margin-left: -5px; border: 0; background: var(--ink); }
+.tl-marker[data-count]:hover { background: var(--status-running); }
+.tl-marker-panel { border-top: 1px solid var(--column); }
+.tl-marker-panel > .tag h3 { margin: 0; font-size: inherit; }
+.tl-marker-panel .tag { column-gap: var(--space-4); }
+.tl-marker-steps { display: flex; gap: var(--space-1); }
+.tl-marker-body { max-height: min(40dvh, 360px); overflow: auto; overscroll-behavior: contain; padding: var(--space-3) var(--page-inset); overflow-wrap: anywhere; }
+.tl-marker-body p { margin: 0 0 var(--space-2); }
+.tl-marker-raw { max-height: 240px; overflow: auto; }
 .tl-nowline { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--status-running); pointer-events: none; z-index: 1; }
 .tl-arrows { position: absolute; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
 .tl-arrow { fill: none; stroke: var(--ink); stroke-width: 1.5; }

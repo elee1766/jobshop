@@ -52,8 +52,9 @@ const timeline = {
         }),
       ],
       markers: [
-        { at: at(36), kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/widget/pull/7' },
         { at: at(44), kind: 'session', label: 'taken over by js-s-2' },
+        { at: at(36), kind: 'pr', label: 'PR opened', url: 'https://github.com/acme/widget/pull/7', comment: 4 },
+        { at: at(30), kind: 'event', label: 'label added: ci', actor: 'admin', seq: 12 },
       ],
     },
     {
@@ -66,7 +67,7 @@ const timeline = {
       created_at: at(60),
       started: at(19),
       segments: [seg('queued', 60, 19), seg('working', 19, 8, { actor: 'js-s-3' }), seg('human', 8, null, { detail: 'needs-human' }), ],
-      markers: [{ at: at(12), kind: 'comment', label: 'Looks fine, one nit' }],
+      markers: [{ at: at(12), kind: 'comment', label: 'Looks fine, one nit', actor: 'alice', comment: 5 }],
     },
     {
       id: 'js-ask',
@@ -87,6 +88,17 @@ const timeline = {
 };
 
 async function open(page, extra = '', { tl = timeline, sessions } = {}) {
+  // The thread of each ticket: the full text behind a marker.
+  const threads = {
+    'js-rev': {
+      comments: [{ id: 5, ticket_id: 'js-rev', author: 'alice', body: 'Looks fine, one nit\n\nPlease rename `x` to **count**.', created_at: at(12) }],
+      history: [],
+    },
+    'js-dev': {
+      comments: [{ id: 4, ticket_id: 'js-dev', author: 'js-s-2', body: 'PR https://github.com/acme/widget/pull/7 head abc1234', created_at: at(36) }],
+      history: [{ seq: 12, ticket_id: 'js-dev', at: at(30), actor: 'admin', op: 'label_add', revision: 2, diff: { label: 'ci' } }],
+    },
+  };
   const trace = {
     ticket: run,
     edges: [],
@@ -109,7 +121,7 @@ async function open(page, extra = '', { tl = timeline, sessions } = {}) {
     return route.fulfill({
       status: 200,
       headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' },
-      body: `event: trace\ndata: ${JSON.stringify(inspected ? { ...trace, inspected, inspection: { ...trace, ticket: inspected } } : trace)}\n\n`,
+      body: `event: trace\ndata: ${JSON.stringify(inspected ? { ...trace, inspected, inspection: { ...trace, ticket: inspected, ...(threads[inspected.id] || {}) } } : trace)}\n\n`,
     });
   });
   await page.goto('./?view=trace&ref=js-run' + extra);
@@ -343,4 +355,58 @@ test('a deep link to a detail tab opens the details', async ({ page }) => {
   await expect(page.getByRole('tab', { name: 'raw' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Show the timeline', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Ticket timeline' })).toBeVisible();
+});
+
+// #1182: comments and history events sit on the bars at their times. Their
+// text is opened on demand under the chart, not drawn in it.
+test('markers open their comment or event under the chart, with author, time and full text', async ({ page }) => {
+  await open(page);
+  const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  await expect(tl.getByRole('region', { name: 'Marker detail' })).toHaveCount(0);
+  // No prose in the chart: a marker is a tick with a name, not text.
+  await expect(tl.locator('.tl-marker')).toHaveCount(4);
+  await expect(tl.locator('.tl-marker').first()).toHaveText('');
+
+  const review = tl.locator('.tl-row').filter({ hasText: 'Review #7' });
+  await review.getByRole('button', { name: /comment: Looks fine, one nit/ }).click();
+  const panel = tl.getByRole('region', { name: 'Marker detail' });
+  await expect(panel).toContainText('alice');
+  await expect(panel.locator('time')).toHaveAttribute('datetime', /\d{4}-\d\d-\d\dT/);
+  await expect(panel.locator('.markdown')).toContainText('Please rename');
+  await expect(panel.locator('.markdown strong')).toHaveText('count');
+  await expect(review.locator('.tl-marker')).toHaveAttribute('aria-pressed', 'true');
+
+  // A history event shows its label and the raw row; a PR marker its link.
+  const dev = tl.locator('.tl-row').filter({ hasText: 'Implement #7' });
+  await dev.getByRole('button', { name: /event: label added: ci/ }).click();
+  await expect(panel).toContainText('label added: ci');
+  await expect(panel.locator('pre')).toContainText('"label": "ci"');
+  await dev.getByRole('button', { name: /pr: PR opened/ }).click();
+  await expect(panel.getByRole('link', { name: /acme\/widget PR #7/ })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/7');
+
+  // Step through the row's markers from the panel, then close it.
+  await expect(panel).toContainText('2 of 3');
+  await panel.getByRole('button', { name: 'Next marker' }).click();
+  await expect(panel).toContainText('3 of 3');
+  await expect(panel.getByRole('button', { name: 'Next marker' })).toBeDisabled();
+  await panel.getByRole('button', { name: 'Close marker detail' }).click();
+  await expect(panel).toHaveCount(0);
+
+  // Phone and desktop alike: the page does not overflow.
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('a marker is reachable by keyboard', async ({ page }) => {
+  await open(page);
+  const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  const marker = tl.locator('.tl-row').filter({ hasText: 'Review #7' }).locator('.tl-marker');
+  await marker.focus();
+  await page.keyboard.press('Enter');
+  await expect(tl.getByRole('region', { name: 'Marker detail' })).toContainText('Please rename');
+});
+
+test('the trace has no bottom automation invocation line', async ({ page }) => {
+  await open(page, '&inspect=js-dev');
+  await expect(page.getByText('automation invocation')).toHaveCount(0);
 });

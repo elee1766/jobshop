@@ -166,8 +166,10 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).toHaveCount(0);
     await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).\n\nCompact https://github.com/elee1766/jobcity/pull/21?w=1#top, <https://linear.app/gfx-labs/issue/JOB-93/stall-triggers>. \`https://github.com/acme/widget/pull/47\` https://evilgithub.com/acme/widget/pull/48 [Authored PR](https://github.com/acme/widget/pull/49)` });
-    const comment = page.locator('.ticket-comment .markdown');
-    await page.getByRole('tab', { name: /^comments/ }).click();
+    // A comment is a marker on the timeline (#1182): it opens under the chart.
+    await showTimeline(page);
+    await row('Required evidence').locator('.tl-marker[data-kind="comment"]').click();
+    const comment = page.getByRole('region', { name: 'Marker detail' }).locator('.markdown');
     await expect(comment.getByRole('link', { name: 'Linear issue', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(comment.getByRole('link', { name: 'GitHub evidence', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
     await expect(comment.getByRole('link', { name: 'Implementation', exact: true })).toHaveAttribute('href', '?view=trace&ref=' + child.id);
