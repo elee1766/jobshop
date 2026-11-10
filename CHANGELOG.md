@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.17](https://github.com/gfx-labs/jobshop/compare/v0.10.16...v0.10.17) (2026-11-10)
+
+
+### Features
+
+* **desk:** show step activity apart from run state in In flight ([#1185](https://github.com/gfx-labs/jobshop/issues/1185)) ([#1217](https://github.com/gfx-labs/jobshop/issues/1217)) ([d5edc2d](https://github.com/gfx-labs/jobshop/commit/d5edc2d5052b15bc652c952cd14a9930d6c72f59))
+
 ## [0.10.16](https://github.com/gfx-labs/jobshop/compare/v0.10.15...v0.10.16) (2026-11-10)
 
 
