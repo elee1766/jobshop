@@ -155,6 +155,39 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 	return out, nil
 }
 
+// learnExpire sets expired on open learnings recorded before the cutoff
+// that have no PR (JOB-198), so curator passes stop reading them. Admin
+// only: it changes many records in one call. An expired learning is not
+// deleted, recall still finds it, and `learn update --status open` reopens
+// it.
+func (c *Controller) learnExpire(ctx context.Context, sc scope, p rpc.LearnExpireParams) (any, error) {
+	if err := requireAdmin(sc, "learn expire"); err != nil {
+		return nil, err
+	}
+	if p.OlderThan <= 0 {
+		return nil, fmt.Errorf("%w: learn expire needs --older-than, a positive duration", domain.ErrInvalid)
+	}
+	if strings.ContainsAny(p.Kind, "*?[") {
+		if _, err := path.Match(p.Kind, ""); err != nil {
+			return nil, fmt.Errorf("%w: kind %q: %w", domain.ErrInvalid, p.Kind, err)
+		}
+	}
+	scopeName := ""
+	if p.Scope != "" {
+		s, err := domain.ParseScope(p.Scope)
+		if err != nil {
+			return nil, err
+		}
+		scopeName = s
+	}
+	ls, err := knowledge.ExpireLearnings(ctx, c.store, c.now().Add(-p.OlderThan), scopeName, p.Kind)
+	if err != nil {
+		return nil, err
+	}
+	c.log.InfoContext(ctx, "learnings expired", "count", len(ls), "older_than", p.OlderThan, "by", sc.actor)
+	return rpc.LearnExpireResult{Expired: len(ls)}, nil
+}
+
 // learnScope is the narrowest scope a ticket names: its repo (from its
 // meta or its run's), else its pool, else global.
 func (c *Controller) learnScope(ctx context.Context, t domain.Ticket) string {

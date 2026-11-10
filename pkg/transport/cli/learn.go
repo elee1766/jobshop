@@ -15,6 +15,7 @@ type learnCmd struct {
 	Workaround learnWorkaroundCmd `cmd:"" help:"Record a workaround for a tool or environment problem."`
 	List       learnListCmd       `cmd:"" help:"List learnings, newest first."`
 	Update     learnUpdateCmd     `cmd:"" help:"Set the status or PR of learnings (curator, #273)."`
+	Expire     learnExpireCmd     `cmd:"" help:"Set expired on old open learnings that have no PR, so curators stop reading them (admin)."`
 	Evaluate   learnEvaluateCmd   `cmd:"" help:"Curator gate: decide whether merged memory edits helped (#274)."`
 	Edits      learnEditsCmd      `cmd:"" help:"List merged memory edits with their baseline and evaluation (#274)."`
 }
@@ -59,7 +60,7 @@ type learnListCmd struct {
 	Since  time.Duration `help:"Only learnings newer than this, e.g. 24h."`
 	Scope  string        `help:"global, repo:<owner/name> or pool:<name>."`
 	Kind   string        `help:"Kind or glob, e.g. failure or review-*."`
-	Status string        `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
+	Status string        `enum:",open,applied,rejected,expired" default:"" help:"open, applied, rejected or expired."`
 	Ticket string        `short:"t" help:"Only learnings about this ticket."`
 	Limit  int           `default:"50" help:"Most learnings to print."`
 }
@@ -72,16 +73,28 @@ func (c learnListCmd) Run(g *Globals) error {
 
 // learnUpdateCmd is `jobshop learn update` (#273): the curator records
 // the PR addressing learnings, then applied (merged) or rejected (closed
-// unmerged or reverted; needs the PR).
+// unmerged or reverted; needs the PR). expired needs no PR; --status open
+// reopens an expired one.
 type learnUpdateCmd struct {
 	IDs      []int64   `arg:"" name:"id" help:"Learning ids."`
-	Status   string    `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
+	Status   string    `enum:",open,applied,rejected,expired" default:"" help:"open, applied, rejected or expired."`
 	PR       string    `name:"pr" help:"PR URL that addresses them."`
 	MergedAt time.Time `name:"merged-at" help:"With --status applied: when the PR merged (RFC3339, default now). Starts the curator gate's window."`
 }
 
 func (c learnUpdateCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR, MergedAt: c.MergedAt}, nil)
+}
+
+// learnExpireCmd is `jobshop learn expire` (JOB-198).
+type learnExpireCmd struct {
+	OlderThan time.Duration `name:"older-than" required:"" help:"Expire open learnings recorded before now minus this, e.g. 120h."`
+	Scope     string        `help:"Only this scope: global, repo:<owner/name> or pool:<name>."`
+	Kind      string        `help:"Only this kind or glob, e.g. failure or review-*."`
+}
+
+func (c learnExpireCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodLearnExpire, rpc.LearnExpireParams{OlderThan: c.OlderThan, Scope: c.Scope, Kind: c.Kind}, nil)
 }
 
 // learnEvaluateCmd is `jobshop learn evaluate` (#274): the evaluate

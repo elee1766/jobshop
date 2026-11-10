@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -161,7 +162,7 @@ func CountLearnings(ctx context.Context, st Store, since time.Time, f domain.Lea
 
 // UpdateLearning sets a learning's status and PR (#273).
 func UpdateLearning(ctx context.Context, st Store, id int64, status, pr string) (domain.Learning, error) {
-	if status != domain.LearningOpen && status != domain.LearningApplied && status != domain.LearningRejected {
+	if !domain.ValidLearningStatus(status) {
 		return domain.Learning{}, fmt.Errorf("%w: learning status %q", domain.ErrInvalid, status)
 	}
 	return updateLearning(ctx, st, id, func(r *store.Record, v *learningValue) {
@@ -306,3 +307,56 @@ func learningFromRecord(r store.Record) (domain.Learning, error) {
 		Session: v.Session, Source: v.Source, Status: r.State, PR: v.PR, Gate: v.Gate, CreatedAt: r.CreatedAt,
 	}, nil
 }
+
+// ExpireLearnings sets expired on the open learnings recorded before
+// cutoff that have no PR (JOB-198), and returns the ones it changed. scope
+// is exact and kind a name or glob; empty matches all. A learning that
+// gained a PR or left open since it was listed is skipped.
+func ExpireLearnings(ctx context.Context, st Store, cutoff time.Time, scope, kind string) ([]domain.Learning, error) {
+	rf := store.RecordFilter{Until: cutoff, States: []string{domain.LearningOpen}, Order: store.OrderCreatedDesc, Limit: all, Where: map[string]string{}}
+	if scope != "" {
+		rf.Where["scope"] = scope
+	}
+	if kind != "" && !strings.ContainsAny(kind, "*?[") {
+		rf.Where["kind"] = kind
+	}
+	cands, err := listLearnings(ctx, st, rf)
+	if err != nil {
+		return nil, err
+	}
+	col, err := openLearnings(ctx, st)
+	if err != nil {
+		return nil, err
+	}
+	out := []domain.Learning{}
+	for _, l := range cands {
+		if l.PR != "" || (kind != "" && !domain.Glob(kind, l.Kind)) {
+			continue
+		}
+		r, err := casUpdate(ctx, col, learningKey(l.ID), fmt.Sprintf("learning %d", l.ID), func(r *store.Record) error {
+			var v learningValue
+			if err := json.Unmarshal(r.Value, &v); err != nil {
+				return fmt.Errorf("learning %d: %w", l.ID, err)
+			}
+			if r.State != domain.LearningOpen || v.PR != "" {
+				return errNotExpirable
+			}
+			r.State = domain.LearningExpired
+			return nil
+		})
+		if errors.Is(err, errNotExpirable) {
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
+		u, err := learningFromRecord(r)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+var errNotExpirable = errors.New("learning not expirable")

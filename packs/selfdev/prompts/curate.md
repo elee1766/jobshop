@@ -27,7 +27,10 @@ There are two kinds of edit (#592):
    an edit already rejected or restored, or the same rule in other words.
 3. Gather the rest: open learnings with no `pr`, plus recent outcomes
    (`jobshop run list`, failed or needs_human runs and their step
-   comments). Group learnings that describe the same problem. Skip one-off
+   comments). Learnings with status `expired` (an operator ran `jobshop
+   learn expire` on old ones nobody addressed) are not open: do not list or
+   gather them. `--status expired` shows them if a recurring problem needs
+   its history. Group learnings that describe the same problem. Skip one-off
    noise (a single flaky network error); a group needs at least two
    learnings, or one correction from a human.
 4. For each group pick one bounded edit (add, replace or delete a few
