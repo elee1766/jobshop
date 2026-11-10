@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.34](https://github.com/elee1766/jobshop/compare/v0.9.33...v0.9.34) (2026-11-10)
+
+
+### Performance
+
+* **browse:** compile redact rules lazily, load archcheck graph once (JOB-187) ([#1157](https://github.com/elee1766/jobshop/issues/1157)) ([f219ae9](https://github.com/elee1766/jobshop/commit/f219ae9c9d05d6cf1c4885e4e85ff9eb138a9536))
+
 ## [0.9.33](https://github.com/elee1766/jobshop/compare/v0.9.32...v0.9.33) (2026-11-10)
 
 
