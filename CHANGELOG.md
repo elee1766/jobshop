@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.32](https://github.com/elee1766/jobshop/compare/v0.9.31...v0.9.32) (2026-11-10)
+
+
+### Features
+
+* **automation:** return comments from tickets() and runs() with comments=True (JOB-186) ([#1152](https://github.com/elee1766/jobshop/issues/1152)) ([107ec47](https://github.com/elee1766/jobshop/commit/107ec4706d331a92480929694a557e31a62ecf2e))
+
 ## [0.9.31](https://github.com/elee1766/jobshop/compare/v0.9.30...v0.9.31) (2026-11-10)
 
 
