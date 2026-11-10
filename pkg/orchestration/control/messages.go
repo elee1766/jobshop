@@ -124,8 +124,10 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	r.c.answerDelivered(ctx, claimed)
 	r.mu.Lock()
 	r.delivered = r.c.now()
+	delivered := r.delivered
 	said := r.traffic.Said()
 	r.mu.Unlock()
+	r.saveOwn("save delivery time", func(f *domain.SessionFields) { f.Delivered = &delivered })
 	if err == nil && r.c.isReadOnly(r.id) {
 		// The first turn of an attention chat is its summary (#606, #607).
 		r.c.recordAttentionSummary(ctx, r.id, said)

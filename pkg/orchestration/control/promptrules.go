@@ -293,7 +293,10 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 	c.mu.Lock()
 	r := c.runners[sess.ID]
 	c.mu.Unlock()
-	var delivered time.Time
+	delivered := time.Time{}
+	if f.Delivered != nil {
+		delivered = *f.Delivered
+	}
 	if r != nil {
 		r.mu.Lock()
 		ts.system = r.systemDue

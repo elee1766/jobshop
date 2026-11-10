@@ -59,102 +59,131 @@ const (
 
 // runner drives one session: keeps its host alive, speaks ACP to the agent
 // through it, and feeds it tickets.
+//
+// A controller restart builds a new runner for each open session and adopts
+// its host. Each field below says what the new runner does with it (JOB-196):
+// "stored" is kept in SessionFields, "recomputed" is read from the store,
+// journal or host at adopt, "reset" starts empty on purpose.
 type runner struct {
-	c    *Controller
-	id   string
-	pool string // "" for manual sessions
+	c    *Controller // process: the new controller's
+	id   string      // process: the session ticket id
+	pool string      // process: from the ticket; "" for manual sessions
 	// unclosed counts consecutive turns that ended still holding a ticket.
+	// Reset: a restart gives the session a fresh count; the ticket's own
+	// retry limit still bounds a loop (releasedUnclosedBefore reads the store).
 	unclosed int
-	dir      string
+	dir      string // process: the session directory
 	log      *slog.Logger
 	// traceParent is the session trace (SessionFields.TraceParent).
+	// Stored.
 	traceParent string
 	// agent and projectName are the session's, for prompt rule matching.
+	// Recomputed from the ticket in startRunner.
 	agent, projectName string
 	// systemDue is set when a host starts (new or respawned): its next
-	// turn carries the system prompt rules. Guarded by mu.
+	// turn carries the system prompt rules. Guarded by mu. Stored
+	// (SessionFields.SystemDue): a restart between a spawn and the first
+	// turn must not drop them. An adopted host keeps the stored value.
 	systemDue bool
 	// turnRules are the prompt rules in the current prompt, sent in its
-	// _meta so the host journal records which applied (#205).
+	// _meta so the host journal records which applied (#205). Reset: per turn.
 	turnRules []string
 	// injected maps rule name to the hash of the text this conversation
 	// last received (#397), mirrored in SessionFields.Injected. Reset with
-	// a new conversation. Guarded by mu.
+	// a new conversation. Guarded by mu. Stored.
 	injected map[string]string
 
-	ctx    context.Context
+	ctx    context.Context // process
 	cancel context.CancelFunc
 	done   chan struct{}
 
-	mu       sync.Mutex
-	turnEnd  chan struct{} // signalled by _jobshop/turn_end
-	crashes  []time.Time
+	mu sync.Mutex
+	// turnEnd is signalled by _jobshop/turn_end. Reset: session() drains it
+	// when no turn is running.
+	turnEnd chan struct{}
+	// crashes are the recent restart times for the crash limit. Reset: a
+	// controller restart is not a host crash.
+	crashes []time.Time
+	// stopping is set by stopRunner. Process: a new runner is not stopping.
 	stopping bool
-	agentPid int // from the host's welcome; 0 until connected
+	agentPid int // recomputed: from the host's welcome; 0 until connected
 	// jobsSince is when an idle check first saw background jobs
 	// (holdForJobs); zero when there are none. Runner goroutine only.
+	// Reset: the grace period for background jobs starts again.
 	jobsSince time.Time
 
 	// lastStop is the stop reason of the last turn, recorded with the
-	// agent text (traffic.Said) when a session ends stuck (#301).
+	// agent text (traffic.Said) when a session ends stuck (#301). Reset:
+	// diagnostics for the next turn only.
 	lastStop string
 	// backoffUntil is set while the agent's provider is rate limited and the
-	// runner waits to retry the same turn.
+	// runner waits to retry the same turn. Stored (SessionFields.BackoffUntil):
+	// the new runner waits it out before its next prompt (waitBackoff). This
+	// copy is what gauges and session list read.
 	backoffUntil time.Time
 	// restartPending is set by session.restart: the host is stopped and
 	// respawned at the next point where no turn runs. restartWake wakes an
-	// idle wait; restartNow cancels the running turn (--now).
+	// idle wait; restartNow cancels the running turn (--now). Reset: a
+	// request not yet served is dropped by a controller restart (the operator
+	// asks again); an env change is caught by staleEnv instead.
 	restartPending bool
 	restartWake    chan struct{}
 	restartNow     chan struct{}
 	// cancelNow is session.cancel (#535): interruptible cancels the
 	// running turn and sends nothing. inTurn is set while one runs.
+	// Reset: a cancel is for a turn that a restart has already interrupted.
 	cancelNow chan struct{}
-	inTurn    atomic.Bool
+	inTurn    atomic.Bool // reset: no turn runs in a new runner
 	// turning is set while turn runs, also for the unclosed reminder that
-	// inTurn does not cover. The timeline reads it (JOB-184).
+	// inTurn does not cover. The timeline reads it (JOB-184). Reset.
 	turning atomic.Bool
 	// traffic holds the running turn's open tool calls (session list,
 	// JOB-54) and the agent's text tail. Reset when a turn starts. It has
 	// its own lock: the ACP callbacks write it.
 	traffic session.Traffic
 	// seed is a journal summary for a conversation that could not be
-	// reloaded; the next turn's prompt starts with it. Memory only.
-	seed string
+	// reloaded; the next turn's prompt starts with it. seedDue is stored
+	// (SessionFields.SeedDue); after a restart takeSeed recomputes the
+	// text from the host journal and the recall index. Guarded by mu.
+	seed    string
+	seedDue bool
 	// acpSession is the ACP session id turns prompt (SessionFields.ACPSession).
 	// A turn replaces it when the agent no longer knows it (JOB-65). Under mu.
+	// Stored.
 	acpSession string
 	// context is a prompt block for the model only, set by deliver for
-	// the next turn (session.send context).
+	// the next turn (session.send context). Reset: deliver sets it and the
+	// same turn takes it, so nothing is pending between turns.
 	context string
 	// promptAttachments belongs to the runner goroutine and is consumed by the next turn.
+	// Reset: like context, set and used within one deliver.
 	promptAttachments  []acp.ContentBlock
-	promptPresentation *rpc.PromptPresentation
+	promptPresentation *rpc.PromptPresentation // reset: per turn
 	// resumed is set when a new host takes over an existing conversation
 	// (restart, crash, respawn, self-deploy); the next prompt starts with
-	// recoveryNote. Memory only.
+	// recoveryNote. Stored (SessionFields.RecoveryDue): a controller restart
+	// before that prompt must not drop the note. Guarded by mu.
 	resumed bool
 	// turnTicket is the ticket the current prompt works on, sent in the
-	// prompt's _meta so journal shipping can tag rows with it.
+	// prompt's _meta so journal shipping can tag rows with it. Reset: per turn.
 	turnTicket string
 	// delivered is when deliver last ran a message turn; it resets the
 	// idle timer, so a chat session lives while its thread is active.
 	// Written under mu (session.prompt reads it); the runner goroutine
-	// reads it without.
+	// reads it without. Stored (SessionFields.Delivered): a restarted chat
+	// is not at its first message turn, so it takes no pool prompt turn
+	// again. The idle window restarts at adopt (idleSince). Zeroed with a
+	// new conversation (resetInjected).
 	delivered time.Time
-	// lastClaim is when the runner last claimed a ticket; the scaler
-	// cordons the least recently used first (#281). Guarded by mu.
-	lastClaim time.Time
-	// skipped are config option ids already logged as not advertised;
-	// model and effort the agent's current values (#304). Guarded by mu.
-	skipped       map[string]bool
-	model, effort string
-}
+	// There is no lastClaim field: the claim time is SessionFields.LastClaim
+	// (stored), which the scaler reads to cordon the least recently used first.
 
-func (r *runner) lastClaimAt() time.Time {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.lastClaim
+	// skipped are config option ids already logged as not advertised.
+	// Reset: one more warning per restart.
+	skipped map[string]bool
+	// model and effort are the agent's current values (#304). Recomputed:
+	// applyConfig sets them from the stored fields at the top of work.
+	model, effort string
 }
 
 func (r *runner) setTurnTicket(id string) {
@@ -207,35 +236,45 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 	if err != nil {
 		return fmt.Errorf("session/new: %w", err)
 	}
-	frames, _, err := host.ReadJournal(filepath.Join(r.dir, host.JournalFile), 0)
-	if err != nil {
-		r.log.WarnContext(ctx, "read journal for summary", "err", err)
-	}
-	summary := host.Summarize(frames, host.DefaultSummaryBytes)
-	source := "journal"
-	if summary == "" {
-		// The journal file is gone or empty (JOB-14): fall back to the
-		// summary indexed for recall after the last turn.
-		source = "recall index"
-		s, err := journal.Load(ctx, r.c.store, r.id)
-		if err != nil {
-			r.log.WarnContext(ctx, "load indexed journal summary", "err", err)
-		}
-		summary = clipSummary(s, host.DefaultSummaryBytes)
-	}
+	summary, source := r.summarize(ctx)
 	if summary == "" {
 		r.log.WarnContext(ctx, "new conversation has no summary", "old", fields.ACPSession,
 			"reason", "no journal frames and no indexed summary")
 	}
 	r.mu.Lock()
-	r.seed = summary
+	r.seed, r.seedDue = summary, true
 	r.mu.Unlock()
 	r.log.WarnContext(ctx, "started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
 		"path", "new+summary", "summary_bytes", len(summary), "summary_source", source)
 	fields.ACPSession = string(ns.SessionId)
 	noteAdvertised(fields, ns.ConfigOptions)
 	r.setACPID(fields.ACPSession)
-	return r.saveFields(*fields)
+	if err := r.saveFields(*fields); err != nil {
+		return err
+	}
+	// Stored with the new ACP id: a controller restart before the next
+	// prompt rebuilds the summary instead of dropping it (JOB-196).
+	r.saveOwn("record summary due", func(f *domain.SessionFields) { f.SeedDue = true })
+	return nil
+}
+
+// summarize builds the summary of the earlier conversation from the host
+// journal, or from the summary indexed for recall when the journal is gone
+// (JOB-14). source names which.
+func (r *runner) summarize(ctx context.Context) (summary, source string) {
+	frames, _, err := host.ReadJournal(filepath.Join(r.dir, host.JournalFile), 0)
+	if err != nil {
+		r.log.WarnContext(ctx, "read journal for summary", "err", err)
+	}
+	summary = host.Summarize(frames, host.DefaultSummaryBytes)
+	if summary != "" {
+		return summary, "journal"
+	}
+	s, err := journal.Load(ctx, r.c.store, r.id)
+	if err != nil {
+		r.log.WarnContext(ctx, "load indexed journal summary", "err", err)
+	}
+	return clipSummary(s, host.DefaultSummaryBytes), "recall index"
 }
 
 func (r *runner) acpID() acp.SessionId {
@@ -289,36 +328,82 @@ const recoveryNote = "Note: this session was resumed after a restart, crash, res
 	"check your worktree (`git status`, `git log`), the remote branch and GitHub, " +
 	"and `jobshop ticket show` for what already happened."
 
+// resetInjected forgets what the conversation holds: a new conversation
+// needs the pool prompt and rules again, and the first chat turn is again
+// the one that carries them.
 func (r *runner) resetInjected() {
 	r.mu.Lock()
 	r.injected = nil
+	r.delivered = time.Time{}
 	r.mu.Unlock()
-	r.saveInjected(nil)
+	r.saveOwn("reset injected prompt record", func(f *domain.SessionFields) {
+		f.Injected, f.Delivered = nil, nil
+	})
 }
 
 // saveInjected stores the injected record in the session's fields.
 func (r *runner) saveInjected(m map[string]string) {
+	r.saveOwn("save injected prompt record", func(f *domain.SessionFields) { f.Injected = m })
+}
+
+// saveOwn writes runner-owned session fields (JOB-196) so they survive a
+// controller restart. It outlives the runner's ctx: a shutdown is when the
+// state matters.
+func (r *runner) saveOwn(what string, fn func(*domain.SessionFields)) {
 	if r.id == "" || r.ctx == nil {
 		return
 	}
-	if err := r.c.updateSessionFields(r.ctx, r.id, func(f *domain.SessionFields) { f.Injected = m }); err != nil {
-		r.log.WarnContext(r.ctx, "save injected prompt record", "err", err)
+	ctx := context.WithoutCancel(r.ctx)
+	if err := r.c.updateSessionFields(ctx, r.id, fn); err != nil {
+		r.log.WarnContext(ctx, what, "err", err)
 	}
+}
+
+// timePtr is t for a session field; the zero time is nil.
+func timePtr(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+// setResumed marks the next prompt as the first after a host took over the
+// conversation; the mark is stored until that prompt takes it.
+func (r *runner) setResumed() {
+	r.mu.Lock()
+	r.resumed = true
+	r.mu.Unlock()
+	r.saveOwn("record recovery note due", func(f *domain.SessionFields) { f.RecoveryDue = true })
 }
 
 func (r *runner) takeResumed() bool {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	v := r.resumed
 	r.resumed = false
+	r.mu.Unlock()
+	if v {
+		r.saveOwn("clear recovery note due", func(f *domain.SessionFields) { f.RecoveryDue = false })
+	}
 	return v
 }
 
-func (r *runner) takeSeed() string {
+// takeSeed returns the journal summary the next prompt starts with, or "".
+// After a controller restart only the stored mark is left: the summary is
+// built again from the journal.
+func (r *runner) takeSeed(ctx context.Context) string {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	s := r.seed
-	r.seed = ""
+	s, due := r.seed, r.seedDue
+	r.seed, r.seedDue = "", false
+	r.mu.Unlock()
+	if !due {
+		return s
+	}
+	r.saveOwn("clear summary due", func(f *domain.SessionFields) { f.SeedDue = false })
+	if s == "" {
+		var source string
+		s, source = r.summarize(ctx)
+		r.log.InfoContext(ctx, "rebuilt the summary of the earlier conversation after a restart", "summary_bytes", len(s), "summary_source", source)
+	}
 	return s
 }
 
@@ -327,10 +412,46 @@ func (r *runner) takeSeed() string {
 // a few minutes in production before the turn fails as before.
 const providerNetRetries = 6
 
+// setBackoff records the end of a rate limit or outage backoff, in memory
+// and (JOB-196) in the session's fields, so a controller restart waits it
+// out. A stop of this controller (ctx done) clears only the memory copy:
+// the stored one is what the next controller has to honor.
 func (r *runner) setBackoff(until time.Time) {
 	r.mu.Lock()
+	changed := !r.backoffUntil.Equal(until)
 	r.backoffUntil = until
 	r.mu.Unlock()
+	// Most turns clear a backoff that was never set: no write for those.
+	if !changed || r.ctx.Err() != nil {
+		return
+	}
+	r.saveOwn("save backoff", func(f *domain.SessionFields) { f.BackoffUntil = timePtr(until) })
+}
+
+// waitBackoff holds the runner until a stored backoff has passed, before it
+// claims or prompts: a controller restart in the middle of one does not
+// forget the rate limit. A restart request ends the wait early (the caller
+// checks wantsRestart); the backoff stays set.
+func (r *runner) waitBackoff(ctx context.Context, conn *acp.ClientSideConnection) error {
+	until := r.backoff()
+	if until.IsZero() {
+		return nil
+	}
+	for {
+		d := until.Sub(r.c.now())
+		if d <= 0 {
+			r.setBackoff(time.Time{})
+			return nil
+		}
+		r.log.InfoContext(ctx, "waiting out the provider backoff set before a restart", "until", until, "wait", d)
+		select {
+		case <-ctx.Done():
+			return r.dropped(conn)
+		case <-r.restartWake:
+			return nil
+		case <-r.c.after(d):
+		}
+	}
 }
 
 func (r *runner) backoff() time.Time {
@@ -360,6 +481,14 @@ func (c *Controller) startRunner(t domain.Ticket) {
 		r.traceParent = f.TraceParent
 		r.agent = f.Agent
 		r.injected = f.Injected
+		r.systemDue = f.SystemDue
+		if f.BackoffUntil != nil && f.BackoffUntil.After(c.now()) {
+			r.backoffUntil = *f.BackoffUntil
+		}
+		if f.Delivered != nil {
+			r.delivered = *f.Delivered
+		}
+		r.seedDue, r.resumed = f.SeedDue, f.RecoveryDue
 	}
 	r.projectName = t.Project
 	c.runners[t.ID] = r
@@ -535,6 +664,7 @@ func (r *runner) session() error {
 		r.mu.Lock()
 		r.systemDue = true
 		r.mu.Unlock()
+		r.saveOwn("record system rules due", func(f *domain.SessionFields) { f.SystemDue = true })
 	} else {
 		r.lifecycle("adopt")
 	}
@@ -630,9 +760,7 @@ func (r *runner) session() error {
 			return err
 		}
 	case fresh:
-		r.mu.Lock()
-		r.resumed = true
-		r.mu.Unlock()
+		r.setResumed()
 		loaded := false
 		if init.AgentCapabilities.LoadSession {
 			ls, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
@@ -864,6 +992,10 @@ func (r *runner) saveFields(f domain.SessionFields) error {
 		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
 		tickets, claimed, parked, resumed := cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed
 		injected := cur.Injected
+		// Runner-owned and written as they change (JOB-196): the copy the
+		// caller holds is older.
+		backoff, delivered, claimAt := cur.BackoffUntil, cur.Delivered, cur.LastClaim
+		seedDue, recoveryDue, systemDue := cur.SeedDue, cur.RecoveryDue, cur.SystemDue
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
 		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
@@ -871,6 +1003,8 @@ func (r *runner) saveFields(f domain.SessionFields) error {
 		cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed = tickets, claimed, parked, resumed
 		// The prompt record is written by saveInjected as turns go out.
 		cur.Injected = injected
+		cur.BackoffUntil, cur.Delivered, cur.LastClaim = backoff, delivered, claimAt
+		cur.SeedDue, cur.RecoveryDue, cur.SystemDue = seedDue, recoveryDue, systemDue
 	})
 }
 
@@ -904,6 +1038,14 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// shows up here before the next message or claim.
 		if err := r.applyConfig(ctx, conn); err != nil {
 			return err
+		}
+		// A backoff the previous controller left is honored before any
+		// prompt (JOB-196).
+		if err := r.waitBackoff(ctx, conn); err != nil {
+			return err
+		}
+		if r.wantsRestart() {
+			continue
 		}
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn); err != nil {
@@ -998,9 +1140,8 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			return err
 		}
 		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
-		r.mu.Lock()
-		r.lastClaim = r.c.now()
-		r.mu.Unlock()
+		claimedAt := r.c.now()
+		r.saveOwn("record claim time", func(f *domain.SessionFields) { f.LastClaim = &claimedAt })
 		if pool.MaxTickets > 0 {
 			r.markClaimed(ctx, t.ID)
 		}
@@ -1068,7 +1209,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 		text = recoveryNote + "\n\n" + text
 		addContext(recoveryNote)
 	}
-	if seed := r.takeSeed(); seed != "" {
+	if seed := r.takeSeed(ctx); seed != "" {
 		// No extra turn: the summary rides on the next prompt.
 		text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
 		addContext(seed)
@@ -1147,7 +1288,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 				}
 				return err
 			}
-			if seed := r.takeSeed(); seed != "" {
+			if seed := r.takeSeed(ctx); seed != "" {
 				text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
 				addContext(seed)
 			}
@@ -1337,6 +1478,9 @@ func (r *runner) turnSpec(kind string, t *domain.Ticket, poolPrompt bool) turnSp
 	sys := r.systemDue
 	r.systemDue = false
 	r.mu.Unlock()
+	if sys {
+		r.saveOwn("clear system rules due", func(f *domain.SessionFields) { f.SystemDue = false })
+	}
 	return turnSpec{
 		session: r.id, pool: r.pool, agent: r.agent, project: r.projectName,
 		kind: kind, ticket: t, system: sys, poolPrompt: poolPrompt,
