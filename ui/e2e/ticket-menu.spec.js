@@ -85,6 +85,8 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
 
+    // Relationships sit behind the relations tab of the detail pane (JOB-185).
+    await page.getByRole('tablist', { name: 'Ticket detail' }).getByRole('tab', { name: /^relations/ }).click();
     const entry = page.getByRole('region', { name: 'children', exact: true }).getByRole('listitem').filter({ hasText: child.id });
     await expect(entry).toBeVisible();
     if (!isMobile) await entry.click({ button: 'right', position: { x: 4, y: 4 } });

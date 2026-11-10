@@ -152,7 +152,7 @@ test('bars show state, retries, waits and conflicts without color alone', async 
   await expect(tl.locator('.tl-nowline')).toHaveCount(1);
 });
 
-test('collapsing a row hides what is nested under it and the detail lists every segment', async ({ page }) => {
+test('collapsing a row hides what is nested under it and the pane lists every segment', async ({ page }) => {
   await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl.locator('.tl-row')).toHaveCount(4);
@@ -162,8 +162,9 @@ test('collapsing a row hides what is nested under it and the detail lists every 
   await expect(tl.locator('.tl-row')).toHaveCount(4);
 
   await tl.getByRole('button', { name: 'Implement #7' }).click();
-  const detail = tl.getByLabel('Timeline of js-dev');
-  await expect(detail.locator('.tl-segments > li')).toHaveCount(5);
+  // The detail pane (JOB-185) replaced the list under the chart.
+  const detail = page.getByLabel('Ticket details', { exact: true });
+  await expect(detail.locator('ol.events > li[data-kind="segment"]')).toHaveCount(5);
   await expect(detail.getByRole('link', { name: /PR #7 checks: success/ })).toHaveAttribute(
     'href',
     'https://github.com/acme/widget/pull/7',
@@ -248,9 +249,9 @@ test('a claim shows its turns, totals and a text form of each', async ({ page })
   await expect(old.locator('.tl-turn')).toHaveCount(0);
   expect(await old.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
   await expect(old).not.toHaveAttribute('aria-label', /held/);
-  // The detail under the chart says the same in text, and lists the turns.
+  // The detail pane says the same in text, and lists the turns.
   await tl.getByRole('button', { name: 'Implement #7' }).click();
-  const detail = tl.getByLabel('Timeline of js-dev');
+  const detail = page.getByLabel('Ticket details', { exact: true });
   await expect(detail).toContainText('active 14m in 2 turns · held 46m');
   await detail.locator('.tl-turns summary').click();
   await expect(detail.locator('.tl-turns li')).toHaveCount(2);

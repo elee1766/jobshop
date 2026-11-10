@@ -1,7 +1,10 @@
+import { useSetAtom } from 'jotai';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
+import { setParams } from '../lib/route.ts';
+import { segmentChoiceAtom } from '../state/ui.ts';
 import { useSize } from '../lib/useSize.ts';
 import {
   arrowPath,
@@ -16,10 +19,9 @@ import {
   segmentEnd,
   segmentText,
   timelineSpan,
-  turnTotals,
   visibleRows,
 } from '../lib/timeline.ts';
-import { axisTicks, exactLabel, fullLabel, linkLabel, relativeLabel } from '../lib/trace.ts';
+import { axisTicks, exactLabel, fullLabel, relativeLabel } from '../lib/trace.ts';
 
 // Geometry in CSS pixels. The label column is also set in app.css (--tl-label).
 const rowH = 30;
@@ -40,20 +42,19 @@ export function Timeline({
   sessions,
   selected,
   onSelect,
-  onTrace,
   onGraph,
 }: {
   timeline: TimelineResult;
   sessions?: Record<string, HolderInfo>;
   selected: string;
   onSelect: (id: string) => void;
-  onTrace: (ref: string) => void;
   onGraph: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [seg, setSeg] = useState<{ id: string; i: number } | null>(null);
+  const choose = useSetAtom(segmentChoiceAtom);
   const [scrollRef, { width }] = useSize<HTMLElement>();
 
   // An active timeline ends at "now", which moves.
@@ -96,6 +97,7 @@ export function Timeline({
     if (top < el.scrollTop + axisH) el.scrollTop = Math.max(0, top - axisH);
     else if (top + rowH > el.scrollTop + el.clientHeight) el.scrollTop = top + rowH - el.clientHeight;
   }, [pickRow, found]);
+
   function toggle(id: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -241,6 +243,9 @@ export function Timeline({
                           style={{ left: left + 'px', width: w + 'px', height: barH + 'px' }}
                           onClick={() => {
                             setSeg({ id: row.id, i });
+                            choose((prev) => ({ id: row.id, index: i, n: (prev?.n ?? 0) + 1 }));
+                            // The pane opens on its events tab, on this entry.
+                            setParams({ tab: '' });
                             onSelect(row.id);
                           }}
                         >
@@ -335,133 +340,6 @@ export function Timeline({
           </div>
         </div>
       </section>
-      {pick && (
-        <RowDetail
-          row={pick}
-          now={now}
-          sessions={sessions}
-          seg={seg?.id === pick.id ? seg.i : -1}
-          // A wait target in this graph is selected, not opened again.
-          onTarget={(id) => (byId.has(id) ? onSelect(id) : onTrace(id))}
-        />
-      )}
     </section>
-  );
-}
-
-// The text form of one bar: every segment and marker, with exact times, and
-// the waits it was parked on. Keyboard and touch reach everything the bar
-// shows here.
-function RowDetail({
-  row,
-  now,
-  sessions,
-  seg,
-  onTarget,
-}: {
-  row: TimelineRow;
-  now: number;
-  sessions?: Record<string, HolderInfo>;
-  seg: number;
-  onTarget: (ref: string) => void;
-}) {
-  return (
-    <div className="tl-detail" aria-label={'Timeline of ' + row.id}>
-      <h3>
-        <span className="mono">{row.id}</span> {parseTitle(row.title).text}
-      </h3>
-      {row.partial && (
-        <p className="muted">
-          Part of this ticket's history is not kept (an ephemeral or compacted ticket), so some of its time is shown as
-          unknown.
-        </p>
-      )}
-      <ol className="tl-segments">
-        {row.segments.map((s, i) => (
-          <li key={i} className={i === seg ? 'chosen' : undefined}>
-            <span className="tl-swatch" data-state={s.state} aria-hidden="true" />
-            <span data-live={holderState(s, s.actor ? sessions?.[s.actor] : undefined)}>
-              {segmentText(s, { now, session: s.actor ? sessions?.[s.actor] : undefined })}
-            </span>{' '}
-            <span className="muted">
-              <time dateTime={s.start} title={exactLabel(s.start)}>
-                {fullLabel(s.start)}
-              </time>
-              {' · '}
-              {durationLabel(segmentEnd(s, now) - Date.parse(s.start))}
-              {s.end ? '' : ' so far'}
-            </span>
-            {s.turns && s.turns.length > 0 && <TurnList seg={s} now={now} />}
-            {s.wait && s.wait.length > 0 && (
-              <ul>
-                {s.wait.map((w, j) => (
-                  <li key={j}>
-                    {w.target ? (
-                      <button className="mono" onClick={() => onTarget(w.target!)}>
-                        {w.label}
-                      </button>
-                    ) : w.url && /^https?:\/\//.test(w.url) ? (
-                      <a href={w.url} target="_blank" rel="noopener noreferrer">
-                        {w.label || linkLabel(w.url)}
-                      </a>
-                    ) : (
-                      w.label
-                    )}
-                    {w.state ? <span className="muted"> · {w.state}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ol>
-      {row.markers.length > 0 && (
-        <details>
-          <summary>{row.markers.length} markers</summary>
-          <ul className="tl-markers">
-            {row.markers.map((m, i) => (
-              <li key={i}>
-                <span className="tl-marker tl-marker-sample" data-kind={m.kind} aria-hidden="true" />
-                <time dateTime={m.at} title={exactLabel(m.at)}>
-                  {fullLabel(m.at)}
-                </time>{' '}
-                {m.url && /^https?:\/\//.test(m.url) ? (
-                  <a href={m.url} target="_blank" rel="noopener noreferrer">
-                    {markerText(m)}
-                  </a>
-                ) : (
-                  markerText(m)
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
-  );
-}
-
-// The turns of one claim with exact times, for keyboard and touch.
-function TurnList({ seg, now }: { seg: TimelineSegment; now: number }) {
-  const totals = turnTotals(seg, now);
-  return (
-    <details className="tl-turns">
-      <summary>
-        {totals?.count} turn{totals?.count === 1 ? '' : 's'}
-      </summary>
-      <ol>
-        {seg.turns?.map((t, i) => (
-          <li key={i}>
-            <time dateTime={t.start} title={exactLabel(t.start)}>
-              {fullLabel(t.start)}
-            </time>
-            {' · '}
-            {durationLabel((t.end ? Date.parse(t.end) : segmentEnd(seg, now)) - Date.parse(t.start))}
-            {t.end ? '' : ' so far'}
-            {t.stop ? ' · ' + t.stop : ''}
-          </li>
-        ))}
-      </ol>
-    </details>
   );
 }

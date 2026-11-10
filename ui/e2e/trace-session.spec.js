@@ -53,6 +53,8 @@ test('converted escalation retains its transcript and claimed tickets expose a l
     const next = 'Live follow-up ' + crypto.randomUUID();
     await call('session.send', { id: session, text: next });
     await expect(viewer.locator('.operator').filter({ hasText: next })).toHaveText(next);
+    // Every history row is behind a toggle on the events tab (JOB-185).
+    await page.getByLabel('every history row').check();
     const history = page.locator('.ticket-history');
     await expect(history).toContainText('claimed');
     await expect(history.getByRole('button', { name: 'view session', exact: true })).toBeVisible();

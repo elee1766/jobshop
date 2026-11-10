@@ -1191,15 +1191,58 @@ span.tl-fold { display: inline-block; }
 .tl-arrow[data-shape="wait"] { stroke: var(--status-running); stroke-dasharray: 2 4; }
 .tl-arrow[data-shape="wait"][data-state="met"] { stroke: var(--status-closed); }
 .tl-arrow[data-shape="wait"][data-state="invalidated"] { stroke: var(--warn); }
-.tl-detail { margin-top: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
-.tl-detail h3 { margin: 0 0 var(--space-2); font-size: inherit; }
-.tl-segments, .tl-markers { margin: 0; padding-left: var(--space-5); font-size: var(--font-size-small); }
-.tl-segments > li { padding: var(--space-1) var(--space-2); }
-.tl-segments .tl-swatch { margin-right: var(--space-2); }
-.tl-segments [data-live="lost"] { color: var(--warn); font-weight: bold; }
 .tl-turns { margin: var(--space-1) 0 0 var(--space-5); }
 .tl-turns ol { margin: 0; padding-left: var(--space-5); }
-.tl-markers { list-style: none; padding: 0; }
+.tl-end-sample { display: inline-block; width: 0; height: 12px; margin: 0 var(--space-2) -2px 5px; border-right: 3px solid var(--tl-done); }
+.tl-end-sample[data-resolution="failed"], .tl-end-sample[data-resolution="cancelled"] { border-right-color: var(--tl-retry); }
+/* The trace detail pane (JOB-185): a summary, what the ticket is doing now,
+   and the detail behind tabs. */
+.inspector { overflow-wrap: anywhere; }
+.summary-kind { margin-top: var(--space-2); }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--space-2) var(--space-4); margin: var(--space-3) 0; }
+.facts > div { min-width: 0; }
+.facts dt { font-size: var(--font-size-small); }
+.facts dd { margin: 0; }
+.facts dd button { padding-inline: 0; }
+.time-by-state { margin: var(--space-3) 0; }
+.time-bar { display: flex; height: 10px; border: 1px solid var(--column); }
+.time-bar .tl-swatch { height: 100%; width: auto; min-width: 2px; border: 0; flex-basis: 0; }
+.time-by-state ul { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; padding: 0; list-style: none; font-size: var(--font-size-small); }
+.summary-note { font-size: var(--font-size-small); }
+.now-block { display: flex; gap: var(--space-4); align-items: baseline; margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--column); background: var(--row-alt); }
+.now-block p { margin: 0; }
+.now-block[data-kind="turn"] { border-left-color: var(--tl-working); }
+.now-block[data-kind="human"] { border-left-color: var(--tl-human); }
+.now-block[data-kind="lost"] { border-left-color: var(--warn); }
+.now-block[data-kind="waiting"] { border-left-color: var(--tl-waiting); }
+.now-block[data-kind="closed"] { border-left-color: var(--tl-done); }
+.now-label { flex: none; font-size: var(--font-size-small); text-transform: none; color: var(--muted); min-width: 4ch; }
+.now-block [data-live="lost"] { color: var(--warn); }
+.wait-list { margin: var(--space-2) 0 0; padding-left: var(--space-5); font-size: var(--font-size-small); }
+.detail-tabs { gap: var(--space-2); margin-top: var(--space-3); }
+.detail-tabs button { padding-block: var(--space-1); }
+.detail-panel { padding-top: var(--space-3); min-width: 0; }
+.events-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); font-size: var(--font-size-small); }
+.events { list-style: none; margin: var(--space-3) 0 0; padding: 0 0 0 var(--space-4); border-left: 1px solid var(--column); margin-left: var(--space-2); }
+.events > li { position: relative; padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--rule); }
+.events > li::before { content: ''; position: absolute; left: -17px; top: 17px; width: 7px; height: 7px; border: 1px solid var(--column); background: var(--paper); }
+.events > li[data-kind="segment"]::before { background: var(--column); }
+.event-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.event-when, .event-links { margin: var(--space-1) 0 0; font-size: var(--font-size-small); }
+.event-head [data-live="lost"] { color: var(--warn); font-weight: bold; }
+.ticket-events .ticket-history { margin: var(--space-3) 0 0; }
+.io section { margin-bottom: var(--space-4); }
+.io h3 { margin: 0 0 var(--space-2); font-size: var(--font-size-body); }
+.pairs { margin: 0; }
+.pairs > div { display: grid; grid-template-columns: minmax(8ch, 22%) minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2); border-bottom: 1px solid var(--rule); }
+.pairs dt, .pairs dd { margin: 0; min-width: 0; }
+.pairs pre { max-height: 240px; overflow: auto; }
+.raw-json { max-height: 60dvh; overflow: auto; }
+.relation-took { font-size: var(--font-size-small); }
+@media (max-width: 760px) {
+  .now-block { flex-direction: column; gap: 0; }
+  .pairs > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
 @media (max-width: 760px) {
   .tl-scroll { max-height: 56dvh; }
   .ticket-timeline > .graph-heading { flex-wrap: wrap; }

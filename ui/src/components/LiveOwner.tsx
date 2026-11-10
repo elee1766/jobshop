@@ -16,7 +16,8 @@ export function LiveOwner() {
   // The scope is a string, so the stream reopens only when it changes.
   const scope = JSON.stringify(
     route.view === 'trace'
-      ? { trace: route.ref, inspect: route.inspect, timeline: route.timeline }
+      ? // Both layouts read the timeline: the detail pane's summary comes from it (JOB-185).
+        { trace: route.ref, inspect: route.inspect, timeline: true }
       : route.view === 'system' && route.audit
         ? { audit: route.audit }
         : {},

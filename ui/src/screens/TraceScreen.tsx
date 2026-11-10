@@ -27,7 +27,6 @@ export function Trace() {
                 sessions={trace.sessions}
                 selected={selected?.id || trace.graph.root}
                 onSelect={inspect}
-                onTrace={openTrace}
                 onGraph={() => setLayout('graph')}
               />
             ) : (
@@ -56,6 +55,7 @@ export function Trace() {
                 detail={trace.inspection || trace}
                 graph={trace.graph}
                 onSelect={inspect}
+                onTrace={openTrace}
                 onWatch={setWatched}
               />
             )}
