@@ -315,6 +315,11 @@ type Store interface {
 	// first per ticket, keyed by ticket id. A ticket without comments
 	// has no key. It does not check that an id exists.
 	CommentsFor(ctx context.Context, ids []string) (map[string][]domain.Comment, error)
+	// HeldAt lists the ids of the tickets actor may have held at time at,
+	// by first claim: a superset, for the caller to confirm with each
+	// ticket's hold windows. The trace uses it to connect a ticket to
+	// those its creator held when it was created (JOB-190).
+	HeldAt(ctx context.Context, actor string, at time.Time) ([]string, error)
 	// Record adds a history row for an outside action on a ticket without
 	// changing it (#542: desk_exec). The row carries the ticket's current
 	// revision.

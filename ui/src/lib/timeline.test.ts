@@ -24,7 +24,13 @@ const row = (id: string, depth: number, o: Partial<TimelineRow> = {}): TimelineR
   markers: [],
   ...o,
 });
-const tl = (rows: TimelineRow[]): TimelineResult => ({ root: rows[0]?.id || '', rows, arrows: [], truncated: false });
+const tl = (rows: TimelineRow[]): TimelineResult => ({
+  root: rows[0]?.id || '',
+  requested: rows[0]?.id || '',
+  rows,
+  arrows: [],
+  truncated: false,
+});
 
 test('the span ends at now while anything is open, else at the last close', () => {
   const now = Date.parse('2026-11-09T12:00:00Z');

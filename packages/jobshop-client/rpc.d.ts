@@ -758,6 +758,7 @@ export interface GraphRelation {
 
 export interface GraphResult {
   root: string;
+  requested: string;
   nodes: GraphNode[];
   relations: GraphRelation[];
   external: GraphExternal[];
@@ -1693,6 +1694,7 @@ export interface TimelineMarker {
 
 export interface TimelineResult {
   root: string;
+  requested: string;
   rows: TimelineRow[];
   arrows: TimelineArrow[];
   truncated: boolean;

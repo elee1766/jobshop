@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HolderInfo, TimelineResult, TimelineRow, TimelineSegment } from '../../../packages/jobshop-client/rpc.js';
 import { parseTitle } from '../../kit/titles.js';
 import { StatusLetter } from '../components/StatusLetter.tsx';
@@ -54,7 +54,7 @@ export function Timeline({
   const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [seg, setSeg] = useState<{ id: string; i: number } | null>(null);
-  const [scrollRef, { width }] = useSize<HTMLDivElement>();
+  const [scrollRef, { width }] = useSize<HTMLElement>();
 
   // An active timeline ends at "now", which moves.
   useEffect(() => {
@@ -83,6 +83,19 @@ export function Timeline({
   const height = rows.length * rowH;
   const pick = byId.get(selected) || byId.get(timeline.root);
 
+  // Opening a sub-item selects it where it sits in the whole graph, which may
+  // be far down a large one: bring its row into the chart's own scroll (not
+  // the page's) when the selection changes or the rows first arrive.
+  const chart = useRef<HTMLElement | null>(null);
+  const pickRow = index.get(pick?.id ?? '');
+  const found = pick !== undefined && pickRow !== undefined;
+  useEffect(() => {
+    const el = chart.current;
+    if (!el || !found) return;
+    const top = axisH + pickRow * rowH;
+    if (top < el.scrollTop + axisH) el.scrollTop = Math.max(0, top - axisH);
+    else if (top + rowH > el.scrollTop + el.clientHeight) el.scrollTop = top + rowH - el.clientHeight;
+  }, [pickRow, found]);
   function toggle(id: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -146,7 +159,14 @@ export function Timeline({
           tracks
         </li>
       </ul>
-      <section className="tl-scroll" ref={scrollRef} aria-label="Timeline chart">
+      <section
+        className="tl-scroll"
+        ref={(node) => {
+          chart.current = node;
+          scrollRef(node);
+        }}
+        aria-label="Timeline chart"
+      >
         <div className="tl-canvas" style={{ width: labelW + chartW + 16 + 'px' }}>
           <div className="tl-axis" style={{ height: axisH + 'px' }}>
             <div className="tl-corner" style={{ width: labelW + 'px' }} />
@@ -316,7 +336,14 @@ export function Timeline({
         </div>
       </section>
       {pick && (
-        <RowDetail row={pick} now={now} sessions={sessions} seg={seg?.id === pick.id ? seg.i : -1} onTrace={onTrace} />
+        <RowDetail
+          row={pick}
+          now={now}
+          sessions={sessions}
+          seg={seg?.id === pick.id ? seg.i : -1}
+          // A wait target in this graph is selected, not opened again.
+          onTarget={(id) => (byId.has(id) ? onSelect(id) : onTrace(id))}
+        />
       )}
     </section>
   );
@@ -330,13 +357,13 @@ function RowDetail({
   now,
   sessions,
   seg,
-  onTrace,
+  onTarget,
 }: {
   row: TimelineRow;
   now: number;
   sessions?: Record<string, HolderInfo>;
   seg: number;
-  onTrace: (ref: string) => void;
+  onTarget: (ref: string) => void;
 }) {
   return (
     <div className="tl-detail" aria-label={'Timeline of ' + row.id}>
@@ -370,7 +397,7 @@ function RowDetail({
                 {s.wait.map((w, j) => (
                   <li key={j}>
                     {w.target ? (
-                      <button className="mono" onClick={() => onTrace(w.target!)}>
+                      <button className="mono" onClick={() => onTarget(w.target!)}>
                         {w.label}
                       </button>
                     ) : w.url && /^https?:\/\//.test(w.url) ? (

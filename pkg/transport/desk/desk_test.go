@@ -560,3 +560,49 @@ func TestTraceTimelineHolders(t *testing.T) {
 	}
 	assert.Equal(t, 1, n, "one session.list call")
 }
+
+// TestTraceWholeGraph (JOB-190): a trace opened on a sub-item returns the
+// graph from the top ticket with the requested ticket inspected, and an
+// explicit ?inspect= still wins.
+func TestTraceWholeGraph(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodTicketGraph:    rpc.GraphResult{Root: "a", Requested: "b"},
+		rpc.MethodTicketTimeline: rpc.TimelineResult{Root: "a", Requested: "b", Rows: []rpc.TimelineRow{{ID: "a"}, {ID: "b"}}},
+		rpc.MethodTicketShow:     rpc.ShowResult{Ticket: domain.Ticket{ID: "a"}},
+		rpc.MethodTicketTrace:    rpc.TraceNode{ID: "a"},
+	}}
+	h := New(Config{}, ctl, nil).Handler()
+	shown := func() []string {
+		var out []string
+		for _, call := range ctl.calls {
+			if strings.HasPrefix(call, rpc.MethodTicketShow+" ") {
+				out = append(out, strings.TrimPrefix(call, rpc.MethodTicketShow+" "))
+			}
+		}
+		return out
+	}
+
+	var tv TicketView
+	get(t, h, "/api/trace/b?timeline=1", &tv)
+	require.NotNil(t, tv.Graph)
+	assert.Equal(t, "a", tv.Graph.Root)
+	assert.Equal(t, "a", tv.Ticket.ID, "the details of the root stay the base")
+	require.NotNil(t, tv.Inspected, "the requested ticket is the selection")
+	assert.Equal(t, []string{`{"id":"a"}`, `{"id":"b"}`}, shown())
+	require.NotNil(t, tv.Timeline)
+	assert.Equal(t, "a", tv.Timeline.Root)
+	assert.Contains(t, ctl.calls, rpc.MethodTicketTimeline+` {"id":"b","limit":2000}`)
+
+	ctl.calls = nil
+	var other TicketView
+	get(t, h, "/api/trace/b?inspect=c", &other)
+	assert.Equal(t, []string{`{"id":"a"}`, `{"id":"c"}`}, shown())
+
+	// Asking for the root selects nothing extra.
+	ctl.calls = nil
+	ctl.results[rpc.MethodTicketGraph] = rpc.GraphResult{Root: "a", Requested: "a"}
+	var top TicketView
+	get(t, h, "/api/trace/a", &top)
+	assert.Nil(t, top.Inspected)
+	assert.Equal(t, []string{`{"id":"a"}`}, shown())
+}

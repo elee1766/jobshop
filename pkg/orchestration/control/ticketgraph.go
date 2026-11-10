@@ -41,7 +41,12 @@ func (c *Controller) graphWalk(ctx context.Context, sc scope, p rpc.GraphParams)
 		return rpc.GraphResult{}, nil, err
 	}
 	threads := map[string]store.Thread{}
-	out := rpc.GraphResult{Root: id, Nodes: []rpc.GraphNode{}, Relations: []rpc.GraphRelation{}, External: []rpc.GraphExternal{}}
+	creators := creatorMemo{}
+	root, err := c.topTicket(ctx, sc, id, creators)
+	if err != nil {
+		return rpc.GraphResult{}, nil, err
+	}
+	out := rpc.GraphResult{Root: root, Requested: id, Nodes: []rpc.GraphNode{}, Relations: []rpc.GraphRelation{}, External: []rpc.GraphExternal{}}
 	cfg := c.config()
 	queue := []string{id}
 	seen := map[string]bool{id: true}
@@ -126,6 +131,16 @@ func (c *Controller) graphWalk(ctx context.Context, sc scope, p rpc.GraphParams)
 		}
 		for _, w := range graphWaits(cfg, t, th) {
 			connectWait(w)
+		}
+		// A created relation is found from both sides (JOB-190): from the
+		// holder to what it created, and from the ticket to what its
+		// creator held, so every member of a graph reaches the same set.
+		held, err := creators.of(ctx, c, t)
+		if err != nil {
+			return rpc.GraphResult{}, nil, err
+		}
+		for _, holder := range held {
+			connect(holder, t.ID, "created")
 		}
 		kids, err := c.childIDs(ctx, t.ID, holdWindows(th.History, c.now()))
 		if err != nil {

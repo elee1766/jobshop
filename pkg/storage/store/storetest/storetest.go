@@ -54,6 +54,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"DeferUntil", testDeferUntil},
 		{"LabelsCommentsHistory", testLabelsCommentsHistory},
 		{"CommentsFor", testCommentsFor},
+		{"HeldAt", testHeldAt},
 		{"CreateGraphAtomic", testCreateGraphAtomic},
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
@@ -1015,4 +1016,46 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
 	assert.NotContains(t, ids(ready), "js-b2", "batches are never claimable")
+}
+
+// HeldAt lists the tickets an actor may have held at a time: claimed by it
+// at or before, and not closed, released, expired or taken over before.
+func testHeldAt(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	a, b, d := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "d", "")
+	claim := func(id, holder string) store.Claim {
+		t.Helper()
+		_, cl, err := s.Claim(ctx, id, holder, lease)
+		require.NoError(t, err)
+		c.Advance(time.Second)
+		return cl
+	}
+	held := func(actor string, at time.Time) []string {
+		t.Helper()
+		got, err := s.HeldAt(ctx, actor, at)
+		require.NoError(t, err)
+		return got
+	}
+	start := c.Now()
+	claim(a.ID, "s1")
+	clB := claim(b.ID, "s1")
+	mid := c.Now()
+	_, err := s.Release(ctx, "", b.ID, &clB, store.Outcome{Reason: "done"})
+	require.NoError(t, err)
+	c.Advance(time.Second)
+	claim(d.ID, "s2")
+	end := c.Now()
+
+	assert.Empty(t, held("s1", start.Add(-time.Hour)), "before any claim")
+	assert.Equal(t, []string{a.ID, b.ID}, held("s1", mid))
+	assert.Equal(t, []string{a.ID}, held("s1", end), "b was released")
+	assert.Equal(t, []string{d.ID}, held("s2", end))
+	assert.Empty(t, held("nobody", end))
+	// A takeover ends the first holder's window.
+	_, err = s.Expire(ctx, "test", "s1", "gone")
+	require.NoError(t, err)
+	c.Advance(time.Second)
+	claim(a.ID, "s3")
+	assert.Empty(t, held("s1", c.Now()))
+	assert.Equal(t, []string{a.ID}, held("s3", c.Now()))
 }

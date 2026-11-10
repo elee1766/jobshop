@@ -64,7 +64,15 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 	if err := s.ctl.Call(r.Context(), rpc.MethodTicketGraph, rpc.GraphParams{ID: r.PathValue("ref"), Limit: 2000}, &graph); err != nil {
 		return nil, err
 	}
+	// The graph is the whole one from its top ticket. The ticket that was
+	// asked for is the selection, unless the request picked another (JOB-190).
+	// The copy keeps the live stream's request as it was.
+	r = r.Clone(r.Context())
 	r.SetPathValue("id", graph.Root)
+	if q := r.URL.Query(); q.Get("inspect") == "" && graph.Requested != "" && graph.Requested != graph.Root {
+		q.Set("inspect", graph.Requested)
+		r.URL.RawQuery = q.Encode()
+	}
 	// The timeline replays every node's history: only when Desk shows it
 	// (?timeline=1, #1103). It comes first so the holders of its open
 	// working bars join the one session.list call (JOB-184).
@@ -72,7 +80,7 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 	var holders []string
 	if r.URL.Query().Get("timeline") != "" {
 		tl = new(rpc.TimelineResult)
-		if err := s.ctl.Call(r.Context(), rpc.MethodTicketTimeline, rpc.GraphParams{ID: graph.Root, Limit: 2000}, tl); err != nil {
+		if err := s.ctl.Call(r.Context(), rpc.MethodTicketTimeline, rpc.GraphParams{ID: graph.Requested, Limit: 2000}, tl); err != nil {
 			return nil, err
 		}
 		holders = openWorkers(tl)

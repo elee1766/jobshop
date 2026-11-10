@@ -79,7 +79,9 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await card.getByRole('button', { name: 'Actions for ' + child.id }).click();
     await expect(footer).toHaveText(child.id);
     await expect(menu.getByRole('menuitem', { name: 'inspect' })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: 'open as graph root' })).toBeVisible();
+    // The whole graph is open: a ticket in it is selected, never opened again.
+    await expect(menu.getByRole('menuitem', { name: 'open as graph root' })).toHaveCount(0);
+    await expect(menu.getByRole('menuitem', { name: 'open in trace' })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
 

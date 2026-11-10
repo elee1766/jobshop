@@ -29,13 +29,11 @@ export function TicketDetails({
   detail,
   graph,
   onSelect,
-  onTrace,
   onWatch,
 }: {
   detail: ShowResult;
   graph: GraphResult;
   onSelect: (id: string) => void;
-  onTrace: (id: string) => void;
   onWatch: (id: string) => void;
 }) {
   const ticket = detail.ticket;
@@ -120,7 +118,6 @@ export function TicketDetails({
               {linkLabel(href)}
             </a>
           ))}
-          <button onClick={() => onTrace(ticket.id)}>open as graph root</button>
           <TicketMenuButton target={menuTarget(ticket)} />
           {ticket.holder && (
             <button className="watch-session" title={ticket.holder} onClick={() => onWatch(ticket.holder!)}>

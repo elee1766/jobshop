@@ -56,7 +56,6 @@ export function Trace() {
                 detail={trace.inspection || trace}
                 graph={trace.graph}
                 onSelect={inspect}
-                onTrace={openTrace}
                 onWatch={setWatched}
               />
             )}
