@@ -127,7 +127,10 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await call('edge.add', { from: child.id, to: dependency.id, kind: 'waits_for' });
     const graph = page.getByRole('region', { name: 'Ticket dependency graph', exact: true });
     await expect(graph.locator('.graph-card')).toHaveCount(3);
-    await expect(graph.locator('svg > path')).toHaveCount(2);
+    // Parent edge, the waits_for gate and the wait on the run set above.
+    await expect(graph.locator('svg > path')).toHaveCount(3);
+    await expect(graph.locator('svg > path.graph-gate')).toHaveCount(1);
+    await expect(graph.locator('svg > path.graph-wait')).toHaveCount(1);
     const temporalNodes = await graph.locator('.graph-card').evaluateAll(nodes => nodes.map(node => ({ id: node.dataset.ticket, x: parseFloat(node.style.left), created: Date.parse(node.querySelector('time').dateTime) })).sort((a, b) => a.created - b.created));
     expect(temporalNodes.map(node => node.id)).toEqual([ticket.id, dependency.id, child.id]);
     expect(temporalNodes.every((node, i) => !i || temporalNodes[i - 1].x <= node.x)).toBeTruthy();
@@ -206,7 +209,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await historyLink.click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
-    await relationships.getByRole('button', { name: new RegExp(dependency.id) }).click();
+    await relationships.locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
     await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).\n\nCompact https://github.com/elee1766/jobcity/pull/21?w=1#top, <https://linear.app/gfx-labs/issue/JOB-93/stall-triggers>. \`https://github.com/acme/widget/pull/47\` https://evilgithub.com/acme/widget/pull/48 [Authored PR](https://github.com/acme/widget/pull/49)` });
@@ -228,7 +231,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
     await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
-    await page.getByLabel('Ticket relationships', { exact: true }).getByRole('button', { name: new RegExp(dependency.id) }).click();
+    await page.getByLabel('Ticket relationships', { exact: true }).locator('button.relation-ticket').filter({ hasText: 'Required evidence' }).first().click();
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);
     await expect(dependencyCard.locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');

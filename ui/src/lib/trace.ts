@@ -63,7 +63,9 @@ export function safeLinks(node?: GraphNode) {
 }
 
 // Graph card geometry in canvas pixels, shared by the layout, edges and CSS.
-export const card = { width: 248, height: 148, lane: 164, left: 16, top: 16 };
+// The height fits a two-line title, a state line and the touch-size menu
+// button without scrolling (#1166).
+export const card = { width: 248, height: 180, lane: 196, left: 16, top: 16 };
 
 // The trace's time span: start is the first creation, end the latest close
 // (completed) or now (anything still open).
