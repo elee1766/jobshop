@@ -144,6 +144,8 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 	c.log.InfoContext(ctx, "escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
 	c.record(ctx, domain.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
 	c.ensureEscalationChat(ctx, cfg, t)
+	// An earlier round of this run is replaced by the new one (JOB-195).
+	c.settleEscalations(ctx, run.ID)
 }
 
 // escalationBody lists the run and, per step, its attempts, resolution and
