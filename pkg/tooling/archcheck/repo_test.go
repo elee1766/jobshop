@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,16 +13,38 @@ import (
 	"github.com/elee1766/jobshop/pkg/tooling/archcheck"
 )
 
+type loadedGraph struct {
+	g   *archcheck.Graph
+	err error
+}
+
+// loadRepo runs `go list` over the whole repository once per test binary
+// (JOB-187): each load costs 0.4-0.9s, and every test used to pay it.
+var loadRepo = sync.OnceValue(func() loadedGraph {
+	g, err := archcheck.Load(context.Background(), "../../..", "victorialogs")
+	return loadedGraph{g, err}
+})
+
+// repoGraph returns a private copy of the loaded graph: tests add edges to
+// it, so they must not share the Package values.
 func repoGraph(t *testing.T) *archcheck.Graph {
 	t.Helper()
-	g, err := archcheck.Load(context.Background(), "../../..", "victorialogs")
-	require.NoError(t, err)
+	l := loadRepo()
+	require.NoError(t, l.err)
+	g := &archcheck.Graph{Module: l.g.Module, Pkgs: make(map[string]*archcheck.Package, len(l.g.Pkgs))}
+	for path, p := range l.g.Pkgs {
+		c := *p
+		c.Imports = slices.Clone(p.Imports)
+		c.TestImports = slices.Clone(p.TestImports)
+		g.Pkgs[path] = &c
+	}
 	return g
 }
 
 // TestRepository is the check CI runs, as a test: the real tree must satisfy
 // the real rules, with only the dated exceptions in known.go.
 func TestRepository(t *testing.T) {
+	t.Parallel()
 	res := archcheck.Check(repoGraph(t), archcheck.Jobshop())
 	assert.Empty(t, res.Problems)
 }
@@ -30,6 +53,7 @@ func TestRepository(t *testing.T) {
 // adds prohibited edges to the loaded graph, the way a stray import would
 // appear in `go list`, and expects the real rules to name each one.
 func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
+	t.Parallel()
 	const m = "github.com/elee1766/jobshop/"
 	cases := []struct {
 		name     string
@@ -70,6 +94,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			g := repoGraph(t)
 			from := g.Pkgs[m+tc.from]
 			require.NotNil(t, from)
@@ -98,6 +123,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 // graph: production code never imports a harness, test files do, and that is
 // allowed. If this fails the rules started banning legitimate test setups.
 func TestRepositoryLegitimateTestHarnessEdgesPass(t *testing.T) {
+	t.Parallel()
 	g := repoGraph(t)
 	const m = "github.com/elee1766/jobshop/"
 	for _, h := range []string{"pkg/storage/store/storetest", "pkg/orchestration/control/controltest"} {
@@ -119,6 +145,7 @@ func TestRepositoryLegitimateTestHarnessEdgesPass(t *testing.T) {
 // TestInventoryCoversEveryPackage keeps the ownership table complete:
 // every package with Go files has a row, and the inventory lists them all.
 func TestInventoryCoversEveryPackage(t *testing.T) {
+	t.Parallel()
 	g := repoGraph(t)
 	cfg := archcheck.Jobshop()
 	inv := cfg.Inventory(g)
