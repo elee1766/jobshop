@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.14](https://github.com/gfx-labs/jobshop/compare/v0.10.13...v0.10.14) (2026-11-10)
+
+
+### Features
+
+* **desk:** make Trace a timeline-first TL page with selection-driven content below ([#1183](https://github.com/gfx-labs/jobshop/issues/1183)) ([#1211](https://github.com/gfx-labs/jobshop/issues/1211)) ([cb98f13](https://github.com/gfx-labs/jobshop/commit/cb98f13c0f302d23b96df6d26439cc36effdbde1))
+
 ## [0.10.13](https://github.com/gfx-labs/jobshop/compare/v0.10.12...v0.10.13) (2026-11-10)
 
 
