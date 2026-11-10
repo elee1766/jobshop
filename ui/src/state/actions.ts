@@ -31,24 +31,32 @@ import { chatBridge } from './chatBridge.ts';
 
 const setError = (message: unknown) => store.set(errorAtom, String(message));
 
-// The trace the page last showed. A change of ref or inspected ticket from
-// outside the actions (Back, Forward, a typed URL) clears the old graph
-// before the new one arrives. The actions clear what they need themselves and
-// record their key with markTrace, so they do not clear what they just set.
+// The trace the page last showed. A change of ref from outside the actions
+// (Back, Forward, a typed URL) clears the old graph before the new one
+// arrives. A change of the inspected ticket never does (JOB-190): the graph
+// and the timeline are the whole graph, and selecting keeps them on screen.
+// The actions clear what they need themselves and record their key with
+// markTrace, so they do not clear what they just set.
 let shownTrace = '';
+let shownRef = '';
 const traceKey = () => {
   const route = currentRoute();
   return route.ref + ':' + route.inspect;
 };
 export function markTrace() {
   shownTrace = traceKey();
+  shownRef = currentRoute().ref;
 }
 export function syncTrace(ref: string, inspectRef: string) {
   const key = ref + ':' + inspectRef;
   if (key === shownTrace) return;
+  const sameGraph = ref === shownRef;
   shownTrace = key;
-  store.set(traceAtom, null);
-  store.set(selectedAtom, null);
+  shownRef = ref;
+  if (!sameGraph) {
+    store.set(traceAtom, null);
+    store.set(selectedAtom, null);
+  }
   store.set(watchedSessionAtom, '');
 }
 
@@ -124,11 +132,11 @@ export function goSection(id: Section) {
 
 export function openTrace(ref: string) {
   const route = currentRoute();
-  if (ref !== route.ref || route.inspect) {
+  if (ref !== route.ref) {
     store.set(selectedAtom, null);
     store.set(traceAtom, null);
-    store.set(watchedSessionAtom, '');
   }
+  if (ref !== route.ref || route.inspect) store.set(watchedSessionAtom, '');
   store.set(chatOpenAtom, false);
   const url = currentURL();
   leaveBrowse(url, 'trace');
@@ -145,8 +153,10 @@ export function inspect(id: string) {
   const trace = store.get(traceAtom);
   const node = trace?.graph?.nodes.find((n) => n.id === id);
   store.set(watchedSessionAtom, node?.holder || (node?.kind === 'session' ? id : ''));
-  if (currentRoute().inspect === id) return;
-  store.set(selectedAtom, null);
+  if (currentRoute().inspect === id || (!currentRoute().inspect && store.get(selectedAtom)?.id === id)) return;
+  // The row or card is selected at once. The graph and the timeline stay: the
+  // stream reopens for the details and sends the same graph again.
+  if (node) store.set(selectedAtom, node);
   const url = currentURL();
   leaveBrowse(url, 'trace');
   url.searchParams.set('inspect', id);

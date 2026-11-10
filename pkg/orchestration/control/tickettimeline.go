@@ -60,7 +60,7 @@ func (c *Controller) ticketTimeline(ctx context.Context, sc scope, p rpc.GraphPa
 // a session is in a turn now: it decides whether the last turn of an open
 // claim that has no turn_end is still running.
 func buildTimeline(cfg *config.Config, g rpc.GraphResult, threads map[string]store.Thread, now time.Time, busy func(session string) bool) rpc.TimelineResult {
-	out := rpc.TimelineResult{Root: g.Root, Rows: []rpc.TimelineRow{}, Arrows: []rpc.TimelineArrow{}, Truncated: g.Truncated}
+	out := rpc.TimelineResult{Root: g.Root, Requested: g.Requested, Rows: []rpc.TimelineRow{}, Arrows: []rpc.TimelineArrow{}, Truncated: g.Truncated}
 	tickets := map[string]domain.Ticket{}
 	rows := map[string]*rpc.TimelineRow{}
 	for _, n := range g.Nodes {

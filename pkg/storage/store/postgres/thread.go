@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/nullism/bqb"
 
@@ -134,4 +135,25 @@ func (s *Store) each(ctx context.Context, q *bqb.Query, fn func(*sql.Rows) error
 		}
 	}
 	return rows.Err()
+}
+
+// HeldAt lists the tickets actor may have held at time at: those with a
+// claim by actor at or before at that no close, release, lease expiry or
+// claim by another actor ended before at. It is a cheap superset for the
+// trace to confirm with the ticket's hold windows (JOB-190).
+func (s *Store) HeldAt(ctx context.Context, actor string, at time.Time) ([]string, error) {
+	out := []string{}
+	err := s.each(ctx, bqb.New("SELECT h.ticket_id FROM history h WHERE h.op = 'claim' AND h.actor = ? AND h.at <= ? "+
+		"AND NOT EXISTS (SELECT 1 FROM history e WHERE e.ticket_id = h.ticket_id AND e.seq > h.seq AND e.at < ? "+
+		"AND (e.op IN ('close', 'release', 'lease_expired') OR (e.op = 'claim' AND e.actor <> h.actor))) "+
+		"GROUP BY h.ticket_id ORDER BY MIN(h.seq)", actor, ns(at), ns(at)),
+		func(r *sql.Rows) error {
+			var id string
+			if err := r.Scan(&id); err != nil {
+				return err
+			}
+			out = append(out, id)
+			return nil
+		})
+	return out, err
 }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { copyText } from '../lib/clipboard.ts';
 import { useDeskRoute } from '../lib/route.ts';
 import { attach, discuss, inspect, openTrace } from '../state/actions.ts';
-import { errorAtom, selectedAtom, traceAtom } from '../state/live.ts';
+import { errorAtom, selectedAtom } from '../state/live.ts';
 import { store } from '../state/store.ts';
 import {
   closeTicketMenu,
@@ -103,13 +103,11 @@ function Popup({ state }: { state: TicketMenuState }) {
   const { target } = state;
   const route = useDeskRoute();
   const selected = useAtomValue(selectedAtom);
-  const root = useAtomValue(traceAtom)?.graph?.root;
   const [failed, setFailed] = useState(false);
-  // On the trace page the root is already open and the inspected ticket is
-  // already inspected: offering either again would do nothing.
+  // On the trace page the whole graph is already open (JOB-190): a ticket in
+  // it is selected, not opened again, and the selected one needs no action.
   const onTrace = route.view === 'trace';
-  const isRoot = onTrace && root === target.id;
-  const isSelected = onTrace && (selected?.id ?? root) === target.id;
+  const isSelected = onTrace && selected?.id === target.id;
 
   // A navigation while the menu is open (Back, a live redirect) dismisses it
   // rather than leave it pointing at a row that is gone. Base UI's modal
@@ -160,9 +158,9 @@ function Popup({ state }: { state: TicketMenuState }) {
               closeType === 'keyboard' ? (state.returnTo?.isConnected ? state.returnTo : true) : false
             }
           >
-            {!isRoot && !target.provider && (
+            {!target.inspectable && !target.provider && (
               <Menu.Item className="ticket-menu-item" onClick={() => openTrace(target.id)}>
-                {target.inspectable ? 'open as graph root' : 'open in trace'}
+                open in trace
               </Menu.Item>
             )}
             {target.inspectable && !isSelected && (

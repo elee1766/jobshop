@@ -1156,8 +1156,12 @@ type GraphNode struct {
 }
 
 // GraphResult contains each connected ticket once, including closed prerequisites.
+// Root is the top ticket of the graph, found by climbing parent and created
+// links from the requested ticket (JOB-190): the same for every member.
 type GraphResult struct {
-	Root      string          `json:"root"`
+	Root string `json:"root"`
+	// Requested is the ticket the call named (after a reference resolved).
+	Requested string          `json:"requested"`
 	Nodes     []GraphNode     `json:"nodes"`
 	Relations []GraphRelation `json:"relations"`
 	// External lists what wait relations point at outside the store.
@@ -1283,7 +1287,9 @@ type TimelineArrow struct {
 
 // TimelineResult is a trace as bars on one time axis.
 type TimelineResult struct {
-	Root      string          `json:"root"`
+	Root string `json:"root"`
+	// Requested is the ticket the call named, as in GraphResult.
+	Requested string          `json:"requested"`
 	Rows      []TimelineRow   `json:"rows"`
 	Arrows    []TimelineArrow `json:"arrows"`
 	Truncated bool            `json:"truncated"`

@@ -131,6 +131,13 @@ func (t *tracedStore) CommentsFor(ctx context.Context, ids []string) (map[string
 	return r, err
 }
 
+func (t *tracedStore) HeldAt(ctx context.Context, actor string, at time.Time) ([]string, error) {
+	start := time.Now()
+	r, err := t.Store.HeldAt(ctx, actor, at)
+	slow(ctx, "held_at", "", start, err)
+	return r, err
+}
+
 func (t *tracedStore) Record(ctx context.Context, actor, id, op string, diff any) error {
 	start := time.Now()
 	err := t.Store.Record(ctx, actor, id, op, diff)

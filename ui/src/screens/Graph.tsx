@@ -91,6 +91,27 @@ export function Graph({
   const camera = touched ?? fit;
   const { zoom, x, y } = camera;
 
+  // The selected card comes into view when the selection changes (JOB-190):
+  // opening a sub-item lands on it, which may be far off in a large graph.
+  // The camera moves only when the card is outside the viewport. This is
+  // state adjusted during render, once per selection, not an effect.
+  const [revealed, setRevealed] = useState('');
+  const at = layout.positions.get(selected);
+  if (width > 0 && height > 0 && revealed !== selected) {
+    setRevealed(selected);
+    if (at) {
+      const left = x + at.x * zoom;
+      const top = y + at.y * zoom;
+      const seen = left >= 0 && top >= axis && left + card.width * zoom <= width && top + card.height * zoom <= height;
+      if (!seen) {
+        setTouched({
+          zoom,
+          x: width / 2 - (at.x + card.width / 2) * zoom,
+          y: (height + axis) / 2 - (at.y + card.height / 2) * zoom,
+        });
+      }
+    }
+  }
   // Canvas x of a time, then its viewport x through the camera: the axis and
   // the cards share this one transform, so ticks stay on their cards while
   // panning and zooming.

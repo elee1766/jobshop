@@ -238,3 +238,113 @@ func links(body string, comments []domain.Comment) []string {
 	}
 	return out
 }
+
+// creatorIDs are the tickets t's creator held when it created t: childIDs
+// read the other way, with the same rule (a hold window of the creator
+// that contains the creation time, session tickets skipped). The parent
+// is left out, parent_id already connects it.
+func (c *Controller) creatorIDs(ctx context.Context, t domain.Ticket) ([]string, error) {
+	if t.Kind == domain.KindSession || t.CreatedBy == "" {
+		return nil, nil
+	}
+	held, err := c.store.HeldAt(ctx, t.CreatedBy, t.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, id := range held {
+		if id == t.ID || id == t.ParentID {
+			continue
+		}
+		th, err := c.store.Thread(ctx, id, store.Parts{History: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range holdWindows(th.History, c.now()) {
+			if w.holder == t.CreatedBy && !t.CreatedAt.Before(w.start) && !t.CreatedAt.After(w.end) {
+				out = append(out, id)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// creatorMemo remembers creatorIDs for one walk, so the climb to the top
+// ticket and the walk itself read each ticket's creator once.
+type creatorMemo map[string][]string
+
+func (m creatorMemo) of(ctx context.Context, c *Controller, t domain.Ticket) ([]string, error) {
+	if ids, ok := m[t.ID]; ok {
+		return ids, nil
+	}
+	ids, err := c.creatorIDs(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	m[t.ID] = ids
+	return ids, nil
+}
+
+// maxClimb bounds the tickets read looking for the top of a graph.
+const maxClimb = 2000
+
+// topTicket is the top of the graph id belongs to (JOB-190): the ticket
+// reached by climbing parent and created links from id that has nothing
+// above it. With several such tickets (a ticket created while its creator
+// held two tickets, each with its own top) the oldest wins, then the
+// lowest id, so the answer is the same whichever member is asked about.
+// A ticket outside the caller's project is not climbed through. A cycle
+// has no top: the oldest ticket in it is.
+func (c *Controller) topTicket(ctx context.Context, sc scope, id string, creators creatorMemo) (string, error) {
+	seen := map[string]domain.Ticket{}
+	var tops []domain.Ticket
+	queue := []string{id}
+	for i := 0; i < len(queue) && len(seen) < maxClimb; i++ {
+		t, err := c.store.Get(ctx, queue[i])
+		if err != nil {
+			if i > 0 && errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return "", err
+		}
+		if !sc.admin && t.Project != sc.project {
+			if i == 0 {
+				return "", forbidden("ticket belongs to another project")
+			}
+			continue
+		}
+		seen[t.ID] = t
+		above, err := creators.of(ctx, c, t)
+		if err != nil {
+			return "", err
+		}
+		if t.ParentID != "" {
+			above = append([]string{t.ParentID}, above...)
+		}
+		above = slices.DeleteFunc(slices.Clone(above), func(a string) bool { return a == t.ID })
+		if len(above) == 0 {
+			tops = append(tops, t)
+		}
+		for _, a := range above {
+			if _, ok := seen[a]; !ok && !slices.Contains(queue, a) {
+				queue = append(queue, a)
+			}
+		}
+	}
+	if len(tops) == 0 {
+		for _, t := range seen {
+			tops = append(tops, t)
+		}
+	}
+	if len(tops) == 0 {
+		return id, nil
+	}
+	oldest := slices.MinFunc(tops, func(a, b domain.Ticket) int {
+		if d := a.CreatedAt.Compare(b.CreatedAt); d != 0 {
+			return d
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	return oldest.ID, nil
+}
