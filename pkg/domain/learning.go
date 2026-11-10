@@ -24,12 +24,16 @@ const (
 	// LearningExpired: the curator will not act on it (JOB-198). It says
 	// nothing about whether the problem happened; recall still finds it.
 	LearningExpired = "expired"
+	// LearningDuplicate: a recurrence of the open learning named by
+	// DuplicateOf (JOB-199). It still counts as an occurrence in a date
+	// window, but the curator reads the kept learning, not this one.
+	LearningDuplicate = "duplicate"
 )
 
 // ValidLearningStatus reports whether s is a learning status.
 func ValidLearningStatus(s string) bool {
 	switch s {
-	case LearningOpen, LearningApplied, LearningRejected, LearningExpired:
+	case LearningOpen, LearningApplied, LearningRejected, LearningExpired, LearningDuplicate:
 		return true
 	}
 	return false
@@ -59,6 +63,12 @@ type Learning struct {
 	// (#274): "helped: ..." or "not_helped: ...".
 	Gate      string    `json:"gate,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	// DuplicateOf is the id of the open learning this one repeats; set
+	// exactly when Status is duplicate (JOB-199).
+	DuplicateOf int64 `json:"duplicate_of,omitempty"`
+	// Duplicates counts the learnings whose DuplicateOf is this id. It is
+	// filled by learn.list, not stored.
+	Duplicates int `json:"duplicates,omitempty"`
 }
 
 // Learning scopes (#264).
@@ -123,6 +133,9 @@ func ValidLearning(l *Learning) error {
 	}
 	if !ValidLearningStatus(l.Status) {
 		return fmt.Errorf("%w: learning status %q", ErrInvalid, l.Status)
+	}
+	if (l.Status == LearningDuplicate) != (l.DuplicateOf != 0) {
+		return fmt.Errorf("%w: learning status duplicate and duplicate_of go together", ErrInvalid)
 	}
 	sc, err := ParseScope(l.Scope)
 	if err != nil {

@@ -13,7 +13,8 @@ export type Stage =
   | 'helped'
   | 'applied'
   | 'rejected'
-  | 'expired';
+  | 'expired'
+  | 'duplicate';
 
 export interface Section {
   stage: Stage;
@@ -32,6 +33,9 @@ export const sections: Section[] = [
   { stage: 'applied', title: 'applied, not evaluated', hint: 'marked applied, no gate result recorded', open: false },
   { stage: 'rejected', title: 'rejected', hint: 'the proposed change was turned down', open: false },
   { stage: 'expired', title: 'expired', hint: 'old and never addressed, the curator no longer reads it', open: false },
+  // Only a duplicate whose kept learning is not loaded lands here; the rest
+  // show inside the learning kept (JOB-199).
+  { stage: 'duplicate', title: 'duplicates', hint: 'repeat a learning that is not in this list', open: false },
 ];
 
 export interface Where {
@@ -59,6 +63,9 @@ export interface Unit {
   kind: string;
   scope: string;
   learnings: Learning[];
+  // Learnings marked a duplicate of one in `learnings` (JOB-199), shown as a
+  // count and listed in the details.
+  duplicates: Learning[];
   // Cited learning ids that are not in the loaded list.
   missing: number[];
   edit?: MemoryEdit;
@@ -100,6 +107,7 @@ export function learningOutcome(l: Learning) {
   if (l.status === 'applied') return 'applied, no gate result recorded';
   if (l.status === 'expired')
     return 'expired, never addressed' + (l.pr ? ' (fix proposed: ' + (whereOf(l.pr)?.text || l.pr) + ')' : '');
+  if (l.status === 'duplicate') return 'duplicate of #' + l.duplicate_of;
   if (l.pr) return 'fix proposed, not merged yet';
   return 'not addressed yet';
 }
@@ -108,6 +116,7 @@ export function stageOf(l: Learning): Stage {
   if (l.status === 'rejected') return 'rejected';
   if (l.status === 'applied') return 'applied';
   if (l.status === 'expired') return 'expired';
+  if (l.status === 'duplicate') return 'duplicate';
   return l.pr ? 'in-flight' : 'awaiting';
 }
 
@@ -115,6 +124,13 @@ const stamp = (value?: string) => (value && !value.startsWith('0001') ? Date.par
 
 export function build(learnings: Learning[], edits: MemoryEdit[]): Unit[] {
   const byID = new Map(learnings.map((l) => [l.id, l]));
+  // A duplicate rides with the learning it repeats, wherever that is shown.
+  const dupsOf = new Map<number, Learning[]>();
+  for (const l of learnings) {
+    if (l.status !== 'duplicate' || !l.duplicate_of || !byID.has(l.duplicate_of)) continue;
+    dupsOf.set(l.duplicate_of, [...(dupsOf.get(l.duplicate_of) || []), l]);
+  }
+  const dupsFor = (ls: Learning[]) => ls.flatMap((l) => dupsOf.get(l.id) || []);
   const cited = new Set<number>();
   const units: Unit[] = [];
   for (const edit of edits) {
@@ -140,6 +156,7 @@ export function build(learnings: Learning[], edits: MemoryEdit[]): Unit[] {
       kind: first?.kind || '',
       scope: first?.scope || (edit.pools || []).map((p) => 'pool:' + p).join(' '),
       learnings: ls,
+      duplicates: dupsFor(ls),
       missing,
       edit,
       search: '',
@@ -147,6 +164,8 @@ export function build(learnings: Learning[], edits: MemoryEdit[]): Unit[] {
   }
   for (const l of learnings) {
     if (cited.has(l.id)) continue;
+    // Shown with the learning it repeats, unless that one is not loaded.
+    if (l.status === 'duplicate' && l.duplicate_of && byID.has(l.duplicate_of)) continue;
     units.push({
       key: 'learning:' + l.id,
       stage: stageOf(l),
@@ -160,6 +179,7 @@ export function build(learnings: Learning[], edits: MemoryEdit[]): Unit[] {
       kind: l.kind,
       scope: l.scope,
       learnings: [l],
+      duplicates: dupsFor([l]),
       missing: [],
       search: '',
     });
@@ -173,6 +193,7 @@ export function build(learnings: Learning[], edits: MemoryEdit[]): Unit[] {
       u.where?.text,
       u.outcome,
       ...u.learnings.flatMap((l) => [l.summary, l.fix, l.ticket, l.session, '#' + l.id]),
+      ...u.duplicates.flatMap((l) => [l.summary, l.ticket, '#' + l.id]),
       u.edit?.pr,
       u.edit?.path,
       ...(u.edit?.pools || []),

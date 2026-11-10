@@ -152,6 +152,12 @@ function LearnRow({ u, now }: { u: ReturnType<typeof build>[number]; now: number
       <p className="learn-problem">
         {u.problem ? <b>{u.problem}</b> : <b className="muted">problem not recorded</b>}
         {u.more > 0 && <span className="muted"> +{u.more} more</span>}
+        {u.duplicates.length > 0 && (
+          <span className="muted">
+            {' '}
+            · {u.duplicates.length} {u.duplicates.length === 1 ? 'duplicate' : 'duplicates'}
+          </span>
+        )}
       </p>
       <p className="learn-fix">
         <span className="muted">{u.fixLabel}</span> {u.fix ? u.fix : <span className="muted">not recorded</span>}
@@ -228,6 +234,25 @@ function LearnRow({ u, now }: { u: ReturnType<typeof build>[number]; now: number
         ))}
         {u.missing.length > 0 && (
           <p className="muted">Also cites {u.missing.map((id) => '#' + id).join(', ')}, not in the loaded list.</p>
+        )}
+        {u.duplicates.length > 0 && (
+          <div className="learn-cited" aria-label="duplicates">
+            <p className="muted">
+              {u.duplicates.length} {u.duplicates.length === 1 ? 'duplicate' : 'duplicates'}: the same problem recorded
+              again. They take the outcome of the learning above.
+            </p>
+            {u.duplicates.map((l) => (
+              <p className="muted mono" key={l.id}>
+                #{l.id} · {l.kind} · {when(l.created_at)}
+                {l.ticket && (
+                  <>
+                    {' · '}
+                    <a href={'?view=trace&ref=' + encodeURIComponent(l.ticket)}>{l.ticket}</a>
+                  </>
+                )}
+              </p>
+            ))}
+          </div>
         )}
         {u.edit && <EditDetails edit={u.edit} />}
       </details>

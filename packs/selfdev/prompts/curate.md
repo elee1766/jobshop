@@ -30,9 +30,20 @@ There are two kinds of edit (#592):
    comments). Learnings with status `expired` (an operator ran `jobshop
    learn expire` on old ones nobody addressed) are not open: do not list or
    gather them. `--status expired` shows them if a recurring problem needs
-   its history. Group learnings that describe the same problem. Skip one-off
+   its history. Group learnings that describe the same problem. A learning
+   with `duplicates: N` in `learn list` stands for a group of N+1: its
+   duplicates (status `duplicate`, `jobshop learn list --duplicate-of <id>`)
+   are not listed with `--status open` and need no reading. Skip one-off
    noise (a single flaky network error); a group needs at least two
-   learnings, or one correction from a human.
+   learnings (a kept learning's size is its `duplicates` plus one), or one
+   correction from a human. For a group you do not act on this pass, keep
+   the most informative learning open and mark the rest with `jobshop learn
+   update <ids> --duplicate-of <kept id>`, so the next pass reads one row
+   with a count. When you apply or reject a group, pass the kept
+   learning's id (to `memory write --learnings` or `learn update`); its
+   duplicates need no update. Mark duplicates only against an open
+   learning: a problem that recurs after its group was applied or rejected
+   stays open, since that recurrence is what you need to see.
 4. For each group pick one bounded edit (add, replace or delete a few
    lines):
    - Memory: scope `global`, `repo/<owner>__<name>`, `pool/<name>`, or

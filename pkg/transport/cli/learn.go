@@ -57,33 +57,36 @@ type learnAddCmd struct {
 func (c learnAddCmd) Run(g *Globals) error { return c.send(g, c.Kind) }
 
 type learnListCmd struct {
-	Since  time.Duration `help:"Only learnings newer than this, e.g. 24h."`
-	Scope  string        `help:"global, repo:<owner/name> or pool:<name>."`
-	Kind   string        `help:"Kind or glob, e.g. failure or review-*."`
-	Status string        `enum:",open,applied,rejected,expired" default:"" help:"open, applied, rejected or expired."`
-	Ticket string        `short:"t" help:"Only learnings about this ticket."`
-	Limit  int           `default:"50" help:"Most learnings to print."`
+	Since       time.Duration `help:"Only learnings newer than this, e.g. 24h."`
+	Scope       string        `help:"global, repo:<owner/name> or pool:<name>."`
+	Kind        string        `help:"Kind or glob, e.g. failure or review-*."`
+	Status      string        `enum:",open,applied,rejected,expired,duplicate" default:"" help:"open, applied, rejected, expired or duplicate."`
+	Ticket      string        `short:"t" help:"Only learnings about this ticket."`
+	DuplicateOf int64         `name:"duplicate-of" help:"Only the duplicates of this learning id."`
+	Limit       int           `default:"50" help:"Most learnings to print."`
 }
 
 func (c learnListCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodLearnList, rpc.LearnListParams{
-		Since: c.Since, Scope: c.Scope, Kind: c.Kind, Status: c.Status, Ticket: c.Ticket, Limit: c.Limit,
+		Since: c.Since, Scope: c.Scope, Kind: c.Kind, Status: c.Status, Ticket: c.Ticket, DuplicateOf: c.DuplicateOf, Limit: c.Limit,
 	}, nil)
 }
 
 // learnUpdateCmd is `jobshop learn update` (#273): the curator records
 // the PR addressing learnings, then applied (merged) or rejected (closed
 // unmerged or reverted; needs the PR). expired needs no PR; --status open
-// reopens an expired one.
+// reopens an expired or duplicate one. --duplicate-of marks the ids as
+// duplicates of an open learning kept instead (JOB-199).
 type learnUpdateCmd struct {
-	IDs      []int64   `arg:"" name:"id" help:"Learning ids."`
-	Status   string    `enum:",open,applied,rejected,expired" default:"" help:"open, applied, rejected or expired."`
-	PR       string    `name:"pr" help:"PR URL that addresses them."`
-	MergedAt time.Time `name:"merged-at" help:"With --status applied: when the PR merged (RFC3339, default now). Starts the curator gate's window."`
+	IDs         []int64   `arg:"" name:"id" help:"Learning ids."`
+	Status      string    `enum:",open,applied,rejected,expired" default:"" help:"open, applied, rejected or expired."`
+	PR          string    `name:"pr" help:"PR URL that addresses them."`
+	DuplicateOf int64     `name:"duplicate-of" help:"Mark the ids as duplicates of this open learning, kept for the curator. Fails if it is not open or is one of the ids."`
+	MergedAt    time.Time `name:"merged-at" help:"With --status applied: when the PR merged (RFC3339, default now). Starts the curator gate's window."`
 }
 
 func (c learnUpdateCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR, MergedAt: c.MergedAt}, nil)
+	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR, DuplicateOf: c.DuplicateOf, MergedAt: c.MergedAt}, nil)
 }
 
 // learnExpireCmd is `jobshop learn expire` (JOB-198).

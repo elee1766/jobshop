@@ -47,6 +47,11 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	if err != nil {
 		return nil, err
 	}
+	for _, l := range cited {
+		if l.Status == domain.LearningDuplicate {
+			return nil, fmt.Errorf("%w: learning %d is a duplicate of %d: cite %d", domain.ErrInvalid, l.ID, l.DuplicateOf, l.DuplicateOf)
+		}
+	}
 	now := c.now()
 	out, err := c.localMemory.Write(ctx, c.store, knowledge.LocalWrite{
 		Dir: c.memoryDir(), Rel: rel, Text: p.Text, Cap: c.memoryCap(),

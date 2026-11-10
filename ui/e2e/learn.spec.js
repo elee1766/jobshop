@@ -18,6 +18,8 @@ const learnings = [
   learning(7, { summary: 'Migration number collided with a parallel PR', created_at: iso(0.2 * day) }),
   learning(8, { kind: 'workaround', summary: 'python3 is not installed', fix: 'Use go or jq', status: 'applied', pr: 'memory:99', created_at: iso(40 * day) }),
   learning(9, { summary: 'Old one-off network error nobody acted on', status: 'expired', created_at: iso(12 * day) }),
+  learning(10, { summary: 'Migration number collided with a parallel PR', status: 'duplicate', duplicate_of: 7, created_at: iso(0.5 * day) }),
+  learning(11, { summary: 'Migration number collided with a parallel PR', status: 'duplicate', duplicate_of: 7, created_at: iso(0.4 * day) }),
   ...Array.from({ length: 14 }, (_, i) => learning(20 + i, { kind: 'workaround', summary: `Open workaround ${i + 1}: flaky tool needs a longer timeout`, fix: 'Retry once with 2x timeout' })),
 ];
 const edits = [
@@ -87,6 +89,15 @@ test('learn filters, pages long sections and keeps long titles inside the viewpo
   await expired.getByRole('button').first().click();
   await expect(expired.locator('.learn-row')).toHaveCount(1);
   await expect(expired).toContainText('Old one-off network error');
+
+  // Duplicates are a count on the learning kept, listed in its details, and never rows of their own.
+  const kept = awaiting.locator('.learn-row', { hasText: 'Migration number collided' });
+  await expect(kept).toHaveCount(1);
+  await expect(kept).toContainText('2 duplicates');
+  await kept.getByText('details', { exact: true }).click();
+  await expect(kept.getByLabel('duplicates')).toContainText('#10');
+  await expect(kept.getByLabel('duplicates')).toContainText('#11');
+  await expect(page.getByRole('group', { name: 'Stage' }).getByRole('button', { name: /^duplicates/ })).toHaveCount(0);
 
   const filter = page.getByLabel('Filter learn');
   await filter.fill('vendorhash');

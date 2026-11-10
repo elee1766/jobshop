@@ -3451,20 +3451,22 @@ Usage: jobshop learn list [flags]
 List learnings, newest first.
 
 Flags:
-  -h, --help              Show context-sensitive help.
-      --root=STRING       Jobshop root directory (holds jobshop.yaml,
-                          the database, sockets and sessions). Default:
-                          nearest ancestor of the cwd containing jobshop.yaml
-                          ($JOBSHOP_ROOT).
-      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
-                          else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                   Show context-sensitive help.
+      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
+                               database, sockets and sessions). Default: nearest
+                               ancestor of the cwd containing jobshop.yaml
+                               ($JOBSHOP_ROOT).
+      --socket=STRING          Socket to talk to. Defaults to the session
+                               CLI socket, else the root's admin socket
+                               ($JOBSHOP_SOCKET).
 
-      --since=DURATION    Only learnings newer than this, e.g. 24h.
-      --scope=STRING      global, repo:<owner/name> or pool:<name>.
-      --kind=STRING       Kind or glob, e.g. failure or review-*.
-      --status=""         open, applied, rejected or expired.
-  -t, --ticket=STRING     Only learnings about this ticket.
-      --limit=50          Most learnings to print.
+      --since=DURATION         Only learnings newer than this, e.g. 24h.
+      --scope=STRING           global, repo:<owner/name> or pool:<name>.
+      --kind=STRING            Kind or glob, e.g. failure or review-*.
+      --status=""              open, applied, rejected, expired or duplicate.
+  -t, --ticket=STRING          Only learnings about this ticket.
+      --duplicate-of=INT-64    Only the duplicates of this learning id.
+      --limit=50               Most learnings to print.
 ```
 
 ## jobshop learn update
@@ -3478,18 +3480,23 @@ Arguments:
   <id> ...    Learning ids.
 
 Flags:
-  -h, --help              Show context-sensitive help.
-      --root=STRING       Jobshop root directory (holds jobshop.yaml,
-                          the database, sockets and sessions). Default:
-                          nearest ancestor of the cwd containing jobshop.yaml
-                          ($JOBSHOP_ROOT).
-      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
-                          else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                   Show context-sensitive help.
+      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
+                               database, sockets and sessions). Default: nearest
+                               ancestor of the cwd containing jobshop.yaml
+                               ($JOBSHOP_ROOT).
+      --socket=STRING          Socket to talk to. Defaults to the session
+                               CLI socket, else the root's admin socket
+                               ($JOBSHOP_SOCKET).
 
-      --status=""         open, applied, rejected or expired.
-      --pr=STRING         PR URL that addresses them.
-      --merged-at=TIME    With --status applied: when the PR merged (RFC3339,
-                          default now). Starts the curator gate's window.
+      --status=""              open, applied, rejected or expired.
+      --pr=STRING              PR URL that addresses them.
+      --duplicate-of=INT-64    Mark the ids as duplicates of this open learning,
+                               kept for the curator. Fails if it is not open or
+                               is one of the ids.
+      --merged-at=TIME         With --status applied: when the PR merged
+                               (RFC3339, default now). Starts the curator gate's
+                               window.
 ```
 
 ## jobshop learn expire
