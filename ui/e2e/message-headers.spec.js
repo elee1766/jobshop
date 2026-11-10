@@ -54,3 +54,25 @@ test('human and agent messages carry sender headers in chat and the session view
     await post(request, 'api/chat/manage', { action: 'archive', id: session.id });
   }
 });
+
+// A ticket turn has no human message: its whole prompt is controller context,
+// so the raw prompt would repeat it and is not offered.
+test('a ticket turn shows its prompt once', async ({ page, request }) => {
+  test.setTimeout(45_000);
+  const pool = process.env.DESK_SCALE_POOL || 'worker';
+  const task = await post(request, 'api/rpc/ticket.create', { title: 'Prompt once ' + crypto.randomUUID(), pool });
+  let holder;
+  await expect
+    .poll(async () => {
+      const shown = await post(request, 'api/rpc/ticket.show', { id: task.id });
+      holder = (shown.history || []).find((row) => row.op === 'claim')?.actor;
+      return shown.ticket.status;
+    }, { timeout: 30_000 })
+    .toBe('closed');
+  await page.goto('./?view=trace&layout=graph&ref=' + holder);
+  await page.getByRole('button', { name: 'Inspect ' + holder, exact: true }).click();
+  const viewer = page.getByRole('region', { name: 'Read-only session' });
+  const turn = viewer.locator('.transcript-row').filter({ hasText: task.id });
+  await expect(turn.locator('.controller-context')).toHaveCount(1);
+  await expect(turn.locator('.raw-prompt')).toHaveCount(0);
+});
