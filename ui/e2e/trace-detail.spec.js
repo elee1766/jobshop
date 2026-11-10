@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails, showTimeline } from './trace-view.js';
 
 // The trace detail pane (JOB-185): summary, now, tabs and grouped events.
 // The live stream is mocked, so this runs against any Desk and writes nothing.
@@ -170,6 +171,7 @@ async function open(page, id, extra = '', opts = {}) {
     });
   });
   await page.goto(`./?view=trace&ref=js-run&inspect=${id}${extra}`);
+  await showDetails(page);
 }
 
 const pane = (page) => page.getByLabel('Ticket details', { exact: true });
@@ -335,9 +337,11 @@ test('a run shows its steps as progress and its inputs', async ({ page }) => {
 test('choosing a bar on the chart opens the events tab on that entry', async ({ page }) => {
   await open(page, 'js-run', '&tab=raw');
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  await showTimeline(page);
   await tl.locator('.tl-row').filter({ hasText: 'Implement #7' }).locator('.tl-seg[data-state="retry"]').click();
   await expect(page).toHaveURL(/inspect=js-dev/);
   await expect(page).not.toHaveURL(/tab=/);
+  await showDetails(page);
   const chosen = pane(page).locator('ol.events > li.chosen');
   await expect(chosen).toHaveCount(1);
   await expect(chosen).toContainText('failed attempt');

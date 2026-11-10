@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails, showTimeline } from './trace-view.js';
 
 // JOB-190: the trace always shows the whole graph from its top ticket. Opening
 // it on a sub-item selects that item, brings it into view and keeps the rows.
@@ -101,10 +102,13 @@ test('opening the timeline on a sub-item shows every row with that one selected 
   await expect(picked.getByRole('button', { name: 'Step 35' })).toHaveAttribute('aria-pressed', 'true');
   // The row sits low in a long list: it is scrolled into the chart.
   await inView(picked, tl.locator('.tl-scroll'), false);
+  await expect(page.getByLabel('Ticket details')).toHaveCount(0);
+  await showDetails(page);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 35');
-  await expect(page.getByLabel('Timeline of js-step35')).toBeVisible();
   await expect(page.getByText('open as graph root')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /graph root/ })).toHaveCount(0);
+  await showTimeline(page);
+  await inView(picked, tl.locator('.tl-scroll'), false);
 
   // Selecting another row keeps the same rows and does not rewrite the ref.
   await tl.getByRole('button', { name: 'Step 36' }).click();
@@ -112,6 +116,7 @@ test('opening the timeline on a sub-item shows every row with that one selected 
   await expect(page).toHaveURL(/inspect=js-step36/);
   await expect(tl.locator('.tl-row')).toHaveCount(count + 1);
   await expect(tl.locator('.tl-row.tl-picked')).toContainText('Step 36');
+  await showDetails(page);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 36');
   await expect(page.getByText('open as graph root')).toHaveCount(0);
 });
@@ -122,6 +127,7 @@ test('?ref=<root>&inspect=<sub-item> shows the same view as ?ref=<sub-item>', as
   await expect(tl.locator('.tl-row')).toHaveCount(count + 1);
   await expect(tl.locator('.tl-row.tl-picked')).toContainText('Step 35');
   await inView(tl.locator('.tl-row.tl-picked'), tl.locator('.tl-scroll'), false);
+  await showDetails(page);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 35');
 });
 
@@ -134,6 +140,6 @@ test('selecting a row keeps every row on screen', async ({ page }) => {
   // again once the selection has been drawn.
   await expect(tl.locator('.tl-row')).toHaveCount(count + 1);
   await expect(tl.locator('.tl-row.tl-picked')).toContainText('Step 3');
+  await showDetails(page);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 3');
-  await expect(tl.locator('.tl-row')).toHaveCount(count + 1);
 });

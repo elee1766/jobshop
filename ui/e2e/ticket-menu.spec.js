@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails } from './trace-view.js';
 
 // JOB-136: ticket context menu on home rows, trace cards and relationship
 // entries. Creates and closes tickets, so only on an isolated controller.
@@ -77,6 +78,7 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await expect(timeline.locator(`button.tl-name[title$="(${child.id})"]`)).toBeVisible();
 
     // Relationships sit behind the relations tab of the detail pane (JOB-185).
+    await showDetails(page);
     await page.getByRole('tablist', { name: 'Ticket detail' }).getByRole('tab', { name: /^relations/ }).click();
     const entry = page.getByRole('region', { name: 'children', exact: true }).getByRole('listitem').filter({ hasText: child.id });
     await expect(entry).toBeVisible();

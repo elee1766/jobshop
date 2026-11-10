@@ -669,8 +669,14 @@ td pre {
   margin-right: 4px;
 }
 .trace-layout { min-width: 0; }
-.trace-layout.watching > .ticket-timeline { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
-.trace-layout.watching { height: calc(100dvh - 62px); min-height: 420px; display: grid; grid-template-rows: minmax(180px, 40%) minmax(0, 1fr); }
+/* The timeline or the details fill the page, never both (#1181). A watched
+   session sits under the timeline at a fixed height, so the chart keeps its
+   size with or without one. The details scroll inside their own box. */
+.trace-layout > .trace-bottom { height: 60dvh; min-height: 320px; }
+.trace-details > .trace-bottom { max-height: calc(100dvh - 110px); min-height: 320px; overflow: auto; overscroll-behavior: contain; }
+.trace-details > .trace-bottom.watching { height: calc(100dvh - 110px); }
+.trace-details > .graph-heading { column-gap: var(--space-4); flex-wrap: nowrap; }
+.trace-details > .graph-heading > .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Proportionate search: the field grows to a readable width, not the bar,
    and shrinks before the bar wraps. */
 .trace-search-bar { flex-wrap: nowrap; }
@@ -893,7 +899,9 @@ output.block { display: block; margin: 6px 0; }
   .trace-layout {
     display: block;
   }
-  .trace-layout.watching { display: block; height: auto; min-height: 0; }
+  .trace-layout > .trace-bottom { height: auto; min-height: 0; }
+  .trace-details > .trace-bottom, .trace-details > .trace-bottom.watching { height: auto; max-height: none; overflow: visible; }
+  .trace-details > .graph-heading { position: sticky; top: 0; z-index: 2; background: var(--tag); }
   .trace-bottom.watching { display: block; }
   .trace-bottom.watching > .inspector { max-height: none; overflow: visible; }
   .session-viewer { position: fixed; z-index: 8; inset: auto 0 46px; height: 76dvh; border: 1px solid var(--column); box-shadow: 0 -8px 24px #0002; }

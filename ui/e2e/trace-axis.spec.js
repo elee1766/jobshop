@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { showDetails } from './trace-view.js';
 
 // JOB-126: trace bars. Creates and closes tickets, so only on an explicitly
 // opted-in disposable controller.
@@ -21,7 +22,6 @@ test('trace bars share a height, keep bounded input and do not overflow', async 
     await page.goto('./?view=trace&ref=' + root.id);
     const timeline = page.getByRole('region', { name: 'Ticket timeline', exact: true });
     await expect(timeline.locator('.tl-row')).toHaveCount(2);
-    await expect(page.locator('.ticket-overview > p').first()).not.toContainText('open');
 
     // Bars: same height, controls the same height, bounded input, no overflow.
     const bars = await page.evaluate(() => {
@@ -40,6 +40,8 @@ test('trace bars share a height, keep bounded input and do not overflow', async 
     expect(bars.input).toBeLessThanOrEqual(420);
     expect(bars.right).toBeLessThanOrEqual(bars.width);
     expect(bars.over).toBeLessThanOrEqual(1);
+    await showDetails(page);
+    await expect(page.locator('.ticket-overview > p').first()).not.toContainText('open');
     // Search stays a plain form: no dropdown while typing.
     await page.getByRole('textbox', { name: 'Trace reference' }).fill(key);
     await expect(page.getByRole('listbox')).toHaveCount(0);
