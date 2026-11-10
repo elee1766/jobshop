@@ -187,10 +187,33 @@ func Release(t *domain.Ticket, c store.Claim, reason string, until, now time.Tim
 	if !until.IsZero() {
 		t.DeferUntil = Stamp(until)
 		d["defer_until"] = t.DeferUntil
+		if err := noteDefer(t, reason); err != nil {
+			return nil, "", err
+		}
 		return d, fmt.Sprintf("Released until %s: %s", t.DeferUntil.Format(time.RFC3339), reason), nil
 	}
 	note, err := StepFailure(t, "released: "+reason, d, now)
 	return d, note, err
+}
+
+// noteDefer records why a step was released until t.DeferUntil, so Desk
+// can show the reason beside the resume time (#1185). Other tickets keep
+// the reason in the history and the "Released until" comment only.
+func noteDefer(t *domain.Ticket, reason string) error {
+	if t.Kind != domain.KindStep {
+		return nil
+	}
+	f, err := domain.DecodeFields[domain.StepFields](*t)
+	if err != nil {
+		return err
+	}
+	f.Defer = &domain.StepDefer{Reason: reason, Until: t.DeferUntil}
+	b, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	t.Fields = b
+	return nil
 }
 
 // Handoff moves t to pool. A held ticket is released and its fence
