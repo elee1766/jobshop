@@ -152,6 +152,13 @@ func (t *tracedStore) Changes(ctx context.Context, after int64, n int) (ChangePa
 	return r, err
 }
 
+func (t *tracedStore) CountRuns(ctx context.Context, pools []string, r TimeRange) (int, error) {
+	start := time.Now()
+	n, err := t.Store.CountRuns(ctx, pools, r)
+	slow(ctx, "count_runs", "", start, err)
+	return n, err
+}
+
 func (t *tracedStore) Apply(ctx context.Context, actor string, g Graph) ([]domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.Apply(ctx, actor, g)

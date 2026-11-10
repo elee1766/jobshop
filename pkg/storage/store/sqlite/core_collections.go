@@ -30,3 +30,8 @@ func (s *Store) WriteTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 
 // Classify maps a constraint failure to a store error naming what.
 func (s *Store) Classify(err error, what string) error { return s.classify(err, what) }
+
+// readDB is the pool for collection reads outside a transaction: the
+// query-only readers when the store has them, else the writer. A read
+// inside a write transaction uses the transaction.
+func (s *Store) readDB() *sql.DB { return s.rdb }

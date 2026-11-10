@@ -311,8 +311,12 @@ func (c *collection) existingUnique(ctx context.Context, tx *sql.Tx, r store.Rec
 	return fmt.Errorf("%w: %s %s: insert ignored but no conflicting record found", domain.ErrConflict, c.spec.Name, r.Key)
 }
 
-func (c *collection) Get(ctx context.Context, key string) (store.Record, error) {
-	rec, err := c.one(ctx, c.s.DB(), c.get(key))
+func (c *collection) Get(ctx context.Context, key string) (rec store.Record, err error) {
+	err = c.read(ctx, func(db *sql.DB) error {
+		var err error
+		rec, err = c.one(ctx, db, c.get(key))
+		return err
+	})
 	return rec, c.notFound(err, key)
 }
 
@@ -364,12 +368,17 @@ func (c *collection) whyNot(ctx context.Context, tx *sql.Tx, r store.Record, now
 	return fmt.Errorf("%w: %s %s at revision %d, not %d", domain.ErrConflict, c.spec.Name, r.Key, cur.Revision, r.Revision)
 }
 
-func (c *collection) List(ctx context.Context, f store.RecordFilter) ([]store.Record, error) {
+func (c *collection) List(ctx context.Context, f store.RecordFilter) (out []store.Record, err error) {
 	q, err := c.listQuery(f)
 	if err != nil {
 		return nil, err
 	}
-	return c.many(ctx, c.s.DB(), q)
+	err = c.read(ctx, func(db *sql.DB) error {
+		var err error
+		out, err = c.many(ctx, db, q)
+		return err
+	})
+	return out, err
 }
 
 func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[string]int, error) {
@@ -377,7 +386,17 @@ func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.s.DB().QueryContext(ctx, text, args...)
+	var out map[string]int
+	err = c.read(ctx, func(db *sql.DB) error {
+		var err error
+		out, err = countRows(ctx, db, text, args)
+		return err
+	})
+	return out, err
+}
+
+func countRows(ctx context.Context, db *sql.DB, text string, args []any) (map[string]int, error) {
+	rows, err := db.QueryContext(ctx, text, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -413,16 +432,8 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
 		for range claimTries {
 			now := c.s.Now()
-			w, err := c.where(f, "")
+			key, err := c.candidate(ctx, tx, f, now)
 			if err != nil {
-				return err
-			}
-			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToSql()
-			if err != nil {
-				return err
-			}
-			var key string
-			if err := tx.QueryRowContext(ctx, text, args...).Scan(&key); err != nil {
 				return c.notFound(err, "claimable record")
 			}
 			rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET holder = ?, lease_until = ?, attempts = attempts + 1, revision = revision + 1, updated_at = ?"+
@@ -436,6 +447,66 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 		return fmt.Errorf("%w: %s: claim lost every race", domain.ErrConflict, c.spec.Name)
 	})
 	return rec, err
+}
+
+// claimQuery is the statement that finds Claim's candidate for f, which
+// names at most one state. An IN over several states and ORDER BY
+// created_at, key made SQLite walk records_created and read every
+// terminal row to find none (JOB-191); with one state, records_state_created
+// gives the order and holds only that state's rows.
+func (c *collection) claimQuery(f store.RecordFilter, now time.Time) (string, []any, error) {
+	w, err := c.where(f, "")
+	if err != nil {
+		return "", nil, err
+	}
+	return bqb.New("SELECT key, created_at FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToSql()
+}
+
+// claimFilters splits f into one filter per state it names, or f itself
+// when it names none.
+func claimFilters(f store.RecordFilter) []store.RecordFilter {
+	if len(f.States) <= 1 {
+		return []store.RecordFilter{f}
+	}
+	out := make([]store.RecordFilter, len(f.States))
+	for i, st := range f.States {
+		out[i] = f
+		out[i].States = []string{st}
+	}
+	return out
+}
+
+// candidate returns the key of the oldest claimable record matching f:
+// the best of one query per state.
+func (c *collection) candidate(ctx context.Context, tx *sql.Tx, f store.RecordFilter, now time.Time) (string, error) {
+	var (
+		best    string
+		bestAt  int64
+		matched bool
+	)
+	for _, g := range claimFilters(f) {
+		text, args, err := c.claimQuery(g, now)
+		if err != nil {
+			return "", err
+		}
+		var (
+			key string
+			at  int64
+		)
+		if err := tx.QueryRowContext(ctx, text, args...).Scan(&key, &at); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return "", err
+		}
+		if !matched || at < bestAt || (at == bestAt && key < best) {
+			best, bestAt, matched = key, at, true
+		}
+	}
+	if !matched {
+		return "", sql.ErrNoRows
+	}
+	return best, nil
 }
 
 func (c *collection) Renew(ctx context.Context, key, holder string, lease time.Duration) (rec store.Record, err error) {
@@ -498,8 +569,12 @@ func (c *collection) Search(ctx context.Context, query string, limit int) ([]sto
 	for _, m := range recallMatch(words) {
 		q := bqb.New("SELECT "+columns("r.")+" FROM "+t+" JOIN records r ON r.collection = "+c.lit()+
 			" AND r.key = "+t+".key WHERE "+t+" MATCH ? ORDER BY bm25("+t+"), r.created_at, r.key LIMIT ?", m, limit)
-		var err error
-		if out, err = c.many(ctx, c.s.DB(), q); err != nil {
+		err := c.read(ctx, func(db *sql.DB) error {
+			var err error
+			out, err = c.many(ctx, db, q)
+			return err
+		})
+		if err != nil {
 			return nil, err
 		}
 		if len(out) > 0 {
@@ -507,4 +582,20 @@ func (c *collection) Search(ctx context.Context, query string, limit int) ([]sto
 		}
 	}
 	return out, nil
+}
+
+// read runs fn on the read pool, repeating it after SQLITE_SCHEMA, which
+// a reader gets while the writer registers another collection's FTS5
+// table (#1069, as recall).
+func (c *collection) read(ctx context.Context, fn func(db *sql.DB) error) error {
+	var err error
+	for try := range schemaTries {
+		if err = fn(c.s.readDB()); !isSchema(err) {
+			break
+		}
+		if try < schemaTries-1 && !busyWait(ctx, try) {
+			break
+		}
+	}
+	return err
 }

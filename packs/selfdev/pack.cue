@@ -125,6 +125,9 @@ import (
 		for name, trigger in _github.triggers {"\(name)": trigger}
 		evaluate: {
 			when: edits: {runs: V.evaluate_runs, age: V.evaluate_age}
+			// The conditions only change with a merged edit or an hour of
+			// age, so a tick-rate poll is waste (JOB-191).
+			fallback: "10m"
 			handler: "triggers.star:start"
 			args: {workflow: "evaluate", key: "evaluate", title: "Evaluate recent runs and edits"}
 			max_open: 1

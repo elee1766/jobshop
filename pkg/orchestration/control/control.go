@@ -177,6 +177,8 @@ type Controller struct {
 	slotsOnce  sync.Once
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
 	writeKeysPrunedAt time.Time
+	// storeMaintainedAt is the last planner statistics refresh (JOB-191); tick-only.
+	storeMaintainedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
@@ -622,6 +624,7 @@ func (c *Controller) tick() {
 	c.passStep(ctx, cfg, "prune_sync", c.pruneSync)
 	c.passStep(ctx, cfg, "prune_artifacts", c.pruneArtifacts)
 	c.passStep(ctx, cfg, "compress_journals", c.maybeCompressJournals)
+	c.passStep(ctx, cfg, "maintain_store", c.maintainStore)
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms

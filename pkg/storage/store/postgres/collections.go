@@ -397,16 +397,8 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		for range claimTries {
 			now := c.s.Now()
-			w, err := c.where(f)
+			key, err := c.candidate(ctx, tx, f, now)
 			if err != nil {
-				return err
-			}
-			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToPgsql()
-			if err != nil {
-				return err
-			}
-			var key string
-			if err := tx.QueryRowContext(ctx, text, args...).Scan(&key); err != nil {
 				return c.notFound(err, "claimable record")
 			}
 			rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET holder = ?, lease_until = ?, attempts = attempts + 1, revision = revision + 1, updated_at = ?"+
@@ -420,6 +412,65 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 		return fmt.Errorf("%w: %s: claim lost every race", domain.ErrConflict, c.spec.Name)
 	})
 	return rec, err
+}
+
+// claimQuery is the statement that finds Claim's candidate for f, which
+// names at most one state, so records_state_created gives the order and
+// holds only that state's rows (JOB-191, as SQLite). With several states
+// the planner can walk created_at order through every terminal row.
+func (c *collection) claimQuery(f store.RecordFilter, now time.Time) (string, []any, error) {
+	w, err := c.where(f)
+	if err != nil {
+		return "", nil, err
+	}
+	return bqb.New("SELECT key, created_at FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToPgsql()
+}
+
+// claimFilters splits f into one filter per state it names, or f itself
+// when it names none.
+func claimFilters(f store.RecordFilter) []store.RecordFilter {
+	if len(f.States) <= 1 {
+		return []store.RecordFilter{f}
+	}
+	out := make([]store.RecordFilter, len(f.States))
+	for i, st := range f.States {
+		out[i] = f
+		out[i].States = []string{st}
+	}
+	return out
+}
+
+// candidate returns the key of the oldest claimable record matching f:
+// the best of one query per state.
+func (c *collection) candidate(ctx context.Context, tx *sql.Tx, f store.RecordFilter, now time.Time) (string, error) {
+	var (
+		best    string
+		bestAt  int64
+		matched bool
+	)
+	for _, g := range claimFilters(f) {
+		text, args, err := c.claimQuery(g, now)
+		if err != nil {
+			return "", err
+		}
+		var (
+			key string
+			at  int64
+		)
+		if err := tx.QueryRowContext(ctx, text, args...).Scan(&key, &at); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return "", err
+		}
+		if !matched || at < bestAt || (at == bestAt && key < best) {
+			best, bestAt, matched = key, at, true
+		}
+	}
+	if !matched {
+		return "", sql.ErrNoRows
+	}
+	return best, nil
 }
 
 func (c *collection) Renew(ctx context.Context, key, holder string, lease time.Duration) (rec store.Record, err error) {

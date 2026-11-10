@@ -102,12 +102,16 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		if p.ID != 0 && e.ID != p.ID {
 			continue
 		}
-		due, after, err := knowledge.EditDue(ctx, c.store, e, runs, age, now)
+		due, err := knowledge.EditDue(ctx, c.store, e, runs, age, now)
 		if err != nil {
 			return nil, err
 		}
 		if !due && p.ID == 0 {
 			continue
+		}
+		after, err := knowledge.MeasureEdit(ctx, c.store, e, now)
+		if err != nil {
+			return nil, err
 		}
 		u, err := knowledge.SettleEdit(ctx, c.store, e, after, now)
 		if err != nil {
@@ -147,7 +151,7 @@ func (c *Controller) editsHold(ctx context.Context, w config.EditsWhen, now time
 	}
 	age := config.Duration(w.Age, gateAge)
 	for _, e := range edits {
-		due, _, err := knowledge.EditDue(ctx, c.store, e, runs, age, now)
+		due, err := knowledge.EditDue(ctx, c.store, e, runs, age, now)
 		if err != nil || due {
 			return "", err
 		}

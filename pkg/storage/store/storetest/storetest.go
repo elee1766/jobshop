@@ -55,6 +55,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"LabelsCommentsHistory", testLabelsCommentsHistory},
 		{"CommentsFor", testCommentsFor},
 		{"HeldAt", testHeldAt},
+		{"CountRuns", testCountRuns},
 		{"CreateGraphAtomic", testCreateGraphAtomic},
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
