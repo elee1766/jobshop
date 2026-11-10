@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/gfx-labs/jobshop/compare/v0.10.0...v0.10.1) (2026-11-10)
+
+
+### Features
+
+* **desk:** trace shows the whole graph with the opened ticket selected (JOB-190) ([#1170](https://github.com/gfx-labs/jobshop/issues/1170)) ([ad3274b](https://github.com/gfx-labs/jobshop/commit/ad3274b34c760271f1ccd03157457087f6ed2692))
+
 ## [0.10.0](https://github.com/elee1766/jobshop/compare/v0.9.34...v0.10.0) (2026-11-10)
 
 
