@@ -47,6 +47,10 @@ type Session struct {
 	LastClaim time.Time
 	Created   time.Time
 	Cordon    string // store.Cordon reason, "" when in rotation
+	// Exempt: a session resumed from a park (JOB-189). It holds a slot but
+	// is never cordoned for being surplus, so a pool one over its
+	// max_sessions does not cordon it.
+	Exempt bool
 }
 
 // Plan is what one pool needs this tick.
@@ -62,7 +66,12 @@ type Plan struct {
 // starts the rest. Manual and drain cordons are never lifted here.
 func ForPool(desired int, sessions []Session) Plan {
 	var active, scaled []Session
+	exempt := 0
 	for _, s := range sessions {
+		if s.Exempt && s.Cordon == "" {
+			exempt++
+			continue
+		}
 		switch s.Cordon {
 		case "":
 			active = append(active, s)
@@ -86,7 +95,7 @@ func ForPool(desired int, sessions []Session) Plan {
 		}
 		return p
 	}
-	short := desired - len(active)
+	short := desired - len(active) - exempt
 	// Lift the busiest first: a working session is the furthest from ending.
 	slices.SortStableFunc(scaled, func(a, b Session) int {
 		if a.Idle != b.Idle {
@@ -98,13 +107,13 @@ func ForPool(desired int, sessions []Session) Plan {
 		return b.LastClaim.Compare(a.LastClaim)
 	})
 	for _, s := range scaled {
-		if short == 0 {
+		if short <= 0 {
 			break
 		}
 		p.Uncordon = append(p.Uncordon, s.ID)
 		short--
 	}
-	p.Start = short
+	p.Start = max(short, 0)
 	return p
 }
 

@@ -1065,6 +1065,21 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		}
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
+	// A "release" file makes the turn hand its ticket back with a plain
+	// release, once; a "defer" file does it as a timed deferral (JOB-189).
+	if _, err := os.Stat("release"); err == nil && os.Remove("release") == nil {
+		if err := c.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{Reason: "dropping it"}, nil); err != nil {
+			return acp.PromptResponse{}, err
+		}
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
+	if _, err := os.Stat("defer"); err == nil && os.Remove("defer") == nil {
+		until := time.Now().Add(time.Hour)
+		if err := c.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{Reason: "window opens later", Until: &until, TimeWait: true}, nil); err != nil {
+			return acp.PromptResponse{}, err
+		}
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
 	// An "outcome" file holds the outcome word to close with (#385).
 	var outcome string
 	if b, err := os.ReadFile("outcome"); err == nil {

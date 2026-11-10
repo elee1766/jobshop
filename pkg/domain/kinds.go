@@ -89,16 +89,22 @@ type SessionFields struct {
 	// Suspended: the host was stopped while idle and the session stays
 	// open; the next message resumes it with session/load (#606).
 	Suspended bool `json:"suspended,omitempty"`
-	// Tickets counts the tickets a ticket-pool session has worked, for the
-	// pool's max_tickets, and LastTicket is the last one counted, so a
-	// ticket claimed again after a restart is not counted twice (JOB-189).
-	Tickets    int    `json:"tickets,omitempty"`
-	LastTicket string `json:"last_ticket,omitempty"`
+	// Tickets counts the tickets the session closed, for the pool's
+	// max_tickets. Claimed is the ticket it holds and has not counted yet:
+	// it counts once that ticket is closed, with any resolution, and a
+	// release counts nothing (JOB-189).
+	Tickets int    `json:"tickets,omitempty"`
+	Claimed string `json:"claimed,omitempty"`
 	// Parked is the ticket a suspended single-use session waits on (a wait
-	// with resume). Set with Suspended. The supervisor resumes the session
-	// when the ticket is ready and the pool has a free slot, and the
-	// session ends when the ticket is gone (JOB-189).
+	// with resume, or a timed defer), assigned to the session. Set with
+	// Suspended. The supervisor resumes the session when the ticket is
+	// ready, oldest first, and the session ends when the ticket closes or
+	// is reassigned (JOB-189).
 	Parked string `json:"parked,omitempty"`
+	// Resumed marks a session resumed from a park until it closes that
+	// ticket. The scaler never cordons it as surplus, so the pool can run
+	// one over max_sessions while it finishes (JOB-189).
+	Resumed bool `json:"resumed,omitempty"`
 	// Operator is the last human who sent the session a message, so a
 	// question a chat answers for them records them as from (JOB-52).
 	Operator string `json:"operator,omitempty"`

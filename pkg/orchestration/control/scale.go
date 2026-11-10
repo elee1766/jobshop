@@ -98,11 +98,18 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 		if err != nil {
 			continue
 		}
-		// Parked single-use sessions (JOB-189) have no host and take no
-		// slot. Resume the ones whose ticket is ready while slots are free.
-		if len(parked) > 0 && !c.poolDrained(name) && c.resumeReady(ctx, name, p, len(sessions), parked) > 0 {
-			if sessions, working, parked, err = c.scaleSessions(ctx, name); err != nil {
-				continue
+		// Suspended single-use sessions (JOB-189) have no host and take no
+		// slot. Resume the ready ones, oldest first. A resume may take the
+		// pool one over max_sessions, never past the host limit.
+		if len(parked) > 0 && !c.poolDrained(name) {
+			hostFree := -1
+			if cfg.Limits.MaxSessions > 0 {
+				hostFree = max(cfg.Limits.MaxSessions-c.hostCounted(ctx, cfg), 0)
+			}
+			if c.resumeReady(ctx, name, p, len(sessions), hostFree, parked) > 0 {
+				if sessions, working, parked, err = c.scaleSessions(ctx, name); err != nil {
+					continue
+				}
 			}
 		}
 		open += len(sessions)
@@ -174,8 +181,8 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 // scaleSessions lists a pool's open sessions and how many hold a ticket.
 // Idle is read before the caller reads ready: a claim in between then
 // drops the ticket from ready instead of counting it twice (#102).
-// Suspended single-use sessions that wait on a ticket (JOB-189) are not
-// in the list: they come back as parked.
+// Suspended sessions take no slot (JOB-189): they are not in the list.
+// Those parked on a ticket come back as parked.
 func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions []scaleplan.Session, working int, parked []parkedSession, err error) {
 	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 	if err != nil {
@@ -185,10 +192,13 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions [
 	for _, t := range open {
 		s := scaleplan.Session{ID: t.ID, Created: t.CreatedAt, LastClaim: t.CreatedAt}
 		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
-			if f.Suspended && f.Parked != "" {
-				parked = append(parked, parkedSession{ID: t.ID, Ticket: f.Parked})
+			if f.Suspended {
+				if f.Parked != "" {
+					parked = append(parked, parkedSession{ID: t.ID, Ticket: f.Parked})
+				}
 				continue
 			}
+			s.Exempt = f.Resumed
 			if f.Cordoned != nil {
 				s.Cordon = f.Cordoned.Reason
 			}

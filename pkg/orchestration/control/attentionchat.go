@@ -261,7 +261,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config
 		if p.MaxSessions > 0 {
 			// Pre-started chats take pool slots, never the human one.
 			n, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
-			if err != nil || len(n) >= p.MaxSessions {
+			if err != nil || countedSessions(n) >= p.MaxSessions {
 				return
 			}
 		}

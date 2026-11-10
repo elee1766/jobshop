@@ -635,6 +635,10 @@ type SessionInfo struct {
 	// Cordon is the session's cordon reason (scale, manual, drain), empty
 	// while in rotation (#281).
 	Cordon string `json:"cordon,omitempty"`
+	// Suspended: the host is stopped and the session takes no pool or host
+	// slot (JOB-189). Parked names the ticket a single-use session waits on.
+	Suspended bool   `json:"suspended,omitempty"`
+	Parked    string `json:"parked,omitempty"`
 	// Crashes counts unplanned host restarts in the crash window.
 	Crashes int `json:"crashes,omitempty"`
 	// BackoffUntil is set while the session waits out a provider rate limit.

@@ -850,12 +850,12 @@ func (r *runner) saveFields(f domain.SessionFields) error {
 		shipped := cur.ShippedSeq
 		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
 		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
-		tickets, lastTicket, parked := cur.Tickets, cur.LastTicket, cur.Parked
+		tickets, claimed, parked, resumed := cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
 		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
 		cur.Named, cur.Archived, cur.DisplayName = named, archived, name
-		cur.Tickets, cur.LastTicket, cur.Parked = tickets, lastTicket, parked
+		cur.Tickets, cur.Claimed, cur.Parked, cur.Resumed = tickets, claimed, parked, resumed
 	})
 }
 
@@ -909,10 +909,13 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// keeps it open and out of rotation.
 		cordon := r.c.sessionCordon(ctx, r.id)
 		if pool.MaxTickets > 0 {
-			// A single-use session (JOB-189) waits out a ticket parked on
-			// a wait with resume in suspension, taking no slot.
-			if pt := r.parkedTicket(ctx); pt != "" && r.idle() {
-				return r.park(nc, pt)
+			// A single-use session (JOB-189) counts the ticket it closed. One
+			// it released onto a wait or a timed defer that hands it back
+			// parks the session: suspended, in no slot count.
+			if r.settleClaimed(ctx) {
+				if pt := r.parkedTicket(ctx); pt != "" {
+					return r.park(nc, pt)
+				}
 			}
 			if cordon == nil && r.ticketsWorked(ctx) >= pool.MaxTickets {
 				cordon = &domain.Cordon{Reason: domain.CordonTickets, By: "controller", At: r.c.now()}
@@ -984,7 +987,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		r.lastClaim = r.c.now()
 		r.mu.Unlock()
 		if pool.MaxTickets > 0 {
-			r.countTicket(ctx, t.ID)
+			r.markClaimed(ctx, t.ID)
 		}
 		r.setTurnTicket(t.ID)
 		comments, err := store.Comments(ctx, r.c.store, t.ID)
