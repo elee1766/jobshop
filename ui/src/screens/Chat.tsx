@@ -6,7 +6,7 @@ import type { SessionInfo, SessionSendResult } from '../../../packages/jobshop-c
 import { client } from '../lib/api.ts';
 import { isLargePaste, payload, previewOf, revoke, validate, type Attachment } from '../lib/attachments.ts';
 import { createSearcher, type SearchSpec } from '../lib/search.ts';
-import { sessionActivity, type PendingMessage } from '../lib/session.ts';
+import { sessionActivity, turnPhase, type PendingMessage } from '../lib/session.ts';
 import { useSessionFrames } from '../lib/useSessionFrames.ts';
 import { useDeskRoute } from '../lib/route.ts';
 import { navigate, openTrace, setChatParam, setFilter } from '../state/actions.ts';
@@ -93,6 +93,8 @@ export function Chat({ onHide }: { onHide: () => void }) {
   const submittedNew = useRef(false);
 
   const activity = sessionActivity(frames, active?.state);
+  // The host's busy flag covers a reload whose loaded frames show no turn.
+  const phase = turnPhase(frames, active?.state === 'working');
   const focusComposer = () => requestAnimationFrame(() => composer.current?.focus());
 
   function putAttachments(next: Attachment[]) {
@@ -465,7 +467,14 @@ export function Chat({ onHide }: { onHide: () => void }) {
               </p>
             )}
             {active && (
-              <Transcript key={active.id} frames={frames} viewport={transcript} pending={pending} onOlder={prepend} />
+              <Transcript
+                key={active.id}
+                frames={frames}
+                viewport={transcript}
+                pending={pending}
+                phase={phase}
+                onOlder={prepend}
+              />
             )}
             {commands.map((entry, i) => (
               <p className="tool mono" key={i}>

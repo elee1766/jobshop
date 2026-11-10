@@ -4,7 +4,7 @@ import type { SessionEvent } from '../../../packages/jobshop-client/rpc.js';
 import { md } from '../../kit/markdown.js';
 import { client } from '../lib/api.ts';
 import { reconcile } from '../lib/reconcile.ts';
-import type { PendingMessage } from '../lib/session.ts';
+import { turnLabel, type PendingMessage, type TurnPhase } from '../lib/session.ts';
 
 type Message = SessionEvent & { key: string; pending?: PendingMessage };
 
@@ -51,6 +51,8 @@ function build(frames: SessionEvent[], pending: PendingMessage[], rowKeys: Map<n
   return out;
 }
 
+const PHASE_HEIGHT = 24;
+
 const dataURL = (image: { mime_type: string; data: string }) => 'data:' + image.mime_type + ';base64,' + image.data;
 
 // Who a row belongs to (JOB-137). A turn_start with an operator message is
@@ -80,6 +82,7 @@ export function Transcript({
   viewport,
   pending = [],
   agent = 'agent',
+  phase = null,
   onOlder,
 }: {
   frames: SessionEvent[];
@@ -87,6 +90,8 @@ export function Transcript({
   pending?: PendingMessage[];
   // The agent's label in its sender header: its pool or agent name.
   agent?: string;
+  // What the agent is doing while a turn runs; null when idle (JOB-192).
+  phase?: TurnPhase | null;
   onOlder: (older: SessionEvent[]) => void;
 }) {
   const rowKeys = useRef(new Map<number, string>());
@@ -113,6 +118,8 @@ export function Transcript({
     getItemKey: (index) => messages[index].key,
     estimateSize: () => 90,
     paddingStart: 28,
+    // Room for the turn indicator, so it follows the end like a row.
+    paddingEnd: PHASE_HEIGHT,
     anchorTo: 'end',
     followOnAppend: true,
     scrollEndThreshold: 80,
@@ -243,6 +250,11 @@ export function Transcript({
           </div>
         );
       })}
+      {phase && (
+        <div className="turn-phase muted" data-phase={phase.kind} style={{ height: PHASE_HEIGHT + 'px' }}>
+          {turnLabel(phase)}
+        </div>
+      )}
     </div>
   );
 }

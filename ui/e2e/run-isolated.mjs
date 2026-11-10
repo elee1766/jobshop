@@ -86,7 +86,7 @@ function playwright(args, extraEnv = {}) {
   return spawnSync('npx', ['playwright', 'test', ...args], {
     cwd: ui,
     stdio: 'inherit',
-    env: { ...env, DESK_URL: desk, DESK_MUTATE: '1', DESK_LINK_WORKFLOW: 'link-acceptance', ...extraEnv },
+    env: { ...env, DESK_URL: desk, DESK_MUTATE: '1', DESK_LINK_WORKFLOW: 'link-acceptance', DESK_AGENT_DIR: work, ...extraEnv },
   }).status ?? 1;
 }
 
@@ -155,7 +155,7 @@ desk:
   await until('desk', reachable(`${desk}/api/embeds`));
   await until('the embed fixture', reachable('http://127.0.0.1:7498/seen'));
 
-  code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', 'browse.spec.js', 'browse-live.spec.js', '--workers=2']);
+  code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', 'browse.spec.js', 'browse-live.spec.js', 'turn-phase.spec.js', '--workers=2']);
   // It scales the shared worker pool, so the two projects run one at a time.
   if (code === 0) code = playwright(['pool-controls.spec.js', '--workers=1']);
   // The reload spec rewrites this root's config and reloads it, so it runs

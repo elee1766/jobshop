@@ -1625,3 +1625,7 @@ fieldset.browse-props {
     min-height: 40px;
   }
 }
+
+/* The turn indicator sits in the room the transcript reserves under its last
+   row, so it appearing or changing never moves the rows (JOB-192). */
+.turn-phase { position: absolute; left: 0; right: 0; bottom: 0; padding-left: var(--space-3); font-size: 12px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
