@@ -18,5 +18,6 @@
   gasserver and users without the plugin still build. CI builds the
   fallback's `goModules` to keep the pin honest. The two builds give
   different store paths.
-- CI runs on GitHub-hosted `ubuntu-latest` (free for public repos), switched
-  back from Ubicloud on 2026-11-05.
+- CI runs on Ubicloud runners again since 2026-11-10, after GitHub-hosted
+  (2026-11-05) and Namespace (2026-11-06, too expensive). hestia caches
+  each package derivation in the Actions cache.
