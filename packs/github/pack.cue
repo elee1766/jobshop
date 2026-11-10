@@ -19,7 +19,6 @@ package github
 		refinery_sessions:      *1 | int & >=0
 		refinery_model:         *"" | string
 		refinery_effort:        *"" | string
-		dev_pool:               *"\(P)dev" | string
 		dev_model:              *"" | string
 		dev_effort:             *"" | string
 		dev_sonnet_sessions:    *1 | int & >=0
@@ -179,7 +178,6 @@ package github
 		{name: "recall", at: "system", file: "\(V.asset_prefix)prompts/rules/recall.md"},
 		{name: "escalate-policy", at: "system", file: "\(V.asset_prefix)prompts/rules/escalate-policy.md"},
 		{name: "learn-nudge", at: "after", file: "\(V.asset_prefix)prompts/rules/learn-nudge.md"},
-		{name: "dev-pool", at: "system", match: {pools: ["plan", "dev", "dev-sonnet"]}, file: "\(V.asset_prefix)prompts/rules/dev-pool.md"},
 		...,
 	]
 
@@ -196,7 +194,7 @@ package github
 	_star: "\(V.asset_prefix)workflows.star"
 	workflows: {
 		"pr-work": _workflow & {
-			vars: ["issue", "dev_pool"]
+			vars: ["issue"]
 			issue:   "issue"
 			repo:    V.repo
 			tracker: V.tracker
@@ -206,7 +204,7 @@ package github
 			on_step_completed: "\(_star):pr_work_completed"
 		}
 		"pr-work-linear": _workflow & {
-			vars: ["issue", "dev_pool"]
+			vars: ["issue"]
 			issue:             "issue"
 			repo:              V.repo
 			tracker:           "linear"

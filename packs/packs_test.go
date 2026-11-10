@@ -215,3 +215,49 @@ func TestPacks(t *testing.T) {
 	}
 	assert.Equal(t, domain.GuardAllow, guard("fix-301").Decision)
 }
+
+// pr-work routes before it implements: the route step's outcome picks the
+// pool of the one implement step, and no step is made for the other route.
+func TestPRWorkRoutes(t *testing.T) {
+	server := httptest.NewServer(&fakeGitHub{})
+	defer server.Close()
+	c := controltest.Start(t, packRoot(t, server.URL), control.Options{})
+	steps := func(run string) []domain.Ticket {
+		var r rpc.RunResult
+		c.Call(rpc.MethodRunShow, rpc.IDParams{ID: run}, &r)
+		return r.Steps
+	}
+	for outcome, pool := range map[string]string{"scoped": "github-dev-sonnet", "primary": "github-dev"} {
+		var started rpc.RunResult
+		c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "github-pr-work", Key: "route-" + outcome, Vars: map[string]string{"issue": "7"}}, &started)
+		run := started.Run.ID
+		c.PassUntil(func() bool { return len(steps(run)) == 1 }, "no route step")
+		route := steps(run)[0]
+		assert.Equal(t, "github-triage", route.Pool)
+		c.Call(rpc.MethodClaim, rpc.ClaimParams{ID: route.ID, Holder: "s1"}, nil)
+		c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: route.ID, Outcome: outcome}, nil)
+		c.PassUntil(func() bool { return len(steps(run)) == 2 }, "no implement step after route "+outcome)
+		implement := steps(run)[1]
+		f, err := domain.DecodeFields[domain.StepFields](implement)
+		require.NoError(t, err)
+		assert.Equal(t, "implement", f.Step)
+		assert.Equal(t, pool, implement.Pool, outcome)
+		c.Call(rpc.MethodRunCancel, rpc.IDParams{ID: run}, nil)
+	}
+	// A word the router does not know makes no step: the run waits on a person.
+	var started rpc.RunResult
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "github-pr-work", Key: "route-unknown", Vars: map[string]string{"issue": "7"}}, &started)
+	run := started.Run.ID
+	c.PassUntil(func() bool { return len(steps(run)) == 1 }, "no route step")
+	route := steps(run)[0]
+	c.Call(rpc.MethodClaim, rpc.ClaimParams{ID: route.ID, Holder: "s1"}, nil)
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: route.ID, Outcome: "luna"}, nil)
+	c.PassUntil(func() bool {
+		var r rpc.RunResult
+		c.Call(rpc.MethodRunShow, rpc.IDParams{ID: run}, &r)
+		f, err := domain.DecodeFields[domain.RunFields](r.Run)
+		require.NoError(t, err)
+		return f.State == domain.RunNeedsHuman
+	}, "unknown route did not escalate")
+	assert.Len(t, steps(run), 1)
+}
