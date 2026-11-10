@@ -1172,6 +1172,7 @@ export interface PoolScale {
   idle: number;
   cordoned: number;
   drained?: boolean;
+  parked?: number;
 }
 
 export interface PoolScaleParams {

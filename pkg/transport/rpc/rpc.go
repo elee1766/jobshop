@@ -1018,6 +1018,9 @@ type PoolScale struct {
 	Idle     int      `json:"idle"`
 	Cordoned int      `json:"cordoned"`
 	Drained  bool     `json:"drained,omitempty"`
+	// Parked counts suspended single-use sessions waiting on a ticket
+	// (max_tickets). They are not in Open and take no slot.
+	Parked int `json:"parked,omitempty"`
 }
 
 // PoolScaleParams sets a pool's manual target, or with Auto returns it to

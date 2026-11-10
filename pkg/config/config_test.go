@@ -124,6 +124,22 @@ func TestParsePoolAdmin(t *testing.T) {
 	assert.False(t, c.Pools["p"].Allows("drain"))
 }
 
+// TestParseMaxTickets (JOB-189): max_tickets is a count for ticket pools.
+func TestParseMaxTickets(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n"
+	c, err := Parse([]byte(base + "    max_tickets: 1\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 1, c.Pools["p"].MaxTickets)
+	c, err = Parse([]byte(base))
+	require.NoError(t, err)
+	assert.Zero(t, c.Pools["p"].MaxTickets, "unlimited by default")
+
+	_, err = Parse([]byte(base + "    max_tickets: -1\n"))
+	require.ErrorContains(t, err, "max_tickets must be >= 0")
+	_, err = Parse([]byte(base + "    type: chat\n    max_tickets: 1\n"))
+	require.ErrorContains(t, err, "max_tickets does not apply to chat pools")
+}
+
 func TestParseTriggers(t *testing.T) {
 	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  dev:\n    agent: a\n    dir: /w\n"
 	c, err := Parse([]byte(base + `triggers:

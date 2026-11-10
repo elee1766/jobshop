@@ -89,6 +89,16 @@ type SessionFields struct {
 	// Suspended: the host was stopped while idle and the session stays
 	// open; the next message resumes it with session/load (#606).
 	Suspended bool `json:"suspended,omitempty"`
+	// Tickets counts the tickets a ticket-pool session has worked, for the
+	// pool's max_tickets, and LastTicket is the last one counted, so a
+	// ticket claimed again after a restart is not counted twice (JOB-189).
+	Tickets    int    `json:"tickets,omitempty"`
+	LastTicket string `json:"last_ticket,omitempty"`
+	// Parked is the ticket a suspended single-use session waits on (a wait
+	// with resume). Set with Suspended. The supervisor resumes the session
+	// when the ticket is ready and the pool has a free slot, and the
+	// session ends when the ticket is gone (JOB-189).
+	Parked string `json:"parked,omitempty"`
 	// Operator is the last human who sent the session a message, so a
 	// question a chat answers for them records them as from (JOB-52).
 	Operator string `json:"operator,omitempty"`
@@ -129,6 +139,10 @@ const (
 	CordonManual = "manual"
 	// CordonDrain: `session drain`; the session ends drained once idle.
 	CordonDrain = "drain"
+	// CordonTickets: the session worked its pool's max_tickets tickets, so
+	// it claims nothing new and ends ticket_limit once it holds nothing
+	// (JOB-189). The runner derives it; it is never stored.
+	CordonTickets = "tickets"
 )
 
 // Cordon records why and by whom a session was cordoned.

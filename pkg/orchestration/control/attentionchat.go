@@ -405,7 +405,14 @@ func (r *runner) suspended() bool {
 			if t.Status == domain.StatusClosed || !f.Suspended {
 				return true
 			}
-			if len(r.inbox(r.ctx, false)) > 0 {
+			if f.Parked != "" {
+				// A parked single-use session (JOB-189) resumes when the
+				// supervisor finds a free slot, not for a message. It ends
+				// at once when its ticket or pool is gone.
+				if _, ended := r.parkEnd(r.ctx, f); ended {
+					return true
+				}
+			} else if len(r.inbox(r.ctx, false)) > 0 {
 				if err := r.c.updateSessionFields(r.ctx, r.id, func(f *domain.SessionFields) { f.Suspended = false }); err == nil {
 					return true
 				}
