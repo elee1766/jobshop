@@ -1131,6 +1131,12 @@ output.block { display: block; margin: 6px 0; }
 .tl-legend li { display: flex; align-items: center; gap: var(--space-2); }
 .tl-swatch { display: inline-block; flex: none; width: 14px; height: 10px; border: 1px solid var(--column); background: var(--tl-queued); }
 .tl-swatch[data-state="working"], .tl-seg[data-state="working"] { background: var(--tl-working); }
+/* A claim with turn rows (JOB-184): the bar is the held color, in thin
+   vertical lines, and each turn on it is the solid working color. The
+   pattern, not the color, tells time held with no turn from time in one. */
+.tl-swatch[data-state="held"], .tl-seg[data-state="working"][data-turns] { background: repeating-linear-gradient(90deg, var(--tl-working) 0 1px, color-mix(in srgb, var(--tl-working) 28%, var(--paper)) 1px 4px); }
+.tl-swatch[data-state="lost"], .tl-seg[data-state="working"][data-live="lost"] { background: repeating-linear-gradient(-45deg, var(--warn) 0 3px, var(--paper) 3px 6px); border: 1px solid var(--warn); }
+.tl-seg[data-live="lost"] .tl-turn { background: var(--warn); }
 .tl-swatch[data-state="waiting"], .tl-seg[data-state="waiting"] { background: repeating-linear-gradient(135deg, var(--tl-waiting) 0 4px, color-mix(in srgb, var(--tl-waiting) 55%, var(--paper)) 4px 8px); }
 .tl-swatch[data-state="human"], .tl-seg[data-state="human"] { background: var(--tl-human); }
 .tl-swatch[data-state="deferred"], .tl-seg[data-state="deferred"] { background: repeating-linear-gradient(135deg, var(--tl-deferred) 0 4px, color-mix(in srgb, var(--tl-deferred) 45%, var(--paper)) 4px 8px); }
@@ -1162,6 +1168,12 @@ span.tl-fold { display: inline-block; }
 .tl-seg { position: absolute; top: 50%; transform: translateY(-50%); min-width: 3px; padding: 0; border: 0; border-radius: 0; }
 .tl-seg:focus-visible, .tl-seg[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 1; }
 .tl-seg[data-open] { border-right: 2px dotted var(--ink); }
+.tl-turn { position: absolute; top: 0; bottom: 0; background: var(--tl-working); pointer-events: none; }
+/* Open bar of a session in a turn now: a ring and a slow breath. The ring
+   stays with reduced motion, so the state is not told by motion alone. */
+.tl-seg[data-live="running"] { box-shadow: 0 0 0 1px var(--paper), 0 0 0 3px var(--tl-working); animation: tl-breathe 2.4s ease-in-out infinite; }
+@keyframes tl-breathe { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .tl-seg[data-live="running"] { animation: none; } }
 .tl-end { position: absolute; top: 50%; width: 0; transform: translateY(-50%); border-right: 3px solid var(--tl-done); pointer-events: none; }
 .tl-end[data-resolution="failed"], .tl-end[data-resolution="cancelled"] { border-right-color: var(--tl-retry); }
 .tl-marker { position: absolute; top: 3px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--ink); pointer-events: auto; }
@@ -1184,6 +1196,9 @@ span.tl-fold { display: inline-block; }
 .tl-segments, .tl-markers { margin: 0; padding-left: var(--space-5); font-size: var(--font-size-small); }
 .tl-segments > li { padding: var(--space-1) var(--space-2); }
 .tl-segments .tl-swatch { margin-right: var(--space-2); }
+.tl-segments [data-live="lost"] { color: var(--warn); font-weight: bold; }
+.tl-turns { margin: var(--space-1) 0 0 var(--space-5); }
+.tl-turns ol { margin: 0; padding-left: var(--space-5); }
 .tl-markers { list-style: none; padding: 0; }
 @media (max-width: 760px) {
   .tl-scroll { max-height: 56dvh; }

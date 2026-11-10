@@ -118,6 +118,8 @@ func (a *A2A) event(ctx context.Context, ev rpc.Event) {
 	case ev.Kind == rpc.EventKindReady:
 		a.Resync(ctx)
 	case ev.Kind != rpc.EventKindTicket:
+	case ev.Op == domain.OpTurnStart || ev.Op == domain.OpTurnEnd:
+		// A session's turn changes nothing on the ticket (JOB-184).
 	case ev.Op == "close":
 		a.mu.Lock()
 		ch, ok := a.active[ev.ID]

@@ -622,6 +622,9 @@ func (s *Server) holders(ctx context.Context, ids []string) map[string]rpc.Holde
 		if si.Ticket != nil {
 			h.Pool = si.Ticket.Pool
 		}
+		// A controller-driven session whose host died. An external session
+		// never had a host (no pid, no exit file): nothing is known of it.
+		h.HostLost = !si.Alive && (si.HostPid != 0 || si.Exit != "")
 		out[si.ID] = h
 	}
 	return out
@@ -675,6 +678,13 @@ type TicketView struct {
 }
 
 func (s *Server) ticket(r *http.Request) (any, error) {
+	return s.ticketView(r, nil)
+}
+
+// ticketView is ticket with extra session ids to describe in the same
+// session.list call as the holders it finds (the trace timeline adds the
+// holders of its open working spans, JOB-184).
+func (s *Server) ticketView(r *http.Request, extra []string) (any, error) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	var v TicketView
@@ -699,7 +709,7 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 	if err := s.ctl.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{ID: id, Depth: 3}, &tr); err == nil {
 		v.Trace = &tr
 	}
-	var ids []string
+	ids := slices.Clone(extra)
 	if v.Ticket.Status == domain.StatusInProgress && v.Ticket.Holder != "" {
 		ids = append(ids, v.Ticket.Holder)
 	}

@@ -82,6 +82,19 @@ type Comment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// History ops the controller records with store.Record for a session's
+// agent turns on the tickets it holds (JOB-184). They change nothing on the
+// ticket and do not bump its revision. turn_end carries TurnDiff.
+const (
+	OpTurnStart = "turn_start"
+	OpTurnEnd   = "turn_end"
+)
+
+// TurnDiff is the diff of a turn_end row: how the turn stopped.
+type TurnDiff struct {
+	Stop string `json:"stop"`
+}
+
 // Errors returned by every store backend and by the validation of the types
 // in this package. Callers match with errors.Is. The messages keep the
 // "store:" prefix they have always had: they reach users and logs, and

@@ -198,7 +198,7 @@ func TestTimelinePartial(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 	tk := domain.Ticket{ID: "js-e", Kind: domain.KindTask, Status: domain.StatusOpen, CreatedAt: now.Add(-time.Hour)}
-	row := timelineRow(&config.Config{}, tk, store.Thread{}, now)
+	row := timelineRow(&config.Config{}, tk, store.Thread{}, now, nil)
 	assert.True(t, row.Partial)
 	assert.Equal(t, []string{"unknown", "queued"}, segStates(row))
 	assert.Equal(t, now, row.Segments[0].End)

@@ -111,6 +111,9 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
+	// turning is set while turn runs, also for the unclosed reminder that
+	// inTurn does not cover. The timeline reads it (JOB-184).
+	turning atomic.Bool
 	// traffic holds the running turn's open tool calls (session list,
 	// JOB-54) and the agent's text tail. Reset when a turn starts. It has
 	// its own lock: the ACP callbacks write it.
@@ -1052,6 +1055,16 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 	r.lastStop = ""
 	r.mu.Unlock()
 	r.traffic.Reset()
+	r.turning.Store(true)
+	defer r.turning.Store(false)
+	turned := r.recordTurnStart(ctx)
+	defer func() {
+		stop := string(res.StopReason)
+		if err != nil {
+			stop = "error"
+		}
+		r.recordTurnEnd(ctx, turned, stop)
+	}()
 	defer func() {
 		r.mu.Lock()
 		r.lastStop = string(res.StopReason)

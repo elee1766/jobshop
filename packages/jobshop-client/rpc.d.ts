@@ -813,6 +813,7 @@ export interface HolderInfo {
   pool?: string;
   model?: string;
   alive?: boolean;
+  host_lost?: boolean;
   busy?: boolean;
   tool?: string;
   tool_target?: string;
@@ -1723,6 +1724,13 @@ export interface TimelineSegment {
   until?: string;
   wait?: TimelineWait[];
   ended?: string;
+  turns?: TimelineTurn[];
+}
+
+export interface TimelineTurn {
+  start: string;
+  end?: string;
+  stop?: string;
 }
 
 export interface TimelineWait {

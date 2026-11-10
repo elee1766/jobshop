@@ -1204,6 +1204,21 @@ type TimelineSegment struct {
 	// how a finished wait ended: met, invalidated, cleared or ended.
 	Wait  []TimelineWait `json:"wait,omitempty"`
 	Ended string         `json:"ended,omitempty"`
+	// Turns lists the agent turns that started inside a working or retry
+	// span, clipped to it (JOB-184). Nil means the claim has no turn rows
+	// (history from before turns were recorded, an external session, a
+	// step the controller runs): draw it as held without calling it idle.
+	Turns []TimelineTurn `json:"turns,omitempty"`
+}
+
+// TimelineTurn is one agent turn on a claim. A zero End means the turn is
+// running now: it is only set on the last turn of an open claim whose
+// session is in a turn. Stop is the stop reason (end_turn, cancelled,
+// error, ...), empty when the turn has no turn_end row.
+type TimelineTurn struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end,omitzero"`
+	Stop  string    `json:"stop,omitempty"`
 }
 
 // Timeline marker kinds.
@@ -1304,16 +1319,19 @@ type TraceNode struct {
 // HolderInfo is what Desk shows for the session holding a ticket
 // (JOB-54): its label, pool, model and whether a turn runs.
 type HolderInfo struct {
-	ID          string     `json:"id"`
-	DisplayName string     `json:"display_name,omitempty"`
-	Pool        string     `json:"pool,omitempty"`
-	Model       string     `json:"model,omitempty"`
-	Alive       bool       `json:"alive,omitempty"`
-	Busy        bool       `json:"busy,omitempty"`
-	Tool        string     `json:"tool,omitempty"`
-	ToolTarget  string     `json:"tool_target,omitempty"`
-	ToolIntent  string     `json:"tool_intent,omitempty"`
-	Agent       *AgentInfo `json:"agent,omitempty"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	Pool        string `json:"pool,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Alive       bool   `json:"alive,omitempty"`
+	// HostLost: the session was driven by the controller and its host is
+	// gone (JOB-184). False for an external session, which has no host.
+	HostLost   bool       `json:"host_lost,omitempty"`
+	Busy       bool       `json:"busy,omitempty"`
+	Tool       string     `json:"tool,omitempty"`
+	ToolTarget string     `json:"tool_target,omitempty"`
+	ToolIntent string     `json:"tool_intent,omitempty"`
+	Agent      *AgentInfo `json:"agent,omitempty"`
 }
 
 // TriggerInfo is one configured trigger's state now.

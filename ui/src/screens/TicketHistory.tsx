@@ -1,5 +1,7 @@
 import type { GraphResult, HistoryEntry, Ticket } from '../../../packages/jobshop-client/rpc.js';
 import { Markdown } from '../components/Markdown.tsx';
+import { foldTurns } from '../lib/history.ts';
+import { durationLabel } from '../lib/timeline.ts';
 import { stepName } from '../lib/trace.ts';
 
 const titles: Record<string, string> = {
@@ -20,7 +22,7 @@ const titles: Record<string, string> = {
 const sessionID = /^[a-zA-Z0-9][a-zA-Z0-9._-]*-s-[a-zA-Z0-9]+$/;
 
 export function TicketHistory({
-  entries,
+  entries: all,
   ticket,
   graph,
   onWatch,
@@ -30,12 +32,16 @@ export function TicketHistory({
   graph: GraphResult;
   onWatch: (id: string) => void;
 }) {
+  // Turn rows would add two lines per turn: they fold into their claim.
+  const folded = foldTurns(all);
+  const entries = folded.entries;
   const label = (id: string) => graph.nodes.find((node) => node.id === id)?.title || id;
   const isSession = (id: string) =>
     graph.nodes.some((node) => node.id === id && node.kind === 'session') || sessionID.test(id);
   function describe(entry: HistoryEntry) {
     const diff = (entry.diff || {}) as Record<string, any>;
     const fields = diff.fields || {};
+    const turns = folded.claims.get(entry.seq);
     const title =
       entry.op === 'claim' && diff.resumed ? 'resumed work' : titles[entry.op] || entry.op.replaceAll('_', ' ');
     const step = stepName(fields) || stepName(ticket.fields);
@@ -65,7 +71,7 @@ export function TicketHistory({
         ].filter((value) => typeof value === 'string' && value !== ticket.id),
       ),
     ] as string[];
-    return { title, step, summary, refs };
+    return { title, step, summary, refs, turns };
   }
   return (
     <details className="ticket-history" open>
@@ -83,6 +89,12 @@ export function TicketHistory({
                 </time>
               </div>
               {event.summary && <Markdown className="history-summary markdown" text={event.summary} inline />}
+              {event.turns && (
+                <p className="muted history-turns">
+                  {event.turns.count} turn{event.turns.count === 1 ? '' : 's'}, {durationLabel(event.turns.active)} in
+                  turns
+                </p>
+              )}
               {event.refs.length > 0 && (
                 <div className="history-references">
                   {event.refs.map((id) =>

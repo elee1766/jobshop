@@ -85,7 +85,7 @@ const timeline = {
   ],
 };
 
-async function open(page, extra = '') {
+async function open(page, extra = '', { tl = timeline, sessions } = {}) {
   const trace = {
     ticket: run,
     edges: [],
@@ -98,7 +98,8 @@ async function open(page, extra = '') {
       external: [],
       truncated: false,
     },
-    timeline,
+    timeline: tl,
+    ...(sessions ? { sessions } : {}),
   };
   // Like Desk, an inspected ticket comes back as "inspected".
   await page.route('**/api/live**', (route) => {
@@ -179,4 +180,131 @@ test('zoom widens the chart and the page does not overflow', async ({ page }) =>
   await tl.getByRole('button', { name: 'fit' }).click();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// JOB-184: turns inside a claim, and the open claim's live state.
+const turn = (from, to, o = {}) => ({ start: at(from), ...(to === null ? {} : { end: at(to) }), ...o });
+const turnTimeline = {
+  root: 'js-run',
+  truncated: false,
+  arrows: [],
+  rows: [
+    { id: 'js-run', kind: 'run', title: run.title, status: 'in_progress', depth: 0, created_at: at(120), segments: [seg('working', 120, null)], markers: [] },
+    // A finished claim with two turns: active 14m in 2 turns, held 46m.
+    {
+      id: 'js-dev',
+      kind: 'step',
+      title: dev.title,
+      status: 'closed',
+      resolution: 'done',
+      parent: 'js-run',
+      depth: 1,
+      created_at: at(120),
+      closed_at: at(60),
+      segments: [
+        seg('working', 120, 60, {
+          actor: 'js-s-1',
+          turns: [turn(115, 105, { stop: 'end_turn' }), turn(90, 86, { stop: 'cancelled' })],
+        }),
+      ],
+      markers: [],
+    },
+    // A claim with no turn rows: drawn as before, not as idle.
+    { id: 'js-old', kind: 'step', title: 'Old claim', status: 'closed', parent: 'js-run', depth: 1, created_at: at(120), closed_at: at(70), segments: [seg('working', 120, 70, { actor: 'js-s-0' })], markers: [] },
+    // Open claims, one per live state.
+    { id: 'js-run-now', kind: 'step', title: 'Turn running', status: 'in_progress', parent: 'js-run', depth: 1, created_at: at(50), segments: [seg('working', 50, null, { actor: 'js-s-live', turns: [turn(40, 30, { stop: 'end_turn' }), turn(5, null)] })], markers: [] },
+    { id: 'js-idle', kind: 'step', title: 'Held idle', status: 'in_progress', parent: 'js-run', depth: 1, created_at: at(50), segments: [seg('working', 50, null, { actor: 'js-s-idle', turns: [turn(40, 30, { stop: 'end_turn' })] })], markers: [] },
+    { id: 'js-lost', kind: 'step', title: 'Host gone', status: 'in_progress', parent: 'js-run', depth: 1, created_at: at(50), segments: [seg('working', 50, null, { actor: 'js-s-lost', turns: [turn(45, 44, { stop: 'error' })] })], markers: [] },
+  ],
+};
+const holders = {
+  'js-s-live': { id: 'js-s-live', alive: true, busy: true, tool: 'go test ./...' },
+  'js-s-idle': { id: 'js-s-idle', alive: true },
+  'js-s-lost': { id: 'js-s-lost', host_lost: true },
+};
+
+test('a claim shows its turns, totals and a text form of each', async ({ page }) => {
+  await open(page, '', { tl: turnTimeline, sessions: holders });
+  const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  const dev = tl.locator('.tl-row').filter({ hasText: 'Implement #7' });
+  const bar = dev.locator('.tl-seg');
+  await expect(bar).toHaveAttribute('data-turns', '2');
+  await expect(bar.locator('.tl-turn')).toHaveCount(2);
+  await expect(bar).toHaveAttribute('aria-label', /active 14m in 2 turns · held 46m/);
+  // The turn spans sit inside the bar.
+  const outer = await bar.boundingBox();
+  for (const span of await bar.locator('.tl-turn').all()) {
+    const box = await span.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(outer.x - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
+  }
+  // Held time is told from time in a turn by pattern: the bar and a turn differ.
+  const looks = await bar.evaluate((el) => [getComputedStyle(el).backgroundImage, getComputedStyle(el.firstElementChild).backgroundImage]);
+  expect(looks[0]).toContain('repeating-linear-gradient');
+  expect(looks[1]).toBe('none');
+  // A claim with no turn rows is the plain working bar.
+  const old = tl.locator('.tl-row').filter({ hasText: 'Old claim' }).locator('.tl-seg');
+  await expect(old).not.toHaveAttribute('data-turns', /.*/);
+  await expect(old.locator('.tl-turn')).toHaveCount(0);
+  expect(await old.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+  await expect(old).not.toHaveAttribute('aria-label', /held/);
+  // The detail under the chart says the same in text, and lists the turns.
+  await tl.getByRole('button', { name: 'Implement #7' }).click();
+  const detail = tl.getByLabel('Timeline of js-dev');
+  await expect(detail).toContainText('active 14m in 2 turns · held 46m');
+  await detail.locator('.tl-turns summary').click();
+  await expect(detail.locator('.tl-turns li')).toHaveCount(2);
+  await expect(detail.locator('.tl-turns li').nth(1)).toContainText('cancelled');
+});
+
+test('an open claim shows whether its session runs a turn, is idle or lost its host', async ({ page }) => {
+  await open(page, '', { tl: turnTimeline, sessions: holders });
+  const tl = page.getByRole('region', { name: 'Ticket timeline' });
+  const bar = (title) => tl.locator('.tl-row').filter({ hasText: title }).locator('.tl-seg');
+
+  const running = bar('Turn running');
+  await expect(running).toHaveAttribute('data-live', 'running');
+  await expect(running).toHaveAttribute('aria-label', /turn running: go test/);
+  await expect(running.locator('.tl-turn[data-running]')).toHaveCount(1);
+  expect(await running.evaluate((el) => getComputedStyle(el).animationName)).toBe('tl-breathe');
+  // The ring is the cue that stays when motion is off.
+  expect(await running.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+
+  const idle = bar('Held idle');
+  await expect(idle).toHaveAttribute('data-live', 'idle');
+  await expect(idle).toHaveAttribute('aria-label', /held, idle between turns/);
+  expect(await idle.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+
+  const lost = bar('Host gone');
+  await expect(lost).toHaveAttribute('data-live', 'lost');
+  await expect(lost).toHaveAttribute('aria-label', /host not alive, nobody is working this ticket/);
+  expect(await lost.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+
+  // Three different looks, not three colors of one: pattern or outline differ.
+  const looks = await Promise.all(
+    [running, idle, lost].map((b) => b.evaluate((el) => getComputedStyle(el).backgroundImage + '|' + getComputedStyle(el).boxShadow + '|' + getComputedStyle(el).borderTopWidth)),
+  );
+  expect(new Set(looks).size).toBe(3);
+
+  // The legend names the two kinds of working time and the lost host.
+  const legend = tl.getByRole('list', { name: 'Segment states' });
+  await expect(legend).toContainText('in a turn');
+  await expect(legend).toContainText('held, idle');
+  await expect(legend).toContainText('host not alive');
+});
+
+test('with reduced motion the running bar is still, and keeps its ring', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await open(page, '', { tl: turnTimeline, sessions: holders });
+  const running = page.locator('.tl-row').filter({ hasText: 'Turn running' }).locator('.tl-seg');
+  await expect(running).toHaveAttribute('data-live', 'running');
+  expect(await running.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+  expect(await running.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+});
+
+test('an open claim of a holder Desk cannot describe is drawn as held, not as idle or lost', async ({ page }) => {
+  await open(page, '', { tl: turnTimeline, sessions: {} });
+  const idle = page.locator('.tl-row').filter({ hasText: 'Held idle' }).locator('.tl-seg');
+  await expect(idle).toHaveAttribute('data-live', 'unknown');
+  await expect(idle).not.toHaveAttribute('aria-label', /idle between turns|host not alive/);
 });

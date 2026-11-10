@@ -3,6 +3,7 @@ package desk
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
@@ -64,22 +65,39 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 		return nil, err
 	}
 	r.SetPathValue("id", graph.Root)
-	value, err := s.ticket(r)
+	// The timeline replays every node's history: only when Desk shows it
+	// (?timeline=1, #1103). It comes first so the holders of its open
+	// working bars join the one session.list call (JOB-184).
+	var tl *rpc.TimelineResult
+	var holders []string
+	if r.URL.Query().Get("timeline") != "" {
+		tl = new(rpc.TimelineResult)
+		if err := s.ctl.Call(r.Context(), rpc.MethodTicketTimeline, rpc.GraphParams{ID: graph.Root, Limit: 2000}, tl); err != nil {
+			return nil, err
+		}
+		holders = openWorkers(tl)
+	}
+	value, err := s.ticketView(r, holders)
 	if err != nil {
 		return nil, err
 	}
 	view := value.(TicketView)
 	view.Graph = &graph
-	// The timeline replays every node's history: only when Desk shows it
-	// (?timeline=1, #1103).
-	if r.URL.Query().Get("timeline") != "" {
-		var tl rpc.TimelineResult
-		if err := s.ctl.Call(r.Context(), rpc.MethodTicketTimeline, rpc.GraphParams{ID: graph.Root, Limit: 2000}, &tl); err != nil {
-			return nil, err
-		}
-		view.Timeline = &tl
-	}
+	view.Timeline = tl
 	return view, nil
+}
+
+// openWorkers are the sessions holding a ticket in an open working bar.
+func openWorkers(tl *rpc.TimelineResult) []string {
+	var out []string
+	for _, row := range tl.Rows {
+		for _, seg := range row.Segments {
+			if seg.State == rpc.TimelineWorking && seg.End.IsZero() && seg.Actor != "" && !slices.Contains(out, seg.Actor) {
+				out = append(out, seg.Actor)
+			}
+		}
+	}
+	return out
 }
 
 func (s *Server) systemView(r *http.Request) (any, error) {
