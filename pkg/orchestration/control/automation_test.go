@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -954,4 +955,69 @@ def handle(event, args):
 	assert.True(t, repinned, "the repin is logged as a run comment")
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: hookRun(t, c, run.Run.ID).Steps[1].ID}, nil)
 	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == domain.StatusClosed }, "repinned run did not finish")
+}
+
+// TestHookReadsComments: runs(key=, comments=True) and
+// tickets(parent=, comments=True) return the comments workers wrote,
+// oldest first, and the same calls without the flag have no key.
+func TestHookReadsComments(t *testing.T) {
+	t.Parallel()
+	root := hookTestRoot(t, `def begin(run):
+    return [start_step(id="work", pool="dev", prompt="Work")]
+def completed(run, step):
+    return []
+def handle(event, args):
+    r = runs(key="task-1", comments=True)
+    kids = tickets(parent=r[0]["id"], comments=True)
+    seen = {
+        "run": r[0]["comments"],
+        "steps": [[k["id"], k["comments"]] for k in kids],
+        "plain": ["comments" in x for x in runs(key="task-1") + tickets(parent=r[0]["id"])],
+    }
+    return [comment(ticket=event.payload["sink"], body=json.encode(seen))]
+`)
+	c := controltest.Start(t, root, control.Options{})
+	var started rpc.RunResult
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Key: "task-1"}, &started)
+	c.PassUntil(func() bool { return len(hookRun(t, c, started.Run.ID).Steps) == 1 }, "start hook did not create work")
+	step := hookRun(t, c, started.Run.ID).Steps[0]
+	c.Call(rpc.MethodCommentAdd, rpc.CommentParams{ID: step.ID, Body: "first"}, nil)
+	c.Call(rpc.MethodCommentAdd, rpc.CommentParams{ID: step.ID, Body: "PR https://example.test/pr/1"}, nil)
+	var sink domain.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "sink"}, &sink)
+
+	spoolPath := filepath.Join(root.Dir, "events.db")
+	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = spool.Close() })
+	endpoint := config.IngestEndpoint{Name: "tasks", Source: "generic", Map: config.IngestMap{Kind: "event"}}
+	_, err = ingest.Put(t.Context(), spool, endpoint, "d1", "", []byte(`{"event":"tasks","sink":"`+sink.ID+`"}`), controltest.Epoch)
+	require.NoError(t, err)
+	c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
+	var thread rpc.ShowResult
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: sink.ID}, &thread)
+		return len(thread.Comments) == 1
+	}, "handler did not comment")
+
+	// "steps" is a list of [id, comments] pairs.
+	var seen struct {
+		Run   []map[string]any    `json:"run"`
+		Steps [][]json.RawMessage `json:"steps"`
+		Plain []bool              `json:"plain"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(thread.Comments[0].Body), &seen))
+	assert.Empty(t, seen.Run, "a run without comments has an empty list")
+	assert.Equal(t, []bool{false, false}, seen.Plain, "no comments key without the flag")
+	require.Len(t, seen.Steps, 1)
+	var id string
+	require.NoError(t, json.Unmarshal(seen.Steps[0][0], &id))
+	assert.Equal(t, step.ID, id)
+	var cs []map[string]any
+	require.NoError(t, json.Unmarshal(seen.Steps[0][1], &cs))
+	require.Len(t, cs, 2)
+	for i, body := range []string{"first", "PR https://example.test/pr/1"} {
+		assert.Equal(t, body, cs[i]["body"])
+		assert.ElementsMatch(t, []string{"id", "author", "body", "created_at"}, slices.Collect(maps.Keys(cs[i])))
+	}
 }

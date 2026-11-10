@@ -89,6 +89,8 @@ type TicketQuery struct {
 	Meta     map[string]string
 	Order    string
 	Limit    int
+	// Comments adds a "comments" list, oldest first, to every result.
+	Comments bool
 }
 
 // TicketReader returns matching tickets as JSON-shaped maps.

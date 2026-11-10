@@ -300,14 +300,21 @@ linear.graphql(query, variables={}, team="", timeout="")
 ## Store reads, json and time
 
 ```text
-tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False)
-runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100)
+tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False, comments=False)
+runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100, comments=False)
 sessions(pool="", status=["open", "in_progress"], limit=100)
 ```
 
 Each returns a list of ticket dictionaries as `jobshop ticket show --json`
 prints them, with `fields` and `meta` decoded and `body` dropped unless
-`body=True`. `status` is a string or list of `open`, `in_progress`,
+`body=True`. With `comments=True` (`tickets` and `runs` only) each
+dictionary also has `comments`, a list oldest first of dictionaries with
+`id`, `author`, `body` and `created_at`, as `jobshop ticket show --json`
+prints them; a ticket with none has an empty list. Without it there is no
+`comments` key. It is opt-in because a result over the data limit
+(`DataBytes`, 1 MiB by default) fails the call with an error naming the
+built-in: ask for comments on few tickets (a `key`, a `parent`, a small
+`limit`). `status` is a string or list of `open`, `in_progress`,
 `closed`. `meta` maps up to three `"pack.key"` names to string values,
 for example `{"trigger.name": "scan"}`. `limit` is 1 to 500. Reads see the
 whole store, are journaled and replayed like other calls, and count toward

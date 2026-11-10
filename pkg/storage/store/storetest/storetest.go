@@ -53,6 +53,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"SweepLeases", testSweepLeases},
 		{"DeferUntil", testDeferUntil},
 		{"LabelsCommentsHistory", testLabelsCommentsHistory},
+		{"CommentsFor", testCommentsFor},
 		{"CreateGraphAtomic", testCreateGraphAtomic},
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
@@ -780,6 +781,32 @@ func testDeferUntil(t *testing.T, s store.Store, c *Clock) {
 	r, err = s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID}, ids(r))
+}
+
+// CommentsFor reads many tickets in one call, in the order Thread gives.
+func testCommentsFor(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	a, b, none := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "none", "")
+	for _, c := range []struct{ id, body string }{{a.ID, "a1"}, {b.ID, "b1"}, {a.ID, "a2"}, {b.ID, "b2"}, {a.ID, "a3"}} {
+		_, err := store.AddComment(ctx, s, "u", c.id, c.body)
+		require.NoError(t, err)
+	}
+	got, err := s.CommentsFor(ctx, []string{a.ID, b.ID, none.ID, "js-missing"})
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+	for _, tk := range []domain.Ticket{a, b} {
+		want, err := store.Comments(ctx, s, tk.ID)
+		require.NoError(t, err)
+		assert.Equal(t, want, got[tk.ID])
+	}
+	assert.Len(t, got[a.ID], 3)
+	assert.Equal(t, "a1", got[a.ID][0].Body)
+	assert.Equal(t, "a3", got[a.ID][2].Body)
+	assert.Empty(t, got[none.ID])
+
+	got, err = s.CommentsFor(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {

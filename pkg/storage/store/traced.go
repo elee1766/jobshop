@@ -124,6 +124,13 @@ func (t *tracedStore) Thread(ctx context.Context, id string, p Parts) (Thread, e
 	return r, err
 }
 
+func (t *tracedStore) CommentsFor(ctx context.Context, ids []string) (map[string][]domain.Comment, error) {
+	start := time.Now()
+	r, err := t.Store.CommentsFor(ctx, ids)
+	slow(ctx, "comments_for", "", start, err)
+	return r, err
+}
+
 func (t *tracedStore) Record(ctx context.Context, actor, id, op string, diff any) error {
 	start := time.Now()
 	err := t.Store.Record(ctx, actor, id, op, diff)
