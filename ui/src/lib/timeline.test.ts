@@ -13,6 +13,7 @@ import {
   clusterMarkers,
   durationLabel,
   holderState,
+  isWorkflowSpan,
   liveText,
   segmentText,
   timelineSpan,
@@ -74,6 +75,15 @@ test('segment text names state, actor, reason and how a wait ended', () => {
     'waiting on an event · CI on PR 5 · ended met',
   );
   assert.equal(segmentText({ state: 'working', start: 'x', actor: 'js-s-1' }), 'working · js-s-1');
+});
+
+test('a working span with no holder is a workflow running, not a turn (#1184)', () => {
+  const run: TimelineSegment = { state: 'working', start: 'x' };
+  assert.equal(isWorkflowSpan(run), true);
+  assert.equal(isWorkflowSpan({ ...run, actor: 'js-s-1' }), false);
+  assert.equal(isWorkflowSpan({ state: 'deferred', start: 'x' }), false);
+  assert.equal(segmentText(run), 'running, no agent holds it');
+  assert.doesNotMatch(segmentText(run), /turn/);
 });
 
 test('arrows turn back through the row gap when the dependent starts first', () => {

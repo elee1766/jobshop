@@ -9,7 +9,7 @@ import type {
   TimelineWait,
 } from '../../../packages/jobshop-client/rpc.js';
 import { eventItems, historyPartial, type EventItem } from '../lib/detail.ts';
-import { durationLabel, holderState, segmentEnd, segmentText, turnTotals } from '../lib/timeline.ts';
+import { durationLabel, holderState, isWorkflowSpan, segmentEnd, segmentText, turnTotals } from '../lib/timeline.ts';
 import { exactLabel, fullLabel, linkLabel } from '../lib/trace.ts';
 import { TicketHistory } from './TicketHistory.tsx';
 
@@ -167,7 +167,12 @@ function Entry({
       return (
         <li className={chosen ? 'chosen' : undefined} data-chosen={chosen || undefined} data-kind="segment">
           <div className="event-head">
-            <span className="tl-swatch" data-state={s.state} aria-hidden="true" />
+            <span
+              className="tl-swatch"
+              data-state={s.state}
+              data-workflow={isWorkflowSpan(s) || undefined}
+              aria-hidden="true"
+            />
             <span data-live={holderState(s, session)}>{segmentText(s, { now, session })}</span>
           </div>
           <p className="muted event-when">
