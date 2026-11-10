@@ -78,7 +78,7 @@ else
       '';
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).
-      vendorHash = "sha256-d7kMgHHI5D45O9igvZSzM6+7Kvzi2Mkj4dI8YNA1T7c=";
+      vendorHash = "sha256-tD3twNLs+23UpE4S6FCwWXkI9cz/A2ZHLyMsc5pTZ6I=";
       env.CGO_ENABLED = "0";
     }
   )

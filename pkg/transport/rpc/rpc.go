@@ -20,9 +20,9 @@ import (
 	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
-	"github.com/elee1766/acphost/pkg/cgroup"
-	"github.com/elee1766/acphost/pkg/sandbox"
-	"github.com/elee1766/acphost/pkg/userns"
+	"github.com/gfx-labs/acphost/pkg/cgroup"
+	"github.com/gfx-labs/acphost/pkg/sandbox"
+	"github.com/gfx-labs/acphost/pkg/userns"
 
 	"github.com/gfx-labs/jobshop/pkg/config"
 	"github.com/gfx-labs/jobshop/pkg/domain"

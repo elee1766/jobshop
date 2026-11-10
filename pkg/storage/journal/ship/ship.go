@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/gfx-labs/jobshop/pkg/config"

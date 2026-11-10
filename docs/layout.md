@@ -201,7 +201,7 @@ ownership of every package are in `pkg/tooling/archcheck` and
 `docs/notes/JOB-165-package-boundaries.md`. `go run
 ./pkg/tooling/archcheck/cmd/archcheck -inventory` prints the live graph.
 
-The session host is the external module `github.com/elee1766/acphost`
+The session host is the external module `github.com/gfx-labs/acphost`
 (issue #256, 2026-11-04), extracted from the old `pkg/host` so other
 projects can run ACP agents under a detachable host. It has no ticket or
 policy logic (plan section 8.3). Conversation export over OTLP was

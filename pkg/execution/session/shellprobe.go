@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/trace"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
+	"github.com/gfx-labs/acphost/pkg/trace"
 )
 
 // DefaultShellProbe is what an agent's tool shell needs to work a ticket

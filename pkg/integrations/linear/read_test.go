@@ -213,13 +213,13 @@ func TestEligible(t *testing.T) {
 	// JOB-68: an open stated GitHub dependency blocks; CheckDeps keeps
 	// only the open ones, so a closed one does not.
 	dep := free
-	dep.Description = "Depends on acphost#155 ([link](https://github.com/elee1766/acphost/issues/155)): x\nDepends on gfx-labs/jobshop#9"
+	dep.Description = "Depends on acphost#155 ([link](https://github.com/gfx-labs/acphost/issues/155)): x\nDepends on gfx-labs/jobshop#9"
 	open := func(_ context.Context, d linear.GitHubDep) (bool, error) { return d.Number == 155, nil }
-	require.NoError(t, dep.CheckDeps(t.Context(), "elee1766", open))
+	require.NoError(t, dep.CheckDeps(t.Context(), "gfx-labs", open))
 	e = linear.Eligible(dep, nil, "")
 	assert.False(t, e.Eligible)
-	assert.Equal(t, "depends on open elee1766/acphost#155", e.Reason)
-	require.NoError(t, dep.CheckDeps(t.Context(), "elee1766", func(context.Context, linear.GitHubDep) (bool, error) { return false, nil }))
+	assert.Equal(t, "depends on open gfx-labs/acphost#155", e.Reason)
+	require.NoError(t, dep.CheckDeps(t.Context(), "gfx-labs", func(context.Context, linear.GitHubDep) (bool, error) { return false, nil }))
 	assert.True(t, linear.Eligible(dep, nil, "").Eligible, "closed dependencies do not block")
 }
 

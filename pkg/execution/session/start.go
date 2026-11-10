@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"log/slog"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/proc"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
+	"github.com/gfx-labs/acphost/pkg/proc"
 )
 
 // Placement is where a new session host starts. With the systemd driver

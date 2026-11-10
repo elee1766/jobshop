@@ -13,7 +13,7 @@ For service YAML, CUE packs, Starlark callbacks and migration, start at
   defers. The controller is the only writer. Agents use the `jobshop` CLI,
   which acts as their session. See [data-model.md](data-model.md).
 - **Sessions.** Each session runs in a detached host process from
-  [elee1766/acphost](https://github.com/elee1766/acphost), which spawns
+  [gfx-labs/acphost](https://github.com/gfx-labs/acphost), which spawns
   the agent, proxies ACP over `acp.sock` and journals frames for replay.
   Sessions survive controller restarts and deploys. Crash loops, stuck
   sessions and spawn errors are detected, and the pool is quarantined.

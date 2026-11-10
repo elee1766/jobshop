@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/elee1766/acphost/pkg/userns"
-	"github.com/elee1766/acphost/pkg/xerr"
+	"github.com/gfx-labs/acphost/pkg/userns"
+	"github.com/gfx-labs/acphost/pkg/xerr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"

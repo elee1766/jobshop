@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 )
 
 // connectWait is how long Connect polls a host that is not listening yet.

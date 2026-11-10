@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/elee1766/acphost/pkg/proc"
+	"github.com/gfx-labs/acphost/pkg/proc"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/gfx-labs/jobshop/pkg/config"

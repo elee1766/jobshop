@@ -16,8 +16,8 @@ import (
 	"slices"
 	"syscall"
 
-	"github.com/elee1766/acphost/pkg/userns"
-	"github.com/elee1766/acphost/pkg/xerr"
+	"github.com/gfx-labs/acphost/pkg/userns"
+	"github.com/gfx-labs/acphost/pkg/xerr"
 	"golang.org/x/sys/unix"
 
 	"github.com/gfx-labs/jobshop/pkg/config"

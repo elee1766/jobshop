@@ -51,10 +51,6 @@ github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 h1:2tV76y6Q9BB+NE
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707/go.mod h1:qssHWj60/X5sZFNxpG4HBPDHVqxNm4DfnCKgrbZOT+s=
 github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
 github.com/dustin/go-humanize v1.1.0/go.mod h1:hc1CvRkJMsgxqjmjMQF3QNRAZBwY8AXBAzKYoSX9sFI=
-github.com/elee1766/acphost v0.22.3 h1:Olc1ddv8hu1ekztEyCILtkaiAn8YcLz42gxwm2HVkbE=
-github.com/elee1766/acphost v0.22.3/go.mod h1:Zmv+nFpfnWJI+hzx7AP4VW7l17o0f5K/Ak5x64OqAh0=
-github.com/elee1766/acphost v0.22.4 h1:QoU1ZCZIeX0MrCn0tDNz9YxA+tsa0r5kkbPfMdVil8o=
-github.com/elee1766/acphost v0.22.4/go.mod h1:Zmv+nFpfnWJI+hzx7AP4VW7l17o0f5K/Ak5x64OqAh0=
 github.com/emicklei/proto v1.14.3 h1:zEhlzNkpP8kN6utonKMzlPfIvy82t5Kb9mufaJxSe1Q=
 github.com/emicklei/proto v1.14.3/go.mod h1:rn1FgRS/FANiZdD2djyH7TMA9jdRDcYQ9IEN9yvjX0A=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
@@ -65,6 +61,8 @@ github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeO
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/fsnotify/fsnotify v1.8.0 h1:dAwr6QBTBZIkG8roQaJjGof0pp0EeF+tNV7YBP3F/8M=
 github.com/fsnotify/fsnotify v1.8.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
+github.com/gfx-labs/acphost v0.23.1-0.20261110081812-c2743114212e h1:T6+SN+ixPfWc7lqpOE2n92zYrnUFqvdJ4NiC9a2Xj/0=
+github.com/gfx-labs/acphost v0.23.1-0.20261110081812-c2743114212e/go.mod h1:m3JO7YOYZXT4k5hQFyrvKu52+UMoM9TxqRL2pslPVms=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376/go.mod h1:an3vInlBmSxCcxctByoQdvwPiA7DTK7jaaFDBTtu0ic=
 github.com/go-git/gcfg/v2 v2.0.2 h1:MY5SIIfTGGEMhdA7d7JePuVVxtKL7Hp+ApGDJAJ7dpo=

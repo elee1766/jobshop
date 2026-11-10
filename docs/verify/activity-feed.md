@@ -5,12 +5,12 @@
    up on its next minute.
 2. Note `gh api rate_limit --jq .resources.core.used` (as the identity
    or host token the controller uses).
-3. After two minutes, `jobshop activity --repo elee1766/acphost --since
+3. After two minutes, `jobshop activity --repo gfx-labs/acphost --since
    1h` from a session in a pool with the `activity` grant (or the admin
    socket) lists pushes, PRs, comments and CI. `<root>/activity.json`
    has an `events_etag` per repo.
 4. Desk `?view=activity`: today's group shows both gfx-labs/jobshop and
-   elee1766/acphost items; "humans" (default) hides elee-agent; items
+   gfx-labs/acphost items; "humans" (default) hides elee-agent; items
    about an issue with a pr-work run show the run id, and it opens the
    run drawer, whose "External activity" lists the same items.
 5. Leave it 30 minutes, read the rate limit again and record
