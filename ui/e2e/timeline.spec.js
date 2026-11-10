@@ -274,11 +274,8 @@ test('an open claim shows whether its session runs a turn, is idle or lost its h
   );
   expect(new Set(looks).size).toBe(3);
 
-  // The legend names the two kinds of working time and the lost host.
-  const legend = tl.getByRole('list', { name: 'Segment states' });
-  await expect(legend).toContainText('in a turn');
-  await expect(legend).toContainText('held, idle');
-  await expect(legend).toContainText('host not alive');
+  // The legend is gone; the accessible names above carry the states.
+  await expect(tl.getByRole('list', { name: 'Segment states' })).toHaveCount(0);
 });
 
 test('with reduced motion the running bar is still, and keeps its ring', async ({ page }) => {

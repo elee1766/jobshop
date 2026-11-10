@@ -11,7 +11,6 @@ import {
   arrowShape,
   durationLabel,
   holderState,
-  legendLabels,
   markerText,
   parentIds,
   rowEnd,
@@ -31,8 +30,6 @@ const labelW = 220;
 const minChart = 320;
 const minZoom = 1;
 const maxZoom = 64;
-
-const legend = ['queued', 'working', 'held', 'lost', 'waiting', 'human', 'deferred', 'retry'];
 
 // One bar per ticket on a shared time axis, nested by parent, with
 // arrows for blocking edges (#1103). Rows come from ticket.timeline in
@@ -142,22 +139,6 @@ export function Timeline({
           explore further.
         </output>
       )}
-      <ul className="tl-legend muted" aria-label="Segment states">
-        {legend.map((state) => (
-          <li key={state}>
-            <span className="tl-swatch" data-state={state} aria-hidden="true" />
-            {legendLabels[state]}
-          </li>
-        ))}
-        <li>
-          <span className="tl-arrow-sample" data-shape="blocking" aria-hidden="true" />
-          blocked
-        </li>
-        <li>
-          <span className="tl-arrow-sample" data-shape="tracks" aria-hidden="true" />
-          tracks
-        </li>
-      </ul>
       <section
         className="tl-scroll"
         ref={(node) => {
