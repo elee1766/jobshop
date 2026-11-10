@@ -12,6 +12,7 @@ import { StatusLine, WritesButton, WritesNote } from '../components/BrowseParts.
 import { Markdown } from '../components/Markdown.tsx';
 import { CheckMark } from '../components/StatusLetter.tsx';
 import { openTicketMenu } from '../state/ticketMenu.ts';
+import { parseTitle } from '../../kit/titles.js';
 import { age, duration, newComments, providerName, whereIs, type Place, type Provider } from '../lib/browse.ts';
 import { copyText } from '../lib/clipboard.ts';
 import { currentURL, setParams, useDeskRoute } from '../lib/route.ts';
@@ -298,7 +299,7 @@ function LinkedTitle({
   const text = link.title ? `${link.ref} · ${link.title}` : link.ref;
   if (link.kind === 'run') {
     // A Jobshop run opens its trace, which is where its graph, sessions and
-    // history are.
+    // history are. Its title may hold Markdown links: show their labels.
     return (
       <a
         href={`?view=trace&ref=${encodeURIComponent(link.ref)}`}
@@ -309,7 +310,7 @@ function LinkedTitle({
           openTrace(link.ref);
         }}
       >
-        {link.title || link.ref}
+        {parseTitle(link.title).text || link.ref}
       </a>
     );
   }

@@ -167,12 +167,26 @@ test('an issue opens in place: properties, linked work, threads, replies and dis
 test('a linked PR in a configured repo opens in the github view, and a run opens its trace', async ({ page }) => {
   const withRun = {
     ...linearShow,
-    linked: [...linearShow.linked, { kind: 'run', ref: 'js-run1', title: 'Desk migration run', state: 'running', relation: 'run' }],
+    linked: [
+      ...linearShow.linked,
+      { kind: 'run', ref: 'js-run1', title: 'Desk migration run', state: 'running', relation: 'run' },
+      {
+        kind: 'run',
+        ref: 'js-run2',
+        title: 'Review [jobshop#1097](https://github.com/elee1766/jobshop/pull/1097): migrate Desk',
+        state: 'done',
+        relation: 'via elee1766/jobshop#1097',
+      },
+    ],
   };
   await mock(page, { 'browse.show': (body) => (body.provider === 'linear' ? withRun : githubShow) });
   await page.goto('./?view=linear&item=JOB-150');
   const linked = page.getByRole('region', { name: 'Linked work' });
   await expect(linked.getByRole('link', { name: 'Desk migration run' })).toBeVisible();
+  // A run title's Markdown link shows as its label, and the row opens the trace.
+  const review = linked.getByRole('link', { name: 'Review jobshop#1097: migrate Desk' });
+  await expect(review).toHaveAttribute('href', '?view=trace&ref=js-run2');
+  await expect(linked.getByRole('row', { name: /Review jobshop#1097/ })).toContainText('via elee1766/jobshop#1097');
   await linked.getByRole('link', { name: /elee1766\/jobshop#1097/ }).first().click();
   await expect(page).toHaveURL(/view=github/);
   await expect(page).toHaveURL(/item=elee1766%2Fjobshop%231097/);

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -122,13 +124,24 @@ func truncate(s string) string { return activity.Truncate(s) }
 // call, a redaction) to the feed, if one is configured.
 func (c *Controller) addActivity(it rpc.ActivityItem) { c.activitySvc().Record(it) }
 
+// Tracker URLs in a ticket title: run titles link the PR or issue they
+// work on (JOB-133, JOB-135).
+var (
+	titleGitHubRef = regexp.MustCompile(`https://github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)`)
+	titleLinearRef = regexp.MustCompile(`https://linear\.app/[\w-]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)`)
+)
+
 // activityLinks maps "repo#n" and Linear keys to the runs and tickets
-// that reference them. A step stands for its run.
+// that reference them. A step stands for its run. A reference is the
+// ticket's meta, a tracker URL in its title, or a run's pr var with its
+// workflow's repo: runs started by triggers and callbacks often carry
+// no meta.github.
 func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, error) {
 	all, err := c.store.List(ctx, store.Filter{Limit: math.MaxInt32})
 	if err != nil {
 		return nil, err
 	}
+	cfg := c.config()
 	out := map[string][]string{}
 	addLink := func(k, id string) {
 		if !slices.Contains(out[k], id) {
@@ -149,8 +162,8 @@ func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, er
 				Issue string `json:"issue"`
 			} `json:"linear"`
 		}
-		if len(t.Meta) == 0 || json.Unmarshal(t.Meta, &m) != nil {
-			continue
+		if len(t.Meta) > 0 {
+			_ = json.Unmarshal(t.Meta, &m)
 		}
 		id := t.ID
 		if t.Kind == domain.KindStep && t.ParentID != "" {
@@ -165,6 +178,23 @@ func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, er
 		}
 		if m.Linear.Issue != "" {
 			addLink(m.Linear.Issue, id)
+		}
+		if t.Kind == domain.KindRun {
+			if f, err := domain.DecodeFields[domain.RunFields](t); err == nil {
+				repo := f.Vars["repo"]
+				if repo == "" {
+					repo = cfg.Workflows[f.Workflow].Repo
+				}
+				if n := github.RefNumber(f.Vars["pr"]); n > 0 && repo != "" {
+					addLink(fmt.Sprintf("%s#%d", repo, n), id)
+				}
+			}
+		}
+		for _, g := range titleGitHubRef.FindAllStringSubmatch(t.Title, -1) {
+			addLink(g[1]+"#"+g[2], id)
+		}
+		for _, l := range titleLinearRef.FindAllStringSubmatch(t.Title, -1) {
+			addLink(strings.ToUpper(l[1]), id)
 		}
 	}
 	return out, nil
