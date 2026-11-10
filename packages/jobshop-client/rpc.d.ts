@@ -56,6 +56,7 @@ export interface RpcMethods {
   "learn.add": { params: LearnParams; result: Learning };
   "learn.edits": { params: LearnEditsParams; result: MemoryEdit[] };
   "learn.evaluate": { params: LearnEvaluateParams; result: MemoryEdit[] };
+  "learn.expire": { params: LearnExpireParams; result: LearnExpireResult };
   "learn.list": { params: LearnListParams; result: Learning[] };
   "learn.update": { params: LearnUpdateParams; result: Learning[] };
   "linear.intake": { params: LinearIntakeParams; result: LinearIntakeResult };
@@ -991,6 +992,16 @@ export interface LearnEvaluateParams {
   id?: number;
   runs?: number;
   age?: number;
+}
+
+export interface LearnExpireParams {
+  older_than: number;
+  scope?: string;
+  kind?: string;
+}
+
+export interface LearnExpireResult {
+  expired: number;
 }
 
 export interface LearnListParams {

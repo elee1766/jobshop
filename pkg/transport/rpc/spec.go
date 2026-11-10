@@ -108,6 +108,7 @@ var Specs = map[string]Spec{
 	MethodLearnAdd:          {LearnParams{}, domain.Learning{}},
 	MethodLearnList:         {LearnListParams{}, []domain.Learning{}},
 	MethodLearnUpdate:       {LearnUpdateParams{}, []domain.Learning{}},
+	MethodLearnExpire:       {LearnExpireParams{}, LearnExpireResult{}},
 	MethodLearnEvaluate:     {LearnEvaluateParams{}, []domain.MemoryEdit{}},
 	MethodLearnEdits:        {LearnEditsParams{}, []domain.MemoryEdit{}},
 	MethodMemoryWrite:       {MemoryWriteParams{}, domain.MemoryEdit{}},

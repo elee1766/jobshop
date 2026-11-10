@@ -254,3 +254,98 @@ func TestLearnUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
+
+// TestLearnExpire records learnings at different ages, expires the old
+// open ones with no PR, and checks what every reader of the status sees
+// (JOB-198).
+func TestLearnExpire(t *testing.T) {
+	t.Parallel()
+	c, clk, _ := scanController(t)
+	ctx := t.Context()
+	admin := scope{admin: true, actor: "admin"}
+	add := func(kind, scopeName string) int64 {
+		out, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: kind, Summary: kind + " " + scopeName, Scope: scopeName})
+		require.NoError(t, err)
+		return out.(domain.Learning).ID
+	}
+	day := 24 * time.Hour
+	start := clk.Now()
+	oldPlain := add(domain.LearningFailure, "global")
+	oldPR := add(domain.LearningFailure, "global")
+	oldApplied := add(domain.LearningFailure, "global")
+	oldPool := add(domain.LearningWorkaround, "pool:dev")
+	_, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{oldPR}, PR: "https://github.com/acme/widget/pull/9"})
+	require.NoError(t, err)
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{oldApplied}, Status: domain.LearningApplied})
+	require.NoError(t, err)
+	clk.advance(6 * day)
+	fresh := add(domain.LearningFailure, "global")
+	clk.advance(day)
+
+	// A steps window that holds every learning, measured before and after.
+	pools := []string{"dev"}
+	before, err := knowledge.Measure(ctx, c.store, nil, pools, start.Add(-day), clk.Now(), false)
+	require.NoError(t, err)
+	n, err := knowledge.CountLearnings(ctx, c.store, time.Time{}, domain.LearningCount{Status: domain.LearningOpen})
+	require.NoError(t, err)
+	assert.Equal(t, 4, n)
+
+	_, err = c.learnExpire(ctx, admin, rpc.LearnExpireParams{})
+	require.ErrorIs(t, err, domain.ErrInvalid, "needs a duration")
+	_, err = c.learnExpire(ctx, admin, rpc.LearnExpireParams{OlderThan: 5 * day, Kind: "[", Scope: ""})
+	require.ErrorIs(t, err, domain.ErrInvalid, "bad glob")
+
+	// Filters narrow it: only workarounds.
+	out, err := c.learnExpire(ctx, admin, rpc.LearnExpireParams{OlderThan: 5 * day, Kind: "work*"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, out.(rpc.LearnExpireResult).Expired)
+	assert.Equal(t, domain.LearningExpired, learnings(t, c, store.LearningFilter{Status: domain.LearningExpired})[0].Status)
+	out, err = c.learnExpire(ctx, admin, rpc.LearnExpireParams{OlderThan: 5 * day, Scope: "pool:dev"})
+	require.NoError(t, err)
+	assert.Zero(t, out.(rpc.LearnExpireResult).Expired, "already expired, wrong scope for the rest")
+
+	out, err = c.learnExpire(ctx, admin, rpc.LearnExpireParams{OlderThan: 5 * day})
+	require.NoError(t, err)
+	assert.Equal(t, 1, out.(rpc.LearnExpireResult).Expired, "oldPlain only: the PR one, the applied one and the fresh one stay")
+
+	ids := func(st string) []int64 {
+		var r []int64
+		for _, l := range learnings(t, c, store.LearningFilter{Status: st}) {
+			r = append(r, l.ID)
+		}
+		return r
+	}
+	assert.ElementsMatch(t, []int64{oldPR, fresh}, ids(domain.LearningOpen))
+	assert.ElementsMatch(t, []int64{oldPlain, oldPool}, ids(domain.LearningExpired))
+	assert.Equal(t, []int64{oldApplied}, ids(domain.LearningApplied))
+
+	// The trigger count leaves expired ones out.
+	n, err = knowledge.CountLearnings(ctx, c.store, time.Time{}, domain.LearningCount{Status: domain.LearningOpen})
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+
+	// The gate reads learnings by date: the same window measures the same.
+	after, err := knowledge.Measure(ctx, c.store, nil, pools, start.Add(-day), clk.Now(), false)
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+
+	// Recall still finds an expired learning.
+	hits, err := knowledge.RecallLearnings(ctx, c.store, "workaround", "", "", 10)
+	require.NoError(t, err)
+	assert.NotEmpty(t, hits)
+
+	// Expired needs no PR, rejected still does, and open reopens it.
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{fresh}, Status: domain.LearningExpired})
+	require.NoError(t, err, "expired without --pr")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{oldPlain}, Status: domain.LearningRejected})
+	require.ErrorIs(t, err, domain.ErrInvalid, "rejected without --pr")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{oldPlain}, Status: domain.LearningOpen})
+	require.NoError(t, err)
+	assert.Contains(t, ids(domain.LearningOpen), oldPlain)
+
+	// A worker session may not expire.
+	_, _, sc := startWork(t, c, "expire")
+	_, err = c.learnExpire(ctx, sc, rpc.LearnExpireParams{OlderThan: time.Hour})
+	require.ErrorIs(t, err, rpc.ErrForbidden)
+	assert.Contains(t, ids(domain.LearningOpen), oldPR)
+}

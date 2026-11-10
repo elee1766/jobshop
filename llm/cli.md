@@ -338,6 +338,10 @@ Commands:
   learn update <id> ... [flags]
     Set the status or PR of learnings (curator, #273).
 
+  learn expire --older-than=DURATION [flags]
+    Set expired on old open learnings that have no PR, so curators stop reading
+    them (admin).
+
   learn evaluate [<id>] [flags]
     Curator gate: decide whether merged memory edits helped (#274).
 
@@ -3318,6 +3322,10 @@ Commands:
   learn update <id> ... [flags]
     Set the status or PR of learnings (curator, #273).
 
+  learn expire --older-than=DURATION [flags]
+    Set expired on old open learnings that have no PR, so curators stop reading
+    them (admin).
+
   learn evaluate [<id>] [flags]
     Curator gate: decide whether merged memory edits helped (#274).
 
@@ -3454,7 +3462,7 @@ Flags:
       --since=DURATION    Only learnings newer than this, e.g. 24h.
       --scope=STRING      global, repo:<owner/name> or pool:<name>.
       --kind=STRING       Kind or glob, e.g. failure or review-*.
-      --status=""         open, applied or rejected.
+      --status=""         open, applied, rejected or expired.
   -t, --ticket=STRING     Only learnings about this ticket.
       --limit=50          Most learnings to print.
 ```
@@ -3478,10 +3486,35 @@ Flags:
       --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
                           else the root's admin socket ($JOBSHOP_SOCKET).
 
-      --status=""         open, applied or rejected.
+      --status=""         open, applied, rejected or expired.
       --pr=STRING         PR URL that addresses them.
       --merged-at=TIME    With --status applied: when the PR merged (RFC3339,
                           default now). Starts the curator gate's window.
+```
+
+## jobshop learn expire
+
+```
+Usage: jobshop learn expire --older-than=DURATION [flags]
+
+Set expired on old open learnings that have no PR, so curators stop reading them
+(admin).
+
+Flags:
+  -h, --help                   Show context-sensitive help.
+      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
+                               database, sockets and sessions). Default: nearest
+                               ancestor of the cwd containing jobshop.yaml
+                               ($JOBSHOP_ROOT).
+      --socket=STRING          Socket to talk to. Defaults to the session
+                               CLI socket, else the root's admin socket
+                               ($JOBSHOP_SOCKET).
+
+      --older-than=DURATION    Expire open learnings recorded before now minus
+                               this, e.g. 120h.
+      --scope=STRING           Only this scope: global, repo:<owner/name> or
+                               pool:<name>.
+      --kind=STRING            Only this kind or glob, e.g. failure or review-*.
 ```
 
 ## jobshop learn evaluate

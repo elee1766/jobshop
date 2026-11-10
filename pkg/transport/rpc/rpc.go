@@ -108,6 +108,7 @@ const (
 	MethodLearnAdd         = "learn.add"
 	MethodLearnList        = "learn.list"
 	MethodLearnUpdate      = "learn.update"
+	MethodLearnExpire      = "learn.expire"
 	MethodLearnEvaluate    = "learn.evaluate"
 	MethodLearnEdits       = "learn.edits"
 	MethodMemoryWrite      = "memory.write"
@@ -2068,6 +2069,20 @@ type LearnUpdateParams struct {
 	// MergedAt is when the PR merged; with status applied it starts the
 	// curator gate's window (#274). Zero means now.
 	MergedAt time.Time `json:"merged_at,omitzero"`
+}
+
+// LearnExpireParams sets expired on open learnings recorded more than
+// OlderThan ago that have no PR (JOB-198). Scope and Kind filter as in
+// learn.list. Admin only. The result is LearnExpireResult.
+type LearnExpireParams struct {
+	OlderThan time.Duration `json:"older_than"`
+	Scope     string        `json:"scope,omitempty"`
+	Kind      string        `json:"kind,omitempty"`
+}
+
+// LearnExpireResult counts the learnings learn.expire changed.
+type LearnExpireResult struct {
+	Expired int `json:"expired"`
 }
 
 // LearnEvaluateParams runs the curator gate (#274) on pending memory

@@ -21,7 +21,19 @@ const (
 	LearningOpen     = "open"
 	LearningApplied  = "applied"
 	LearningRejected = "rejected"
+	// LearningExpired: the curator will not act on it (JOB-198). It says
+	// nothing about whether the problem happened; recall still finds it.
+	LearningExpired = "expired"
 )
+
+// ValidLearningStatus reports whether s is a learning status.
+func ValidLearningStatus(s string) bool {
+	switch s {
+	case LearningOpen, LearningApplied, LearningRejected, LearningExpired:
+		return true
+	}
+	return false
+}
 
 // LearningKinds are the default learning kinds, used when the config
 // sets no learnings.kinds (#524). The controller's own learnings use
@@ -109,7 +121,7 @@ func ValidLearning(l *Learning) error {
 	if l.Status == "" {
 		l.Status = LearningOpen
 	}
-	if l.Status != LearningOpen && l.Status != LearningApplied && l.Status != LearningRejected {
+	if !ValidLearningStatus(l.Status) {
 		return fmt.Errorf("%w: learning status %q", ErrInvalid, l.Status)
 	}
 	sc, err := ParseScope(l.Scope)

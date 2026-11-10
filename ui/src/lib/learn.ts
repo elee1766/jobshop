@@ -5,7 +5,15 @@ import type { Learning, MemoryEdit } from '../../../packages/jobshop-client/rpc.
 // that was actually tried, and the gate's state on the edit is the outcome.
 // A learning an edit cites is shown inside that edit, never twice.
 
-export type Stage = 'not-helped' | 'awaiting' | 'in-flight' | 'evaluating' | 'helped' | 'applied' | 'rejected';
+export type Stage =
+  | 'not-helped'
+  | 'awaiting'
+  | 'in-flight'
+  | 'evaluating'
+  | 'helped'
+  | 'applied'
+  | 'rejected'
+  | 'expired';
 
 export interface Section {
   stage: Stage;
@@ -23,6 +31,7 @@ export const sections: Section[] = [
   { stage: 'helped', title: 'helped', hint: 'the gate found the change helped', open: false },
   { stage: 'applied', title: 'applied, not evaluated', hint: 'marked applied, no gate result recorded', open: false },
   { stage: 'rejected', title: 'rejected', hint: 'the proposed change was turned down', open: false },
+  { stage: 'expired', title: 'expired', hint: 'old and never addressed, the curator no longer reads it', open: false },
 ];
 
 export interface Where {
@@ -89,13 +98,16 @@ export function learningOutcome(l: Learning) {
   if (l.gate) return l.gate.replace(/^(helped|not_helped):/, (_, s) => s.replace('_', ' ') + ':');
   if (l.status === 'rejected') return 'rejected' + (l.pr ? ': ' + (whereOf(l.pr)?.text || l.pr) : '');
   if (l.status === 'applied') return 'applied, no gate result recorded';
+  if (l.status === 'expired')
+    return 'expired, never addressed' + (l.pr ? ' (fix proposed: ' + (whereOf(l.pr)?.text || l.pr) + ')' : '');
   if (l.pr) return 'fix proposed, not merged yet';
   return 'not addressed yet';
 }
 
-function stageOf(l: Learning): Stage {
+export function stageOf(l: Learning): Stage {
   if (l.status === 'rejected') return 'rejected';
   if (l.status === 'applied') return 'applied';
+  if (l.status === 'expired') return 'expired';
   return l.pr ? 'in-flight' : 'awaiting';
 }
 

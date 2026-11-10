@@ -17,6 +17,7 @@ const learnings = [
   learning(6, { summary: 'A very long problem title that goes on and on about a retry budget burned because the implement step kept running the whole suite and a migration collided with a parallel pull request and nobody noticed until review ' + 'x'.repeat(120), fix: 'Short fix' }),
   learning(7, { summary: 'Migration number collided with a parallel PR', created_at: iso(0.2 * day) }),
   learning(8, { kind: 'workaround', summary: 'python3 is not installed', fix: 'Use go or jq', status: 'applied', pr: 'memory:99', created_at: iso(40 * day) }),
+  learning(9, { summary: 'Old one-off network error nobody acted on', status: 'expired', created_at: iso(12 * day) }),
   ...Array.from({ length: 14 }, (_, i) => learning(20 + i, { kind: 'workaround', summary: `Open workaround ${i + 1}: flaky tool needs a longer timeout`, fix: 'Retry once with 2x timeout' })),
 ];
 const edits = [
@@ -77,6 +78,15 @@ test('learn filters, pages long sections and keeps long titles inside the viewpo
   await expect(awaiting.locator('.learn-row')).toHaveCount(10);
   await awaiting.getByRole('button', { name: /^more/ }).click();
   await expect(awaiting.locator('.learn-row')).toHaveCount(16);
+
+  // Expired learnings have their own section, closed by default, and are not awaiting the curator.
+  await expect(awaiting).not.toContainText('Old one-off network error');
+  const expired = page.getByRole('region', { name: 'expired' });
+  await expect(expired.locator('.learn-row')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Stage' }).getByRole('button', { name: /^expired 1$/ })).toBeVisible();
+  await expired.getByRole('button').first().click();
+  await expect(expired.locator('.learn-row')).toHaveCount(1);
+  await expect(expired).toContainText('Old one-off network error');
 
   const filter = page.getByLabel('Filter learn');
   await filter.fill('vendorhash');
