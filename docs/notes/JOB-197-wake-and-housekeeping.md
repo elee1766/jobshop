@@ -55,3 +55,15 @@
 - Telemetry: `jobshop.housekeeping.duration{step}` and a `housekeeping` root
   span with one `housekeeping <step>` child each. `jobshop.tick.step.duration`
   and the system status `steps` no longer carry these six.
+
+## Relation to the pass wake (JOB-193)
+
+`wakePass` (`docs/notes/193-pass-wake.md`) asks the serve loop for a pass;
+`wakePool` wakes idle runners. Both answer "something became ready", and the
+runner wake covers the same events (a callback-created ticket is a `create`
+row, a finished step a `close` row) from the one place that sees every
+commit, the events pump, so no call site has to remember a second call. It
+also covers three of that note's "not covered" cases for idle sessions: a
+reopen, a lease expiry and a retry after a failed attempt (`reopen`,
+`lease_expired`, `release` rows). Those still wait for the ticker if they
+need a pass (a command step), which is JOB-193's slice.
