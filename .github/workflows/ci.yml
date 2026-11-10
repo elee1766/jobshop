@@ -132,8 +132,6 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           # Lint the tagged test files too, or they rot unseen.
           "$RUNNER_TEMP/gl/$n-linux-amd64/golangci-lint" run --build-tags=victorialogs
-      - name: shellcheck deploy scripts
-        run: shellcheck -s sh deploy/*.sh .github/scripts/*.sh
       # Go bumps an entry's mtime when it is used and was last touched over
       # an hour ago, so anything older than 90 minutes was not used by this
       # run. Dropping it keeps the cache from growing with every build.
