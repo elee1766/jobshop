@@ -17,7 +17,7 @@ test('Markdown links in titles open their destination and leave the row action a
     const plain = await call('ticket.create', { title: `Plain ${key} *not italic* <b>not bold</b>`, parent_id: parent.id });
     const unsafe = await call('ticket.create', { title: `Unsafe ${key} [click](javascript:alert%281%29) [data](data:text/html,x)`, parent_id: parent.id });
     created.push(plain.id, unsafe.id);
-    await page.goto(`./?view=trace&layout=graph&tab=relations&ref=${parent.id}`);
+    await page.goto(`./?view=trace&tab=relations&ref=${parent.id}`);
     const relationships = page.getByLabel('Ticket relationships', { exact: true });
     const heading = page.locator('.ticket-overview > h2');
     await expect(heading.getByRole('link', { name: 'JOB-117', exact: true })).toHaveAttribute('href', 'https://linear.app/gfx-labs/issue/JOB-117');
@@ -27,10 +27,8 @@ test('Markdown links in titles open their destination and leave the row action a
     await expect(relationships.locator('b')).toHaveCount(0);
     await expect(relationships).toContainText(`Unsafe ${key} click data`);
     await expect(relationships.getByRole('link')).toHaveCount(0);
-    // The graph node shows links, a readable tooltip, and no nested controls.
-    const node = page.locator(`[data-ticket="${parent.id}"] .graph-select`);
-    await expect(node.getByRole('link', { name: 'JOB-117', exact: true })).toBeVisible();
-    await expect(node.locator('strong')).toHaveAttribute('title', `Parent ${key} JOB-117 and jobshop#1021`);
+    // The timeline row has a readable tooltip and no nested controls.
+    await expect(page.locator('button.tl-name').first()).toHaveAttribute('title', `Parent ${key} JOB-117 and jobshop#1021 (${parent.id})`);
     expect(await page.locator('a a, a button, button a, button button').count()).toBe(0);
     // Clicking a title link opens its destination and does not select the ticket.
     await relationships.getByRole('button', { name: `Plain ${key} *not italic* <b>not bold</b>`, exact: false }).click();

@@ -43,8 +43,8 @@ test('converted escalation retains its transcript and claimed tickets expose a l
     await expect(context.locator('.markdown br')).toHaveCount(1);
     task = await call('ticket.create', { title: 'Inspect live work ' + crypto.randomUUID() });
     await exec(process.env.JOBSHOP_BIN || 'jobshop', ['--root', process.env.DESK_ROOT, 'claim', task.id, '--holder', session], { env: { ...process.env, JOBSHOP_SOCKET: '' } });
-    await page.goto('./?view=trace&layout=graph&ref=' + task.id);
-    await page.getByRole('button', { name: 'Inspect ' + task.id, exact: true }).click();
+    await page.goto('./?view=trace&ref=' + task.id);
+    await page.locator('button.watch-session').first().click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer).toBeVisible();
     await expect(viewer.locator('.operator').filter({ hasText: human })).toHaveText(human);

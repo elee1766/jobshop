@@ -27,12 +27,10 @@ Call the first run A, its step S, and the run the session made B.
 3. Open `?view=trace&ref=<S>`. The same rows again, S selected.
 4. Click another row. The rows stay on screen while the details change. The
    URL keeps `ref` and changes `inspect`.
-5. In the ticket details and in the `⋯` menu of a card or row: no
+5. In the ticket details and in the `⋯` menu of a row: no
    `open as graph root`. `open in trace` stays on home and system rows.
-6. Switch to the graph layout (`graph` button). Every card is there, the
-   opened one is selected and in view.
-7. Open a step that waits on a ticket in the graph, then press its wait target
+6. Open a step that waits on a ticket in the graph, then press its wait target
    in the timeline detail. The target is selected, the URL gets `inspect=`, and
    no new trace opens. A wait on a ticket outside the graph opens its trace.
-8. `GET /api/trace/<B>` and `GET /api/trace/<A>` (Desk) return the same
+7. `GET /api/trace/<B>` and `GET /api/trace/<A>` (Desk) return the same
    `graph.root` and node ids; `graph.requested` differs.

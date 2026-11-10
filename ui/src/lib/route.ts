@@ -48,9 +48,6 @@ export interface Route {
   kind: string;
   since: boolean;
   section: Section;
-  // The trace as a timeline (#1103), the default (#1136). ?layout=graph
-  // selects the graph; ?layout=timeline still means the timeline.
-  timeline: boolean;
 }
 
 export function parseRoute(search: string, hash: string): Route {
@@ -77,7 +74,6 @@ export function parseRoute(search: string, hash: string): Route {
     author: params.get('author') || '',
     kind: params.get('kind') || '',
     since: params.get('since') === '1',
-    timeline: params.get('layout') !== 'graph',
     section: view === 'home' && (h === 'waiting' || h === 'inflight') ? h : '',
   };
 }

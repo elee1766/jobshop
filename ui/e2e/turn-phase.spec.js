@@ -71,8 +71,8 @@ test('the read-only session viewer shows the indicator too', async ({ page, requ
   const tag = 'ph' + crypto.randomUUID().slice(0, 8);
   const session = await post(request, 'api/chat/manage', { action: 'new', name: 'phase-' + tag, text: 'phases ' + tag });
   try {
-    await page.goto('./?view=trace&layout=graph&ref=' + session.id);
-    await page.getByRole('button', { name: 'Inspect ' + session.id, exact: true }).click();
+    await page.goto('./?view=trace&ref=' + session.id);
+    await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     const viewer = page.getByRole('region', { name: 'Read-only session' });
     await expect(viewer.locator('.turn-phase')).toHaveText('thinking…');
     advance(tag, 1);

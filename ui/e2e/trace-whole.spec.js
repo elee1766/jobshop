@@ -20,7 +20,7 @@ const ticket = (id, title, minutes, o = {}) => ({
 });
 
 // A root run with 40 steps, each created a minute apart: the last ones are far
-// below the first rows of the timeline and far right in the graph.
+// below the first rows of the timeline.
 const count = 40;
 const root = ticket('js-root', 'Root run', 100, { kind: 'run', status: 'in_progress' });
 const steps = Array.from({ length: count }, (_, i) =>
@@ -79,7 +79,7 @@ async function open(page, query) {
 }
 
 // A timeline row is as wide as the chart and scrolls sideways: rows are only
-// checked vertically. A graph card must be inside on both axes.
+// checked vertically.
 const inView = async (inner, outer, both = true) => {
   const a = await inner.boundingBox();
   const b = await outer.boundingBox();
@@ -123,25 +123,6 @@ test('?ref=<root>&inspect=<sub-item> shows the same view as ?ref=<sub-item>', as
   await expect(tl.locator('.tl-row.tl-picked')).toContainText('Step 35');
   await inView(tl.locator('.tl-row.tl-picked'), tl.locator('.tl-scroll'), false);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 35');
-});
-
-test('the graph layout shows every card with the opened one selected and in view', async ({ page }) => {
-  await open(page, '&ref=js-step35&layout=graph');
-  const graphView = page.getByRole('region', { name: 'Ticket dependency graph' });
-  await expect(graphView.locator('.graph-card')).toHaveCount(count + 1);
-  const selected = graphView.locator('.graph-card.graph-selected');
-  await expect(selected).toHaveCount(1);
-  await expect(selected).toHaveAttribute('data-ticket', 'js-step35');
-  await expect(selected.getByRole('button', { name: 'Inspect js-step35' })).toHaveAttribute('aria-pressed', 'true');
-  await inView(selected, graphView.locator('.graph-scroll'));
-  await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 35');
-  await expect(page.getByText('open as graph root')).toHaveCount(0);
-
-  // Selecting another card keeps every card.
-  await graphView.locator('.graph-card[data-ticket="js-step36"]').getByRole('button', { name: 'Inspect js-step36' }).click();
-  await expect(page).toHaveURL(/inspect=js-step36/);
-  await expect(graphView.locator('.graph-card')).toHaveCount(count + 1);
-  await expect(graphView.locator('.graph-card.graph-selected')).toHaveAttribute('data-ticket', 'js-step36');
 });
 
 test('selecting a row keeps every row on screen', async ({ page }) => {

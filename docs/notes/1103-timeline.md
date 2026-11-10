@@ -4,8 +4,8 @@
 
 `ticket.timeline` (params like `ticket.graph`: `id`, `limit`) returns the
 graph around a ticket as bars on one time axis. Desk shows it as
-`?view=trace&ref=<id>&layout=timeline`, a toggle on the trace (the graph has a
-`timeline` button, the timeline a `graph` button). The Desk trace snapshot
+`?view=trace&ref=<id>`, the only trace view since #1179 (the graph view and
+its toggle are gone). The Desk trace snapshot
 carries `timeline` only when the stream or `GET /api/trace/<ref>` is opened
 with `timeline=1`, since it replays the history of every node.
 
