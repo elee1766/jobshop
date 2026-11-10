@@ -21,7 +21,7 @@ jobs:
     needs: ui
     # Was pinned to Ubuntu 24.04 because the sandbox tests crash where bwrap
     # exists (#619). Watch for that on the talos-metal runner image.
-    runs-on: talos-metal-gfx
+    runs-on: talos-metal-gfx-public
     # Postgres and VictoriaLogs tests run here, not in their own jobs: their
     # time is mostly the Go build, which this job already pays once.
     services:
@@ -153,7 +153,7 @@ jobs:
 
   nix:
     # The module check ran out of memory on a 4GB runner. This one has 16GB.
-    runs-on: talos-metal-gfx
+    runs-on: talos-metal-gfx-public
     permissions:
       contents: read
       actions: read # hestia: detect evicted cache entries upfront
@@ -190,7 +190,7 @@ jobs:
   # fixture, so nothing here touches a real instance.
   e2e:
     needs: ui
-    runs-on: talos-metal-gfx
+    runs-on: talos-metal-gfx-public
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
@@ -236,7 +236,7 @@ jobs:
 
   # Build once for the Go checks. Nix builds its own cached frontend derivation.
   ui:
-    runs-on: talos-metal-gfx
+    runs-on: talos-metal-gfx-public
     defaults:
       run:
         working-directory: ui
