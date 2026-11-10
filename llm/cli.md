@@ -2257,17 +2257,21 @@ Usage: jobshop run list [flags]
 List runs, newest first.
 
 Flags:
-  -h, --help              Show context-sensitive help.
-      --root=STRING       Jobshop root directory (holds jobshop.yaml,
-                          the database, sockets and sessions). Default:
-                          nearest ancestor of the cwd containing jobshop.yaml
-                          ($JOBSHOP_ROOT).
-      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
-                          else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help               Show context-sensitive help.
+      --root=STRING        Jobshop root directory (holds jobshop.yaml,
+                           the database, sockets and sessions). Default:
+                           nearest ancestor of the cwd containing jobshop.yaml
+                           ($JOBSHOP_ROOT).
+      --socket=STRING      Socket to talk to. Defaults to the session
+                           CLI socket, else the root's admin socket
+                           ($JOBSHOP_SOCKET).
 
-      --project=STRING    Project.
-  -s, --state=""          Run state.
-  -n, --limit=INT         Max results (default 500).
+      --project=STRING     Project.
+  -s, --state=""           Run state.
+      --workflow=STRING    Only runs of this workflow (exact name).
+      --key=STRING         Only runs with this key (exact), closed ones
+                           included.
+  -n, --limit=INT          Max results (default 500).
 ```
 
 ## jobshop run cancel

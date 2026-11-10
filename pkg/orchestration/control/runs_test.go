@@ -604,3 +604,32 @@ func TestRunShowStepPRLinks(t *testing.T) {
 	assert.Contains(t, got, "https://github.com/acme/widget/pull/8", "several PRs, each linked")
 	assert.NotContains(t, got, "https://github.com/acme/widget/pull/99")
 }
+
+// TestRunListWorkflowKey: workflow and key are exact filters that combine
+// with each other and with state, and closed runs are listed.
+func TestRunListWorkflowKey(t *testing.T) {
+	admin := runRoot(t)
+	pr1 := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}, Key: "shared"})
+	pr2 := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "2"}, Key: "issue-2"})
+	tiered := startRun(t, admin, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "dev"}, Key: "shared"})
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: pr2.Run.ID}, nil))
+
+	ids := func(p rpc.RunListParams) []string {
+		var runs []domain.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, p, &runs))
+		out := []string{}
+		for _, r := range runs {
+			out = append(out, r.ID)
+		}
+		return out
+	}
+	assert.Equal(t, []string{pr2.Run.ID, pr1.Run.ID}, ids(rpc.RunListParams{Workflow: "pr"}), "newest first, closed included")
+	assert.Equal(t, []string{tiered.Run.ID}, ids(rpc.RunListParams{Workflow: "tiered"}))
+	assert.Equal(t, []string{tiered.Run.ID, pr1.Run.ID}, ids(rpc.RunListParams{Key: "shared"}))
+	assert.Equal(t, []string{pr2.Run.ID}, ids(rpc.RunListParams{Key: "issue-2"}), "closed run found by key")
+	assert.Equal(t, []string{pr1.Run.ID}, ids(rpc.RunListParams{Workflow: "pr", Key: "shared"}))
+	assert.Empty(t, ids(rpc.RunListParams{Workflow: "tiered", Key: "issue-2"}))
+	assert.Equal(t, []string{pr1.Run.ID}, ids(rpc.RunListParams{Workflow: "pr", State: domain.RunRunning}))
+	assert.Empty(t, ids(rpc.RunListParams{Key: "shared", State: domain.RunDone}))
+	assert.Empty(t, ids(rpc.RunListParams{Workflow: "nope"}))
+}

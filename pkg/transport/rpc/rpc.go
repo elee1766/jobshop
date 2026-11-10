@@ -1423,9 +1423,11 @@ type BatchListParams struct {
 
 // RunListParams selects runs. State is a store.Run* value.
 type RunListParams struct {
-	Project string `json:"project,omitempty"`
-	State   string `json:"state,omitempty"`
-	Limit   int    `json:"limit,omitempty"`
+	Project  string `json:"project,omitempty"`
+	State    string `json:"state,omitempty"`
+	Workflow string `json:"workflow,omitempty"`
+	Key      string `json:"key,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
 }
 
 // RunResumeParams reopens a run's step (default: its first unfinished

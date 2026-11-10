@@ -38,7 +38,7 @@ scan starts a second run for the same finding. Close or drain those runs
 first:
 
 ```sh
-jobshop run list | jq -r '.[] | select(.title | test("stall")) | .id'
+jobshop run list --state running --workflow stall-check | jq -r '.[].id'
 jobshop run cancel <id>
 ```
 

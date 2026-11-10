@@ -1307,6 +1307,8 @@ export interface ResourceWait {
 export interface RunListParams {
   project?: string;
   state?: string;
+  workflow?: string;
+  key?: string;
   limit?: number;
 }
 
