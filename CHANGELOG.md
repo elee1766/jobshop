@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/gfx-labs/jobshop/compare/v0.10.4...v0.10.5) (2026-11-10)
+
+
+### Features
+
+* **desk:** live turn indicator in chat and session viewer (JOB-192) ([#1186](https://github.com/gfx-labs/jobshop/issues/1186)) ([977c3d5](https://github.com/gfx-labs/jobshop/commit/977c3d55267f059fe2a83a49105ef789d5cb40ac))
+
 ## [0.10.4](https://github.com/gfx-labs/jobshop/compare/v0.10.3...v0.10.4) (2026-11-10)
 
 
