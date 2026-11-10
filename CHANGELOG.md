@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.15](https://github.com/gfx-labs/jobshop/compare/v0.10.14...v0.10.15) (2026-11-10)
+
+
+### Features
+
+* **cli:** accept the flag and subcommand names agents use (JOB-201) ([#1212](https://github.com/gfx-labs/jobshop/issues/1212)) ([1d618a6](https://github.com/gfx-labs/jobshop/commit/1d618a6f0ff3bc18fdb3ae8d8b73a590dc1fc9cd))
+
 ## [0.10.14](https://github.com/gfx-labs/jobshop/compare/v0.10.13...v0.10.14) (2026-11-10)
 
 
