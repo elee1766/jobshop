@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -265,7 +266,21 @@ func TestLoopback(t *testing.T) {
 	assert.False(t, Loopback("100.64.0.1:7480"))
 }
 
+// needUI skips a test that reads the built UI when the bundle is not
+// embedded. With JOBSHOP_REQUIRE_DESK_UI set (CI) a missing bundle fails.
+func needUI(t *testing.T) {
+	t.Helper()
+	if Built() {
+		return
+	}
+	if os.Getenv("JOBSHOP_REQUIRE_DESK_UI") != "" {
+		t.Fatal("Desk UI is not built: run npm --prefix ui run build")
+	}
+	t.Skip("Desk UI is not built (npm --prefix ui run build)")
+}
+
 func TestStatic(t *testing.T) {
+	needUI(t)
 	h := New(Config{}, &fakeCtl{}, nil).Handler()
 	for _, p := range []string{"/", "/?view=work", "/no/such/path"} {
 		w := get(t, h, p, nil)
@@ -378,6 +393,7 @@ func assetPath(t *testing.T) string {
 }
 
 func TestBasePath(t *testing.T) {
+	needUI(t)
 	ctl := &fakeCtl{results: map[string]any{}}
 	h := New(Config{BasePath: "/desk/"}, ctl, nil).Handler()
 	asset := assetPath(t)
@@ -442,6 +458,7 @@ func TestCleanBasePath(t *testing.T) {
 
 // --favicon replaces the built-in icon link and is served at /favicon.
 func TestFavicon(t *testing.T) {
+	needUI(t)
 	ctl := &fakeCtl{results: map[string]any{}}
 	w := get(t, New(Config{}, ctl, nil).Handler(), "/", nil)
 	assert.Contains(t, w.Body.String(), `href="icon.svg"`)
@@ -460,6 +477,7 @@ func TestFavicon(t *testing.T) {
 // TestStaticCompression: assets are gzipped for a client that accepts it
 // and sent as is otherwise; streams and the API are never compressed (#1088).
 func TestStaticCompression(t *testing.T) {
+	needUI(t)
 	s := New(Config{}, &fakeCtl{events: []rpc.Event{{Kind: rpc.EventKindReady}}}, nil)
 	h := s.Handler()
 	entries, err := fs.ReadDir(s.ui, "assets")

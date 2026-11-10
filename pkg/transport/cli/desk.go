@@ -87,6 +87,9 @@ func (c deskCmd) Run(g *Globals) error {
 		cfg.Push = &desk.Push{File: filepath.Join(r.Dir, "desk", "push.json"), Subject: c.PushSubject}
 	}
 	d := desk.New(cfg, desk.Socket{Path: sock}, log)
+	if !desk.Built() {
+		log.Warn("desk UI is not built into this binary: serving a placeholder page")
+	}
 	srv := &http.Server{
 		Handler:           d.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

@@ -42,6 +42,8 @@ jobs:
       JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
       # Tests against a real VictoriaLogs (#530): a missing binary fails.
       JOBSHOP_REQUIRE_VICTORIALOGS: "1"
+      # Tests that read the built Desk UI skip without it; here that fails.
+      JOBSHOP_REQUIRE_DESK_UI: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4

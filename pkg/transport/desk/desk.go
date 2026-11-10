@@ -31,8 +31,20 @@ import (
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
+// dist holds the built UI. Only dist/.keep is tracked, so the package
+// builds and its tests run before the UI is built.
+//
 //go:embed all:dist
 var dist embed.FS
+
+// unbuilt is the page served when the binary was built without the UI.
+const unbuilt = "<!doctype html>\n<html>\n  <head>\n    <title>jobshop desk</title>\n  </head>\n  <body>\n    <p>Desk UI is not built. Run <code>npm --prefix ui ci &amp;&amp; npm --prefix ui run build</code>, then rebuild jobshop.</p>\n  </body>\n</html>\n"
+
+// Built reports whether the binary embeds the built UI.
+func Built() bool {
+	_, err := fs.Stat(dist, "dist/index.html")
+	return err == nil
+}
 
 // Controller is the part of the admin API Desk reads.
 type Controller interface {
@@ -125,7 +137,7 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	}
 	index, err := fs.ReadFile(ui, "index.html")
 	if err != nil {
-		panic(err)
+		index = []byte(unbuilt)
 	}
 	// The CLI rejects an invalid base; here it falls back to the root.
 	if cfg.BasePath = CleanBasePath(cfg.BasePath); cfg.BasePath == "" {

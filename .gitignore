@@ -2,4 +2,5 @@
 /result-*
 /jobshop
 *.test
-/pkg/transport/desk/dist/
+/pkg/transport/desk/dist/*
+!/pkg/transport/desk/dist/.keep

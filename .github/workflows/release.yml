@@ -79,6 +79,8 @@ jobs:
           CGO_ENABLED: "0"
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
+          # The package builds without the UI, so check the bundle is there.
+          test -f pkg/transport/desk/dist/index.html
           name="jobshop_${VERSION}_${GOOS}_${GOARCH}"
           mkdir -p "dist/$name"
           go build -trimpath \
