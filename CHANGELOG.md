@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.8](https://github.com/gfx-labs/jobshop/compare/v0.10.7...v0.10.8) (2026-11-10)
+
+
+### Features
+
+* **desk:** swap the trace timeline and details with a button ([#1181](https://github.com/gfx-labs/jobshop/issues/1181)) ([#1195](https://github.com/gfx-labs/jobshop/issues/1195)) ([c99bc10](https://github.com/gfx-labs/jobshop/commit/c99bc103b913f4672bf393b954db3fe20ec526d7))
+
 ## [0.10.7](https://github.com/gfx-labs/jobshop/compare/v0.10.6...v0.10.7) (2026-11-10)
 
 
