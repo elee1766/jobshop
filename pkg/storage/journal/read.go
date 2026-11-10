@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	host "github.com/gfx-labs/acphost/pkg/acphost"
 
 	"github.com/gfx-labs/jobshop/pkg/domain"
 	"github.com/gfx-labs/jobshop/pkg/transport/rpc"

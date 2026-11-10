@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/elee1766/acphost/pkg/cgroup"
+	"github.com/gfx-labs/acphost/pkg/cgroup"
 
 	"github.com/gfx-labs/jobshop/pkg/config"
 )

@@ -21,9 +21,9 @@ func TestBrowseGrantAndScope(t *testing.T) {
 
 	_, err := c.browseScope(ctx, scope{pool: "dev"}, struct{}{})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
-	_, err = c.browseList(ctx, scope{pool: "dev"}, rpc.BrowseListParams{Provider: rpc.BrowseGitHub, Scope: "elee1766/acphost"})
+	_, err = c.browseList(ctx, scope{pool: "dev"}, rpc.BrowseListParams{Provider: rpc.BrowseGitHub, Scope: "gfx-labs/acphost"})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
-	_, err = c.browseShow(ctx, scope{pool: "dev"}, rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "elee1766/acphost#1"})
+	_, err = c.browseShow(ctx, scope{pool: "dev"}, rpc.BrowseShowParams{Provider: rpc.BrowseGitHub, Ref: "gfx-labs/acphost#1"})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
 	_, err = c.browseCatalog(ctx, scope{pool: "dev"}, rpc.BrowseCatalogParams{Team: "JOB"})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
@@ -31,7 +31,7 @@ func TestBrowseGrantAndScope(t *testing.T) {
 	v, err := c.browseScope(ctx, scope{admin: true}, struct{}{})
 	require.NoError(t, err)
 	res := v.(rpc.BrowseScopeResult)
-	assert.Equal(t, []rpc.BrowseGitHubScope{{Repo: "elee1766/acphost"}, {Repo: "gfx-labs/jobshop"}}, res.GitHub, "workflow repos and activity.repos")
+	assert.Equal(t, []rpc.BrowseGitHubScope{{Repo: "gfx-labs/acphost"}, {Repo: "gfx-labs/jobshop"}}, res.GitHub, "workflow repos and activity.repos")
 	assert.Empty(t, res.Linear)
 	assert.False(t, res.Writes.Enabled)
 

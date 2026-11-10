@@ -37,7 +37,7 @@ agents:
 packs:
   - path: %s
     prefix: acphost-
-    vars: {repo: elee1766/acphost, agent: a}
+    vars: {repo: gfx-labs/acphost, agent: a}
   - path: %s
     vars: {agent: a}
 `, gh, op))
@@ -74,5 +74,5 @@ packs:
 	require.Len(t, inst, 2)
 	assert.Equal(t, "acphost-", inst[0].Prefix)
 	assert.Contains(t, inst[0].Workflows, "acphost-pr-work")
-	assert.Equal(t, "elee1766/acphost", inst[0].Vars["repo"])
+	assert.Equal(t, "gfx-labs/acphost", inst[0].Vars["repo"])
 }

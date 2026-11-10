@@ -19,7 +19,7 @@ config changes.
    replacement at the candidate). It must load every `.star` file named by
    a workflow, trigger, scan signal, hook or desk command.
 3. `jobshop identity check gfx-labs/jobshop` and `jobshop identity check
-   elee1766/acphost` name the GitHub App identity and return a token.
+   gfx-labs/acphost` name the GitHub App identity and return a token.
 
 ## After activation
 
