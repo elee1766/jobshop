@@ -870,7 +870,11 @@ func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.Initiali
 		if err != nil {
 			out = append(out, []byte(" error: "+err.Error())...)
 		}
-		_ = os.WriteFile("shellenv.out", out, 0o600)
+		// Renamed into place: the test reads the file as soon as it exists,
+		// and WriteFile alone leaves it empty for a moment.
+		if os.WriteFile("shellenv.tmp", out, 0o600) == nil {
+			_ = os.Rename("shellenv.tmp", "shellenv.out")
+		}
 	}
 	// A "daemon" file makes the agent start a detached helper that keeps
 	// the agent's env, like jcode's `serve` daemon behind `acp --socket`.
