@@ -959,6 +959,9 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		_, _ = f.Write(append(line, '\n'))
 		_ = f.Close()
 	}
+	if line := lastMessageLine(text); strings.Contains(text, "<messages>") && strings.HasPrefix(line, "phases ") {
+		return a.phases(ctx, p, strings.TrimPrefix(line, "phases "))
+	}
 	if strings.Contains(text, "<messages>") {
 		// Reply with a tool call and an echo, for session.subscribe. A
 		// message saying "hold" keeps the turn open until cancelled.
@@ -1111,6 +1114,40 @@ func requestChanges(ctx context.Context, c *rpc.Client, text string) bool {
 	_ = os.WriteFile("request_changes", fmt.Appendf(nil, "%d", n-1), 0o600)
 	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Resolution: domain.ResolutionRequestChanges, Comment: fmt.Sprintf("finding %d: handle the empty case", n)}, nil)
 	return true
+}
+
+// phases walks a turn through thinking, a tool and a reply, advancing each
+// time the file "<tag>.<n>" appears, so a browser test can look at every
+// phase in order (JOB-192). A cancel ends the turn at once.
+func (a *agent) phases(ctx context.Context, p acp.PromptRequest, tag string) (acp.PromptResponse, error) {
+	conn := a.conn.Load()
+	gate := func(n int) bool {
+		for {
+			if _, err := os.Stat(fmt.Sprintf("%s.%d", tag, n)); err == nil {
+				return true
+			}
+			select {
+			case <-a.cancel:
+				return false
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+	}
+	cancelled := acp.PromptResponse{StopReason: acp.StopReasonCancelled}
+	_ = conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentThoughtText("considering " + tag)})
+	if !gate(1) {
+		return cancelled, nil
+	}
+	_ = conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("p1", "Phase tool "+tag, acp.WithStartStatus(acp.ToolCallStatusInProgress))})
+	if !gate(2) {
+		return cancelled, nil
+	}
+	_ = conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("p1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
+	_ = conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("answer " + tag)})
+	if !gate(3) {
+		return cancelled, nil
+	}
+	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
 func (a *agent) Cancel(context.Context, acp.CancelNotification) error {
