@@ -370,5 +370,7 @@ type LearningFilter struct {
 	Kind   string
 	Status string
 	Ticket string
-	Limit  int // 0 means DefaultLimit
+	// DuplicateOf selects the duplicates of this learning id (JOB-199).
+	DuplicateOf int64
+	Limit       int // 0 means DefaultLimit
 }

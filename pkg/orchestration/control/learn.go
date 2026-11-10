@@ -62,7 +62,7 @@ func (c *Controller) addLearning(ctx context.Context, l domain.Learning) (domain
 }
 
 func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListParams) (any, error) {
-	f := store.LearningFilter{Kind: p.Kind, Status: p.Status, Ticket: p.Ticket, Limit: p.Limit}
+	f := store.LearningFilter{Kind: p.Kind, Status: p.Status, Ticket: p.Ticket, DuplicateOf: p.DuplicateOf, Limit: p.Limit}
 	// A glob kind (#524) is matched here: fetch without it, then filter.
 	glob := strings.ContainsAny(p.Kind, "*?[")
 	if glob {
@@ -98,22 +98,37 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	return out, nil
 }
 
-// learnUpdate sets status and PR on learnings (#273). Open to every
-// session: the curator marks the PR it opened, the refinery or the next
-// curate pass marks the outcome. A rejected learning must name its PR, so
-// the curator can see what was turned down.
+// learnUpdate sets status and PR on learnings (#273), or marks them
+// duplicates of an open one (JOB-199). Open to every session: the curator
+// marks the PR it opened, the refinery or the next curate pass marks the
+// outcome. A rejected learning must name its PR, so the curator can see
+// what was turned down. A duplicate takes no outcome of its own: it can
+// only be reopened, and applying or rejecting a group goes through the
+// learning kept.
 func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdateParams) (any, error) {
 	if len(p.IDs) == 0 {
 		return nil, fmt.Errorf("%w: learn update needs at least one id", domain.ErrInvalid)
 	}
+	if p.DuplicateOf != 0 {
+		if p.Status != "" || strings.TrimSpace(p.PR) != "" {
+			return nil, fmt.Errorf("%w: --duplicate-of cannot be combined with --status or --pr", domain.ErrInvalid)
+		}
+		return knowledge.MarkDuplicates(ctx, c.store, p.IDs, p.DuplicateOf)
+	}
+	if p.Status == domain.LearningDuplicate {
+		return nil, fmt.Errorf("%w: use --duplicate-of <id> to mark duplicates", domain.ErrInvalid)
+	}
 	if p.Status == "" && strings.TrimSpace(p.PR) == "" {
-		return nil, fmt.Errorf("%w: learn update needs --status or --pr", domain.ErrInvalid)
+		return nil, fmt.Errorf("%w: learn update needs --status, --pr or --duplicate-of", domain.ErrInvalid)
 	}
 	cur := make([]domain.Learning, 0, len(p.IDs))
 	for _, id := range p.IDs {
 		l, err := knowledge.GetLearning(ctx, c.store, id)
 		if err != nil {
 			return nil, err
+		}
+		if l.Status == domain.LearningDuplicate && p.Status != domain.LearningOpen {
+			return nil, fmt.Errorf("%w: learning %d is a duplicate of %d: update %d instead, or reopen it with --status open", domain.ErrInvalid, id, l.DuplicateOf, l.DuplicateOf)
 		}
 		st, pr := l.Status, l.PR
 		if p.Status != "" {

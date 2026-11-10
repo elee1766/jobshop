@@ -2068,7 +2068,9 @@ type LearnListParams struct {
 	Kind   string        `json:"kind,omitempty"`
 	Status string        `json:"status,omitempty"`
 	Ticket string        `json:"ticket,omitempty"`
-	Limit  int           `json:"limit,omitempty"`
+	// DuplicateOf lists the duplicates of this learning id (JOB-199).
+	DuplicateOf int64 `json:"duplicate_of,omitempty"`
+	Limit       int   `json:"limit,omitempty"`
 }
 
 // LearnUpdateParams sets the status and PR of learnings (#273). The
@@ -2079,6 +2081,9 @@ type LearnUpdateParams struct {
 	IDs    []int64 `json:"ids"`
 	Status string  `json:"status,omitempty"`
 	PR     string  `json:"pr,omitempty"`
+	// DuplicateOf marks IDs as duplicates of this open learning (JOB-199).
+	// It excludes Status and PR.
+	DuplicateOf int64 `json:"duplicate_of,omitempty"`
 	// MergedAt is when the PR merged; with status applied it starts the
 	// curator gate's window (#274). Zero means now.
 	MergedAt time.Time `json:"merged_at,omitzero"`

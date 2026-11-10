@@ -1010,6 +1010,7 @@ export interface LearnListParams {
   kind?: string;
   status?: string;
   ticket?: string;
+  duplicate_of?: number;
   limit?: number;
 }
 
@@ -1025,6 +1026,7 @@ export interface LearnUpdateParams {
   ids: number[];
   status?: string;
   pr?: string;
+  duplicate_of?: number;
   merged_at?: string;
 }
 
@@ -1041,6 +1043,8 @@ export interface Learning {
   pr?: string;
   gate?: string;
   created_at: string;
+  duplicate_of?: number;
+  duplicates?: number;
 }
 
 export interface LinearIntakeParams {

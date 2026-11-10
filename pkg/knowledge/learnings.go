@@ -32,6 +32,7 @@ var LearningsSpec = store.CollectionSpec{
 		{Name: "scope", Path: "scope"},
 		{Name: "ticket", Path: "ticket"},
 		{Name: "pr", Path: "pr"},
+		{Name: "duplicate_of", Path: "duplicate_of"},
 	},
 	Search: []store.Field{{Name: "summary", Path: "summary"}, {Name: "fix", Path: "fix"}},
 }
@@ -51,6 +52,9 @@ type learningValue struct {
 	PR      string `json:"pr"`
 	Gate    string `json:"gate"`
 	Project string `json:"project"`
+	// DuplicateOf is the kept learning's id, set while the state is
+	// duplicate (JOB-199). Absent otherwise, so the index holds only those.
+	DuplicateOf int64 `json:"duplicate_of,omitempty"`
 }
 
 // all is the List limit of reads that need every match (counts, gate
@@ -119,7 +123,86 @@ func ListLearnings(ctx context.Context, st Store, f store.LearningFilter) ([]dom
 			rf.Where[name] = v
 		}
 	}
-	return listLearnings(ctx, st, rf)
+	if f.DuplicateOf != 0 {
+		rf.Where["duplicate_of"] = strconv.FormatInt(f.DuplicateOf, 10)
+	}
+	out, err := listLearnings(ctx, st, rf)
+	if err != nil {
+		return nil, err
+	}
+	return out, fillDuplicates(ctx, st, out)
+}
+
+// fillDuplicates sets Duplicates on each learning of ls (JOB-199): how many
+// learnings repeat it. One read of the duplicate rows serves every learning.
+func fillDuplicates(ctx context.Context, st Store, ls []domain.Learning) error {
+	if len(ls) == 0 {
+		return nil
+	}
+	dups, err := listLearnings(ctx, st, store.RecordFilter{States: []string{domain.LearningDuplicate}, Limit: all})
+	if err != nil {
+		return err
+	}
+	n := make(map[int64]int, len(dups))
+	for _, d := range dups {
+		n[d.DuplicateOf]++
+	}
+	for i := range ls {
+		ls[i].Duplicates = n[ls[i].ID]
+	}
+	return nil
+}
+
+// MarkDuplicates sets the learnings ids to duplicate of the open learning
+// of (JOB-199). The target must exist and be open, so a chain never forms,
+// and not be one of ids. An id may be open or already a duplicate (moved
+// to another target); one that others repeat cannot become a duplicate
+// itself, for the same reason. Nothing changes if any check fails.
+func MarkDuplicates(ctx context.Context, st Store, ids []int64, of int64) ([]domain.Learning, error) {
+	if of <= 0 {
+		return nil, fmt.Errorf("%w: duplicate-of needs a learning id", domain.ErrInvalid)
+	}
+	target, err := GetLearning(ctx, st, of)
+	if err != nil {
+		return nil, err
+	}
+	if target.Status != domain.LearningOpen {
+		return nil, fmt.Errorf("%w: learning %d is %s, not open: only an open learning can be kept", domain.ErrInvalid, of, target.Status)
+	}
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	cur := make([]domain.Learning, 0, len(ids))
+	for _, id := range ids {
+		if id == of {
+			return nil, fmt.Errorf("%w: learning %d cannot be a duplicate of itself", domain.ErrInvalid, id)
+		}
+		l, err := GetLearning(ctx, st, id)
+		if err != nil {
+			return nil, err
+		}
+		if l.Status != domain.LearningOpen && l.Status != domain.LearningDuplicate {
+			return nil, fmt.Errorf("%w: learning %d is %s: only an open learning can be marked a duplicate", domain.ErrInvalid, id, l.Status)
+		}
+		cur = append(cur, l)
+	}
+	if err := fillDuplicates(ctx, st, cur); err != nil {
+		return nil, err
+	}
+	for _, l := range cur {
+		if l.Duplicates > 0 {
+			return nil, fmt.Errorf("%w: learning %d has %d duplicates: mark those against the learning kept instead", domain.ErrInvalid, l.ID, l.Duplicates)
+		}
+	}
+	out := make([]domain.Learning, 0, len(cur))
+	for _, l := range cur {
+		u, err := updateLearning(ctx, st, l.ID, func(r *store.Record, v *learningValue) {
+			r.State, v.DuplicateOf = domain.LearningDuplicate, of
+		})
+		if err != nil {
+			return out, err
+		}
+		out = append(out, u)
+	}
+	return out, fillDuplicates(ctx, st, out)
 }
 
 // LearningsBetween returns learnings recorded in [since, until), oldest
@@ -160,13 +243,18 @@ func CountLearnings(ctx context.Context, st Store, since time.Time, f domain.Lea
 	return n, nil
 }
 
-// UpdateLearning sets a learning's status and PR (#273).
+// UpdateLearning sets a learning's status and PR (#273). A status other
+// than duplicate clears duplicate_of, so reopening a duplicate detaches it
+// (JOB-199); MarkDuplicates is what sets it.
 func UpdateLearning(ctx context.Context, st Store, id int64, status, pr string) (domain.Learning, error) {
 	if !domain.ValidLearningStatus(status) {
 		return domain.Learning{}, fmt.Errorf("%w: learning status %q", domain.ErrInvalid, status)
 	}
 	return updateLearning(ctx, st, id, func(r *store.Record, v *learningValue) {
 		r.State, v.PR = status, strings.TrimSpace(pr)
+		if status != domain.LearningDuplicate {
+			v.DuplicateOf = 0
+		}
 	})
 }
 
@@ -293,7 +381,7 @@ func learningKey(id int64) string { return strconv.FormatInt(id, 10) }
 func toLearningValue(l domain.Learning) learningValue {
 	return learningValue{
 		ID: l.ID, Kind: l.Kind, Summary: l.Summary, Fix: l.Fix, Scope: l.Scope, Ticket: l.Ticket,
-		Session: l.Session, Source: l.Source, PR: l.PR, Gate: l.Gate,
+		Session: l.Session, Source: l.Source, PR: l.PR, Gate: l.Gate, DuplicateOf: l.DuplicateOf,
 	}
 }
 
@@ -305,6 +393,7 @@ func learningFromRecord(r store.Record) (domain.Learning, error) {
 	return domain.Learning{
 		ID: v.ID, Kind: v.Kind, Summary: v.Summary, Fix: v.Fix, Scope: v.Scope, Ticket: v.Ticket,
 		Session: v.Session, Source: v.Source, Status: r.State, PR: v.PR, Gate: v.Gate, CreatedAt: r.CreatedAt,
+		DuplicateOf: v.DuplicateOf,
 	}, nil
 }
 
