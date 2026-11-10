@@ -346,7 +346,9 @@ func TestMaxTicketsTimedDeferParks(t *testing.T) {
 	x := h.create("x")
 	a := h.parkedSession(x.ID)
 	assert.Equal(t, a, h.show(x.ID).Holder, "the deferred ticket is assigned back to the session")
-	assert.Equal(t, 0, h.pools().Open)
+	// The scaler may start a warm spare while it holds its recent peak
+	// (scale_down_after); the parked session is not one of the open count.
+	assert.Equal(t, 1, h.pools().Parked)
 }
 
 // TestMaxTicketsWarmReplaced (JOB-189): with min_sessions a warm session
