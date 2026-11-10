@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.9](https://github.com/gfx-labs/jobshop/compare/v0.10.8...v0.10.9) (2026-11-10)
+
+
+### Bug fixes
+
+* **control:** wake a pass when a callback creates steps or a step finishes (JOB-193) ([#1197](https://github.com/gfx-labs/jobshop/issues/1197)) ([0e69e37](https://github.com/gfx-labs/jobshop/commit/0e69e374e56f4fa703713d7e31cac712f7077f64))
+
 ## [0.10.8](https://github.com/gfx-labs/jobshop/compare/v0.10.7...v0.10.8) (2026-11-10)
 
 
