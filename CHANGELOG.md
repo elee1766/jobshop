@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/gfx-labs/jobshop/compare/v0.10.2...v0.10.3) (2026-11-10)
+
+
+### Features
+
+* **desk:** trace detail pane with summary, now and tabs (JOB-185) ([#1172](https://github.com/gfx-labs/jobshop/issues/1172)) ([da7690a](https://github.com/gfx-labs/jobshop/commit/da7690ae83952a62fc2ee87192c138a321490f88))
+
 ## [0.10.2](https://github.com/gfx-labs/jobshop/compare/v0.10.1...v0.10.2) (2026-11-10)
 
 
