@@ -97,13 +97,34 @@ func TestTickTraces(t *testing.T) {
 	steps := []string{
 		"sweep", "provider_pass", "probe_outages", "run_triggers", "place_steps", "supervise", "run_auto_steps",
 		"report_orphans", "scan_sessions", "sweep_runs", "sweep_escalation_chats", "sweep_attention_chats",
-		"sweep_batches", "sweep_linear_asks", "sweep_linear_agent_sessions", "prune_inbox", "prune_write_keys",
-		"prune_artifacts", "compress_journals", "maintain_store",
+		"sweep_batches", "sweep_linear_asks", "sweep_linear_agent_sessions",
 	}
 	for _, s := range steps {
 		sp, ok := byName["tick "+s]
 		if assert.True(t, ok, "step span %s", s) {
 			assert.Equal(t, tick.SpanContext.SpanID(), sp.Parent.SpanID(), "%s is a child of the tick", s)
+		}
+	}
+
+	// Housekeeping is not a tick step (JOB-197): it runs on its own, under
+	// its own root span, and records its own histogram.
+	for _, s := range housekeepingSteps {
+		_, ok := byName["tick "+s]
+		assert.False(t, ok, "%s is not a tick step", s)
+	}
+	c.housekeeping()
+	spans = exp.GetSpans()
+	byName = map[string]tracetest.SpanStub{}
+	for _, s := range spans {
+		byName[s.Name] = s
+	}
+	hk, ok := byName["housekeeping"]
+	require.True(t, ok, "housekeeping span")
+	assert.False(t, hk.Parent.IsValid(), "housekeeping is its own trace, not under the tick")
+	for _, s := range housekeepingSteps {
+		sp, ok := byName["housekeeping "+s]
+		if assert.True(t, ok, "step span %s", s) {
+			assert.Equal(t, hk.SpanContext.SpanID(), sp.Parent.SpanID(), "%s is a child of housekeeping", s)
 		}
 	}
 
@@ -144,6 +165,8 @@ func TestTickTraces(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, `jobshop_tick_step_duration_seconds_count{`)
 	assert.Contains(t, body, `step="run_triggers"`)
+	assert.Contains(t, body, `jobshop_housekeeping_duration_seconds_count{`)
+	assert.Contains(t, body, `step="prune_inbox"`)
 	assert.Contains(t, body, `jobshop_outbound_duration_seconds_count{`)
 	assert.Contains(t, body, `kind="linear"`)
 	assert.Contains(t, body, `jobshop_lock_wait_seconds_count{`)

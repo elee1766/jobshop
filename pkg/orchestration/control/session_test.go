@@ -2013,3 +2013,35 @@ func TestScaleDownCordon(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Auto: true}, nil))
 	passEventually(t, root.Dir, func() bool { return show(admin, second.ID).Status == domain.StatusClosed }, "auto scale runs b")
 }
+
+// TestIdleSessionWakesOnNewTicket (JOB-197): an idle session claims a
+// ticket created after it went idle without waiting for Poll. Poll is an
+// hour on a fake clock that no step moves, so only the pool wake can
+// deliver the work; no pass runs while the test waits either.
+func TestIdleSessionWakesOnNewTicket(t *testing.T) {
+	root, start := poolRootOpt(t, "1m", control.Options{Poll: time.Hour})
+	stop := start()
+	defer stop()
+	ctx := t.Context()
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) domain.Ticket {
+		var got domain.Ticket
+		require.NoError(t, admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *domain.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+
+	// The first ticket starts the session, which then goes idle.
+	var first domain.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "first", Pool: "dev"}, &first))
+	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == domain.StatusClosed }, "first ticket not worked")
+
+	var second domain.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "second", Pool: "dev"}, &second))
+	require.Eventually(t, func() bool { return show(second.ID).Status == domain.StatusClosed },
+		dialWait, 10*time.Millisecond, "idle session did not claim the new ticket from the wake")
+	var sessions []domain.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession, Status: domain.StatusOpen}, &sessions))
+	assert.Len(t, sessions, 1, "the same session took both")
+}

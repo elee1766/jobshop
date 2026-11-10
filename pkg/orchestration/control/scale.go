@@ -84,7 +84,7 @@ type poolScaleView struct {
 
 // reconcile is the desired-state loop: per ticket pool, compute desired,
 // cordon or uncordon, then start sessions within the brakes and host cap.
-func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
+func (c *Controller) reconcile(ctx context.Context, cfg *config.Config, held map[string]bool) {
 	now := c.now()
 	backingOff := c.backingOffPools()
 	var reqs []scaleplan.CapRequest
@@ -94,7 +94,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 		if p.Chat() {
 			continue // chat sessions are started by session.send
 		}
-		sessions, working, parked, err := c.scaleSessions(ctx, name)
+		sessions, working, parked, err := c.scaleSessions(ctx, name, held)
 		if err != nil {
 			continue
 		}
@@ -107,7 +107,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 				hostFree = max(cfg.Limits.MaxSessions-c.hostCounted(ctx, cfg), 0)
 			}
 			if c.resumeReady(ctx, name, p, len(sessions), hostFree, parked) > 0 {
-				if sessions, working, parked, err = c.scaleSessions(ctx, name); err != nil {
+				if sessions, working, parked, err = c.scaleSessions(ctx, name, held); err != nil {
 					continue
 				}
 			}
@@ -183,7 +183,16 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 // drops the ticket from ready instead of counting it twice (#102).
 // Suspended sessions take no slot (JOB-189): they are not in the list.
 // Those parked on a ticket come back as parked.
-func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions []scaleplan.Session, working int, parked []parkedSession, err error) {
+//
+// held is the holders of the in-progress tickets (heldSet), read once per
+// pass so N sessions cost one query, not N (JOB-197). Nil reads it here,
+// for a caller outside the pass.
+func (c *Controller) scaleSessions(ctx context.Context, pool string, held map[string]bool) (sessions []scaleplan.Session, working int, parked []parkedSession, err error) {
+	if held == nil {
+		if held, err = c.heldSet(ctx); err != nil {
+			return nil, 0, nil, err
+		}
+	}
 	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 	if err != nil {
 		return nil, 0, nil, err
@@ -208,8 +217,7 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) (sessions [
 				s.Cordon = f.Cordoned.Reason
 			}
 		}
-		held, err := c.store.List(ctx, store.Filter{Holder: t.ID, Status: domain.StatusInProgress, Limit: 1})
-		s.Idle = err == nil && len(held) == 0
+		s.Idle = !held[t.ID]
 		if !s.Idle {
 			working++
 		}
@@ -275,7 +283,7 @@ func (c *Controller) keepWarm(ctx context.Context, pool string) bool {
 	if floor == 0 {
 		return false
 	}
-	sessions, _, _, err := c.scaleSessions(ctx, pool)
+	sessions, _, _, err := c.scaleSessions(ctx, pool, nil)
 	if err != nil {
 		return false
 	}
@@ -438,7 +446,7 @@ func (c *Controller) poolStatusCtx(ctx context.Context) rpc.PoolStatusResult {
 			row.Target = &t
 		}
 		c.mu.Unlock()
-		if sessions, working, parked, err := c.scaleSessions(ctx, name); err == nil {
+		if sessions, working, parked, err := c.scaleSessions(ctx, name, nil); err == nil {
 			row.Open, row.Working, row.Parked = len(sessions), working, len(parked)
 			for _, s := range sessions {
 				if s.Cordon != "" {

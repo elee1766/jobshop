@@ -132,6 +132,14 @@ func (m *Metrics) SinceStep(ctx context.Context, step string, start time.Time) {
 	m.TickStep.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attribute.String("step", step)))
 }
 
+// SinceHousekeeping records one housekeeping step's duration (JOB-197).
+func (m *Metrics) SinceHousekeeping(ctx context.Context, step string, start time.Time) {
+	if m == nil {
+		return
+	}
+	m.Housekeeping.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attribute.String("step", step)))
+}
+
 // SinceLock records the time spent waiting for lock, taken for who.
 func (m *Metrics) SinceLock(ctx context.Context, lock, who string, start time.Time) {
 	if m == nil {

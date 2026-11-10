@@ -101,7 +101,10 @@ type Options struct {
 	// MessagePoll is how often a running turn checks for interrupt
 	// messages. Default 2s.
 	MessagePoll time.Duration
-	// Poll is how often an idle session looks for ready work. Default 5s.
+	// Poll is the fallback for a missed wake: an idle session looks for
+	// ready work this often. A ticket that becomes ready wakes the pool's
+	// idle sessions at once (JOB-197), so this only covers what sends no
+	// wake, like a deferral running out. Default 30s.
 	Poll time.Duration
 	// MetricsReady, if set, receives the /metrics listen address once it
 	// is bound (tests use ":0" in the config).
@@ -173,19 +176,26 @@ type Controller struct {
 	// outages are identities that cannot get credentials (JOB-194), by
 	// identity name; see outage.go. Memory only: a restart probes again.
 	outages map[string]*hostOutage
-	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
+	// inboxPrunedAt is the last inbox prune (#321); housekeeping-only state.
 	inboxPrunedAt time.Time
 	// syncPrunedAt is the last guard/desk handler journal prune.
 	syncPrunedAt time.Time
-	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
+	// artifactsPrunedAt is the last attachment prune (#508); housekeeping-only state.
 	artifactsPrunedAt time.Time
 	// slotClient is the resource provider client (#407); see slots().
 	slotClient *slotprovider.Client
 	slotsOnce  sync.Once
-	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
+	// writeKeysPrunedAt is the last write key prune (#415); housekeeping-only.
 	writeKeysPrunedAt time.Time
-	// storeMaintainedAt is the last planner statistics refresh (JOB-191); tick-only.
+	// storeMaintainedAt is the last planner statistics refresh (JOB-191); housekeeping-only.
 	storeMaintainedAt time.Time
+	// housekeepMu serializes housekeeping runs (housekeeping.go), which
+	// own the *At fields above and do not take tickMu.
+	housekeepMu sync.Mutex
+	// readyWakes are the per-pool wake channels idle runners wait on
+	// (readywake.go, JOB-197); a wake closes and removes a pool's.
+	readyMu    sync.Mutex
+	readyWakes map[string]chan struct{}
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
@@ -362,7 +372,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		opt.MessagePoll = 2 * time.Second
 	}
 	if opt.Poll <= 0 {
-		opt.Poll = 5 * time.Second
+		opt.Poll = 30 * time.Second
 	}
 	if opt.Log == nil {
 		// Libraries never log to the process default (JOB-49).
@@ -515,6 +525,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpPollers)
 	c.wg.Go(c.pumpAdmission)
 	c.wg.Go(c.pumpJournal)
+	c.wg.Go(c.pumpHousekeeping)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -563,6 +574,10 @@ func (c *Controller) serve() error {
 	for {
 		c.tick()
 		if passDone != nil {
+			// A requested pass also runs the housekeeping the tick does
+			// not, so tests that drive passes see it (JOB-197). Without
+			// Options.Pass the housekeeping goroutine runs it.
+			c.housekeeping()
 			close(passDone)
 			passDone = nil
 		}
@@ -632,12 +647,6 @@ func (c *Controller) tick() {
 	c.step(ctx, "sweep_batches", c.sweepBatches)
 	c.passStep(ctx, cfg, "sweep_linear_asks", c.sweepLinearAsks)
 	c.step(ctx, "sweep_linear_agent_sessions", func(ctx context.Context) { c.sweepLinearAgentSessions(ctx, cfg, false) })
-	c.passStep(ctx, cfg, "prune_inbox", c.pruneInbox)
-	c.passStep(ctx, cfg, "prune_write_keys", c.pruneWriteKeys)
-	c.passStep(ctx, cfg, "prune_sync", c.pruneSync)
-	c.passStep(ctx, cfg, "prune_artifacts", c.pruneArtifacts)
-	c.passStep(ctx, cfg, "compress_journals", c.maybeCompressJournals)
-	c.passStep(ctx, cfg, "maintain_store", c.maintainStore)
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
