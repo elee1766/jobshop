@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.31](https://github.com/elee1766/jobshop/compare/v0.9.30...v0.9.31) (2026-11-10)
+
+
+### Features
+
+* **packs/github:** route pr-work in the workflow ([#1149](https://github.com/elee1766/jobshop/issues/1149)) ([9d303a1](https://github.com/elee1766/jobshop/commit/9d303a18c6904bba9873b0caaceacc0f09d380d4))
+
+
+### Bug fixes
+
+* **desk:** show a controller turn's prompt once ([#1150](https://github.com/elee1766/jobshop/issues/1150)) ([d2b4ab3](https://github.com/elee1766/jobshop/commit/d2b4ab30edb68ed6f4564b7dcaf48d867a0f4bdb))
+
 ## [0.9.30](https://github.com/elee1766/jobshop/compare/v0.9.29...v0.9.30) (2026-11-10)
 
 
