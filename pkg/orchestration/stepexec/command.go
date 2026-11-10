@@ -2,7 +2,9 @@ package stepexec
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,15 +25,32 @@ func withoutPath(env []string) []string {
 	return out
 }
 
+// CommandConfig is a callback command step's settings, from the spec its
+// fields recorded. ok is false for a workflow command step, whose
+// settings are in the workflow.
+func CommandConfig(sf domain.StepFields) (config.Step, bool) {
+	spec := sf.CommandSpec
+	if sf.Type != config.StepCommand || spec == nil {
+		return config.Step{}, false
+	}
+	return config.Step{
+		ID: sf.Step, Type: config.StepCommand, Pool: spec.Pool, Run: slices.Clone(spec.Argv),
+		Timeout: spec.Timeout, RetryAfter: spec.RetryAfter, OnRestart: spec.OnRestart, Worktree: spec.Worktree,
+	}, true
+}
+
 // command runs one attempt of a command step.
 func (e Executor) command(ctx context.Context, cfg *config.Config, t domain.Ticket, s config.Step, sf domain.StepFields, tpl Templates, attemptKey string) Result {
 	argv, err := s.Argv()
 	if err != nil {
 		return failed("", err)
 	}
-	for i, a := range argv {
-		if argv[i], err = tpl.Fill(a); err != nil {
-			return failed("", err)
+	// A callback's arguments are values, not Go templates.
+	if sf.CommandSpec == nil {
+		for i, a := range argv {
+			if argv[i], err = tpl.Fill(a); err != nil {
+				return failed("", err)
+			}
 		}
 	}
 	extra := append(Env(tpl.Vars, attemptKey, t), e.Host.SlotEnv(ctx, t)...)
@@ -41,6 +60,14 @@ func (e Executor) command(ctx context.Context, cfg *config.Config, t domain.Tick
 	env := append(withoutPath(os.Environ()), extra...)
 	red := cfg.Redact.Scanner().Redactor(env)
 	res := Result{Command: red.Text(strings.Join(argv, " "))}
+	if spec := sf.CommandSpec; spec != nil {
+		// The pool was checked when the batch was accepted; a reload since
+		// may have removed it or moved it to another project.
+		if pool, ok := cfg.Pools[spec.Pool]; !ok || pool.Project != t.Project {
+			res.Result, res.Err = ResultFailed, fmt.Sprintf("command pool %s is missing or outside step project %s", spec.Pool, t.Project)
+			return res
+		}
+	}
 	pl, err := e.Place(cfg, s, sf, tpl)
 	if err != nil {
 		res.Result, res.Err = ResultFailed, err.Error()

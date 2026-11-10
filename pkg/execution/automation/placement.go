@@ -143,16 +143,17 @@ func anyStrings(v any, what string) ([]string, error) {
 
 // checkStepFields validates the start_step kwargs that mirror workflow step
 // fields, with the rules config applies to their YAML counterparts. It runs
-// after the script/prompt checks, so a.Script and a.RetryPool are final.
+// after the type checks, so a.Type, a.Script and a.RetryPool are final.
 func (a *Action) checkStepFields(placement *starlark.Dict, needsResources *starlark.List, maxReviewRounds starlark.Value, limit int) error {
 	script := a.Script != ""
+	command := a.Type == "command"
 	var err error
 	if a.NeedsResources, err = stringList("start_step", "needs_resources", needsResources); err != nil {
 		return err
 	}
 	if placement != nil {
 		switch {
-		case script:
+		case script || command:
 			return errors.New("start_step: placement is for agent steps")
 		case a.Pool != "" || len(a.NeedsResources) > 0:
 			return errors.New("start_step: placement replaces pool and needs_resources: set one or the other")
@@ -164,8 +165,8 @@ func (a *Action) checkStepFields(placement *starlark.Dict, needsResources *starl
 		}
 	}
 	if a.RetryAfter != "" {
-		if !script {
-			return errors.New("start_step: retry_after needs script")
+		if !script && !command {
+			return errors.New("start_step: retry_after needs script or type=\"command\"")
 		}
 		if d, err := time.ParseDuration(a.RetryAfter); err != nil || d <= 0 {
 			return errors.New("start_step: retry_after must be a positive duration")
@@ -177,13 +178,13 @@ func (a *Action) checkStepFields(placement *starlark.Dict, needsResources *starl
 		if !ok || !fits || v < 0 || v > math.MaxInt32 {
 			return errors.New("start_step: max_review_rounds must be an integer >= 0")
 		}
-		if script {
+		if script || command {
 			return errors.New("start_step: max_review_rounds is for agent steps")
 		}
 		r := int(v)
 		a.MaxReviewRounds = &r
 	}
-	if a.OnRequestChanges != "" && script {
+	if a.OnRequestChanges != "" && (script || command) {
 		return errors.New("start_step: on_request_changes is for agent steps")
 	}
 	return nil

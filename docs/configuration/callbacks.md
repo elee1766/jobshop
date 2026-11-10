@@ -311,6 +311,50 @@ def check(run, step):
     return result(outcome = "pass", output = {"report": r.stdout})
 ```
 
+## Command steps
+
+`start_step(type="command", run=..., pool=...)` starts a command step
+with the same `run` as a workflow `type: command` step, without a script
+wrapper:
+
+```python
+def begin(run):
+    return start_step(id = "gate", type = "command", pool = "gate",
+                      run = ["make", "check"], timeout = "10m",
+                      retry_after = "1m", retries = 3)
+```
+
+- `type` is `agent` (the default, a prompt or script step) or `command`.
+  Anything else is rejected.
+- `run` is a string, which runs with `sh -c`, or a list of strings run
+  as argv. A string must not be blank. A list must not be empty and its
+  first element must not be blank, later elements may be empty. NUL
+  bytes are rejected.
+- `run` is not a template. Unlike a workflow command step, `{{...}}` is
+  passed through as written. Pass run data as arguments computed in
+  Starlark, or read the `JOBSHOP_VAR_*` environment the step gets.
+- `JOBSHOP_VAR_*` comes from the inputs the run accepted, including pack
+  defaults, not from defaults read again on a retry or restart.
+- `timeout`, `retry_after` and `worktree` mean what they do in a workflow
+  command step. Durations must be positive. `on_restart` is `retry`
+  (default) or `fail`.
+- `retries` defaults to 2 and is the failure limit, not a count of extra
+  attempts. Exit 75 defers the step by `retry_after` without counting a
+  failure.
+- `needs`, `needs_resources`, `inputs`, `title` and `reason` work as for
+  other steps. `prompt`, `prompt_file`, `script`, `output_schema`,
+  `retry_pool`, `placement`, `max_review_rounds` and `on_request_changes`
+  are rejected with `type="command"`. `run` and `on_restart` are rejected
+  without it.
+- The step records its argv, pool and settings when the batch is
+  accepted. Retries and restarts need no workflow definition. The pool's
+  current sandbox, user and cgroup still apply, and the pool must still
+  exist in the run's project when the step runs.
+- Like a script step, the ticket has no pool and no session claims it.
+  `step.pool` in a completion callback is the pool the step ran in.
+- Only the admin socket can change a step's recorded command through a
+  ticket fields update. A session can still edit the step's other fields.
+
 ## Structured step output and retries
 
 `start_step(output_schema=...)` accepts a JSON Schema object, not a CUE

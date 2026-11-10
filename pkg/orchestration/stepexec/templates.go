@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -45,6 +46,12 @@ func LoadTemplates(ctx context.Context, st store.Store, cfg *config.Config, sf d
 	}
 	for k, v := range rf.Vars {
 		t.Vars[k] = v
+	}
+	if sf.CommandSpec != nil {
+		// A callback command gets the inputs the run accepted, not pack
+		// defaults read again after a reload.
+		t.Vars = map[string]any{}
+		maps.Copy(t.Vars, rf.Inputs)
 	}
 	steps, err := store.Children(ctx, st, sf.Run)
 	if err != nil {

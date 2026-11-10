@@ -305,6 +305,9 @@ type StepFields struct {
 	// Type is command, http or script for steps the controller runs
 	// (#396, JOB-124); empty is an agent step.
 	Type string `json:"type,omitempty"`
+	// CommandSpec is the accepted definition of a command step a callback
+	// started. Such a step has no workflow definition to read it from.
+	CommandSpec *CommandSpec `json:"command_spec,omitempty"`
 	// Script is a script step's function (file.star:function under the
 	// run's pinned callback root, JOB-124), run in-process by the
 	// controller. ScriptPool is where its shell calls run: the pool's
@@ -438,6 +441,42 @@ func StepFailure(t *Ticket) (f StepFields, exhausted, isStep bool, err error) {
 	return f, f.Failures >= f.Retries, true, nil
 }
 
+// CommandSpec is a callback command step's argv and execution settings,
+// recorded when its batch is accepted so retries and restarts do not
+// depend on a workflow definition.
+type CommandSpec struct {
+	Argv       []string `json:"argv"`
+	Pool       string   `json:"pool"`
+	Timeout    string   `json:"timeout,omitempty"`
+	RetryAfter string   `json:"retry_after,omitempty"`
+	OnRestart  string   `json:"on_restart,omitempty"`
+	Worktree   bool     `json:"worktree,omitempty"`
+}
+
+// validate checks a command spec on a step of the given type.
+func (s CommandSpec) validate(stepType string) error {
+	if stepType != "command" || s.Pool == "" || len(s.Argv) == 0 || strings.TrimSpace(s.Argv[0]) == "" {
+		return fmt.Errorf("%w: step: command_spec requires type command, pool and argv", ErrInvalid)
+	}
+	for _, arg := range s.Argv {
+		if strings.ContainsRune(arg, 0) {
+			return fmt.Errorf("%w: step: command argument contains NUL", ErrInvalid)
+		}
+	}
+	for _, d := range []string{s.Timeout, s.RetryAfter} {
+		if d == "" {
+			continue
+		}
+		if parsed, err := time.ParseDuration(d); err != nil || parsed <= 0 {
+			return fmt.Errorf("%w: step: command duration must be positive", ErrInvalid)
+		}
+	}
+	if s.OnRestart != "" && s.OnRestart != "retry" && s.OnRestart != "fail" {
+		return fmt.Errorf("%w: step: command on_restart must be retry or fail", ErrInvalid)
+	}
+	return nil
+}
+
 // StepFailureComment is the comment a backend adds for a counted failure.
 func StepFailureComment(f StepFields, how string, exhausted bool) string {
 	if exhausted {
@@ -462,6 +501,11 @@ func (f StepFields) Validate() error {
 	if p := f.Placement; p != nil {
 		if len(p.Options) == 0 || p.Chosen < 0 || p.Chosen >= len(p.Options) {
 			return fmt.Errorf("%w: step: placement chosen out of range", ErrInvalid)
+		}
+	}
+	if f.CommandSpec != nil {
+		if err := f.CommandSpec.validate(f.Type); err != nil {
+			return err
 		}
 	}
 	return f.Wait.Validate()

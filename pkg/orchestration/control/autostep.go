@@ -89,7 +89,8 @@ func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t d
 	c.startAutoStep(ctx, cfg, t, true)
 }
 
-// autoStepConfig finds the step's config through its run's workflow.
+// autoStepConfig finds the step's config: in its fields for a script or
+// callback command step, else through its run's workflow.
 func (c *Controller) autoStepConfig(cfg *config.Config, t domain.Ticket) (config.Step, domain.StepFields, bool) {
 	sf, err := domain.DecodeFields[domain.StepFields](t)
 	if err != nil || !sf.Auto() {
@@ -97,6 +98,9 @@ func (c *Controller) autoStepConfig(cfg *config.Config, t domain.Ticket) (config
 	}
 	if sf.Type == domain.StepScript {
 		return stepexec.ScriptConfig(sf), sf, true
+	}
+	if s, ok := stepexec.CommandConfig(sf); ok {
+		return s, sf, true
 	}
 	run, err := c.store.Get(c.ctx, sf.Run)
 	if err != nil {

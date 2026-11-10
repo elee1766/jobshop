@@ -276,10 +276,44 @@ func (c *Controller) update(ctx context.Context, sc scope, p rpc.UpdateParams) (
 	if err != nil {
 		return nil, err
 	}
+	if !sc.admin && len(p.Fields) > 0 {
+		if p.IfRevision, err = c.checkCommandSpec(ctx, id, p.Fields, p.IfRevision); err != nil {
+			return nil, err
+		}
+	}
 	return c.store.Update(ctx, sc.actor, id, store.Update{
 		Title: p.Title, Body: p.Body, Priority: p.Priority, Pool: p.Pool, Holder: p.Holder,
 		DeferUntil: p.DeferUntil, Fields: p.Fields, Meta: p.Meta, IfRevision: p.IfRevision,
 	})
+}
+
+// checkCommandSpec refuses a session's fields update that adds, replaces
+// or removes a step's command definition: what a command step runs was
+// accepted from a callback, and a session may edit data, not that. It
+// returns the revision the update must apply to, so the check and the
+// write see the same ticket.
+func (c *Controller) checkCommandSpec(ctx context.Context, id string, fields json.RawMessage, ifRevision int64) (int64, error) {
+	ticket, err := c.store.Get(ctx, id)
+	if err != nil || ticket.Kind != domain.KindStep {
+		return ifRevision, err
+	}
+	before, err := domain.DecodeFields[domain.StepFields](ticket)
+	if err != nil {
+		return ifRevision, err
+	}
+	var after domain.StepFields
+	if err := json.Unmarshal(fields, &after); err != nil {
+		return ifRevision, fmt.Errorf("%w: step fields: %w", domain.ErrInvalid, err)
+	}
+	oldSpec, _ := json.Marshal(before.CommandSpec)
+	newSpec, _ := json.Marshal(after.CommandSpec)
+	if !bytes.Equal(oldSpec, newSpec) || before.CommandSpec != nil && before.Type != after.Type {
+		return ifRevision, forbidden("changing command definitions needs the admin socket")
+	}
+	if ifRevision == 0 {
+		ifRevision = ticket.Revision
+	}
+	return ifRevision, nil
 }
 
 func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParams) (any, error) {
