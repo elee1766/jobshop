@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/elee1766/jobshop/pkg/transport/rpc"
+import "github.com/gfx-labs/jobshop/pkg/transport/rpc"
 
 // resourceCmd is the provider side of resource slots (#407): a provider
 // command or service calls these on the admin socket.

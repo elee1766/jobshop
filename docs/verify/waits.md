@@ -3,8 +3,8 @@
 On gasserver after deploying #381:
 
 1. In a session holding a scratch step, run `jobshop wait add
-   github.review:pr=elee1766/jobshop#<open PR>,login=<reviewer>
-   github.checks:pr=elee1766/jobshop#<same>,state=success,required=true
+   github.review:pr=gfx-labs/jobshop#<open PR>,login=<reviewer>
+   github.checks:pr=gfx-labs/jobshop#<same>,state=success,required=true
    -r "scratch approval" --owner <reviewer> --resume --timeout 2h`.
    The step is open, unclaimed, `fields.failures` unchanged, and absent
    from `jobshop ready`. `jobshop wait list` shows it with the head.

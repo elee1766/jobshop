@@ -10,7 +10,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
 )
 
 // Send sends one request with tok. status is the HTTP status of res, which

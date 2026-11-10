@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 func (c *Controller) finishTick(start time.Time) {

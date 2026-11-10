@@ -3,8 +3,8 @@ package control
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 func (c *Controller) automationList(ctx context.Context, sc scope, p rpc.AutomationListParams) (any, error) {

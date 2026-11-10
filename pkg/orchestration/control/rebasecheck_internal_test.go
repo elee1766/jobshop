@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // TestRebaseMergeState: a rebase close on a step whose run's PR is dirty
@@ -36,7 +36,7 @@ func TestRebaseMergeState(t *testing.T) {
 			c.activitySrc = &fakeReverts{fakeActivity: fa, prs: tc.prs}
 			run := mkTicket(t, c, store.NewTicket{
 				Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
-				Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":511}}`),
+				Meta: json.RawMessage(`{"github":{"repo":"gfx-labs/jobshop","issue":511}}`),
 			})
 			impl := mkTicket(t, c, store.NewTicket{
 				Kind: domain.KindStep, Title: "implement", ParentID: run.ID,
@@ -46,7 +46,7 @@ func TestRebaseMergeState(t *testing.T) {
 				Kind: domain.KindStep, Title: "review-merge", ParentID: run.ID,
 				Fields: json.RawMessage(`{"step":"review-merge","run":"` + run.ID + `"}`),
 			})
-			_, err := store.AddComment(t.Context(), c.store, "s1", impl.ID, "PR https://github.com/elee1766/jobshop/pull/300 head abc")
+			_, err := store.AddComment(t.Context(), c.store, "s1", impl.ID, "PR https://github.com/gfx-labs/jobshop/pull/300 head abc")
 			require.NoError(t, err)
 
 			res, why := c.rebaseResolution(t.Context(), review)

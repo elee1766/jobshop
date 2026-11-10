@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
 )
 
 // Digest identifies the accepted source and authority manifest.

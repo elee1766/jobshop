@@ -4,8 +4,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Spec is one admin method's parameter and result types, as zero values.

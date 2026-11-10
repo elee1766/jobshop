@@ -3,7 +3,7 @@ package ingest
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // SecretFor returns a func that reads an endpoint's secret from cfg: its

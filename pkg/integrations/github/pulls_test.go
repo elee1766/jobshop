@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
 )
 
 type fakePulls struct {
@@ -69,12 +69,12 @@ func TestIsRevert(t *testing.T) {
 
 func TestRevertedPRByNumber(t *testing.T) {
 	t.Parallel()
-	const repo = "elee1766/jobshop"
+	const repo = "gfx-labs/jobshop"
 	src := fakePulls{prs: map[int]github.Pull{
 		5: {Number: 5, Merged: true, MergeCommitSHA: "x"},
 		6: {Number: 6, Merged: false},
 	}}
-	got, err := github.RevertedPR(t.Context(), src, repo, github.Pull{Number: 9, Body: "Reverts elee1766/jobshop#5"})
+	got, err := github.RevertedPR(t.Context(), src, repo, github.Pull{Number: 9, Body: "Reverts gfx-labs/jobshop#5"})
 	require.NoError(t, err)
 	assert.Equal(t, 5, got.Number)
 	got, err = github.RevertedPR(t.Context(), src, repo, github.Pull{Number: 9, Body: "Reverts #6"})

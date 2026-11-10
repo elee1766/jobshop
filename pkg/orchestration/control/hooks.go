@@ -6,10 +6,10 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/orchestration/triggers"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/triggers"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // enqueueHookEvents runs before acknowledging ingress. Re-delivery is harmless.

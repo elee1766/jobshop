@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Close closes ticket id with resolution, fenced by c when non-nil. A

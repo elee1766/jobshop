@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	"github.com/elee1766/jobshop/pkg/orchestration/stepexec"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/stepexec"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Script steps (JOB-124) run in stepexec. What stays here is loading the

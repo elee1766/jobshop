@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/support/clock"
+	"github.com/gfx-labs/jobshop/pkg/support/clock"
 )
 
 var t0 = time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)

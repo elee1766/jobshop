@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // recorded serves testdata files chosen by pick and records each call.
@@ -213,7 +213,7 @@ func TestEligible(t *testing.T) {
 	// JOB-68: an open stated GitHub dependency blocks; CheckDeps keeps
 	// only the open ones, so a closed one does not.
 	dep := free
-	dep.Description = "Depends on acphost#155 ([link](https://github.com/elee1766/acphost/issues/155)): x\nDepends on elee1766/jobshop#9"
+	dep.Description = "Depends on acphost#155 ([link](https://github.com/elee1766/acphost/issues/155)): x\nDepends on gfx-labs/jobshop#9"
 	open := func(_ context.Context, d linear.GitHubDep) (bool, error) { return d.Number == 155, nil }
 	require.NoError(t, dep.CheckDeps(t.Context(), "elee1766", open))
 	e = linear.Eligible(dep, nil, "")

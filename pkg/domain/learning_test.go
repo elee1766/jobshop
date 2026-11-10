@@ -6,14 +6,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 func TestParseScope(t *testing.T) {
 	for in, want := range map[string]string{
 		"":                      "global",
 		"global":                "global",
-		"repo:elee1766/jobshop": "repo:elee1766/jobshop",
+		"repo:gfx-labs/jobshop": "repo:gfx-labs/jobshop",
 		"pool:dev":              "pool:dev",
 	} {
 		got, err := domain.ParseScope(in)
@@ -70,13 +70,13 @@ func TestLearningKinds(t *testing.T) {
 }
 
 func TestLearningCountMatches(t *testing.T) {
-	f := domain.LearningCount{Kinds: []string{"review-*"}, Scopes: []string{"repo:elee1766/*", "pool:acphost-*"}, Source: domain.LearningSourceAgent}
-	assert.True(t, f.Matches("review-nit", "repo:elee1766/jobshop", "agent"))
+	f := domain.LearningCount{Kinds: []string{"review-*"}, Scopes: []string{"repo:gfx-labs/*", "pool:acphost-*"}, Source: domain.LearningSourceAgent}
+	assert.True(t, f.Matches("review-nit", "repo:gfx-labs/jobshop", "agent"))
 	assert.True(t, f.Matches("review-x", "pool:acphost-dev", "agent"))
-	assert.False(t, f.Matches("failure", "repo:elee1766/jobshop", "agent"))
+	assert.False(t, f.Matches("failure", "repo:gfx-labs/jobshop", "agent"))
 	assert.False(t, f.Matches("review-nit", "repo:other/x", "agent"))
 	assert.False(t, f.Matches("review-nit", "global", "agent"))
-	assert.False(t, f.Matches("review-nit", "repo:elee1766/jobshop", "controller"))
+	assert.False(t, f.Matches("review-nit", "repo:gfx-labs/jobshop", "controller"))
 	assert.True(t, domain.LearningCount{}.Matches("anything", "global", "controller"))
 	assert.True(t, domain.Glob("repo:*", "repo:a/b"), "* crosses /")
 }

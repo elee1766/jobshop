@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // complexityBudget is Linear's limit per query.
@@ -80,7 +80,7 @@ func complexityServer(t *testing.T) (*linear.Client, *[]call) {
 		case conns[0] == "states":
 			out(`{"data":{"team":{"states":{"nodes":[{"id":"st-backlog","name":"Backlog","type":"backlog"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}`)
 		case conns[0] == "labels" && c.Variables["after"] == "c1":
-			out(`{"data":{"team":{"labels":{"nodes":[{"id":"lb-repo","name":"repo:github.com/elee1766/jobshop"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}`)
+			out(`{"data":{"team":{"labels":{"nodes":[{"id":"lb-repo","name":"repo:github.com/gfx-labs/jobshop"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}`)
 		case conns[0] == "labels":
 			out(`{"data":{"team":{"labels":{"nodes":[{"id":"lb-proposed","name":"proposed"}],"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}}`)
 		default:
@@ -113,7 +113,7 @@ func TestCreateQueryComplexity(t *testing.T) {
 	c, calls := complexityServer(t)
 	m, err := c.PlanCreate(t.Context(), linear.CreateParams{
 		Team: "job", Title: "Proposed target", State: "Backlog",
-		Labels: []string{"proposed", "repo:github.com/elee1766/jobshop"}, Parent: "JOB-4",
+		Labels: []string{"proposed", "repo:github.com/gfx-labs/jobshop"}, Parent: "JOB-4",
 	}, "id-1")
 	require.NoError(t, err)
 	in, _ := m.Variables["input"].(map[string]any)

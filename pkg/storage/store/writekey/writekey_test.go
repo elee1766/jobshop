@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
-	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/writekey"
 )
 
 func open(t *testing.T, now *time.Time) *sqlite.Store {

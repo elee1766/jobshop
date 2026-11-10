@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Collection registers spec and returns its handle (#579). Registration

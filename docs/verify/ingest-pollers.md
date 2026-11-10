@@ -1,7 +1,7 @@
 # Ingest pollers (#341)
 
 On gasserver after deploying #341, with a repo the token can read
-(a scratch repo, or elee1766/jobshop):
+(a scratch repo, or gfx-labs/jobshop):
 
 1. Add to the config and reload:
    `ingest: {pollers: [{name: gh-poll, source: github, repos: [<repo>], interval: 30s}]}`.

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
 )
 
 func hook(t *testing.T, source string, options automation.Options) *automation.Engine {

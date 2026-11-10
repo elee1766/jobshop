@@ -28,10 +28,10 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
-	"github.com/elee1766/jobshop/pkg/conversation/attention"
-	"github.com/elee1766/jobshop/pkg/conversation/question"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/conversation/attention"
+	"github.com/gfx-labs/jobshop/pkg/conversation/question"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Key prefixes of managed chats.

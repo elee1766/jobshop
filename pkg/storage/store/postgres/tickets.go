@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/ids"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	sqldb "github.com/elee1766/jobshop/pkg/storage/store/postgres/pgdb"
-	"github.com/elee1766/jobshop/pkg/storage/store/storerules"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/ids"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	sqldb "github.com/gfx-labs/jobshop/pkg/storage/store/postgres/pgdb"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storerules"
 )
 
 // Store is the Postgres ticket store (JOB-41). It owns its

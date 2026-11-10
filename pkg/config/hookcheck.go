@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // checkHookPrograms compiles callbacks without credentials or capability grants.

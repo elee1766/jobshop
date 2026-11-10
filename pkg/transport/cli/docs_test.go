@@ -10,8 +10,8 @@ import (
 func TestDocsText(t *testing.T) {
 	out, err := docsText("packs", "abc123")
 	require.NoError(t, err)
-	require.Equal(t, "https://github.com/elee1766/jobshop/blob/abc123/docs/packs.md\n"+
-		"https://github.com/elee1766/jobshop/tree/abc123/packs\n", out)
+	require.Equal(t, "https://github.com/gfx-labs/jobshop/blob/abc123/docs/packs.md\n"+
+		"https://github.com/gfx-labs/jobshop/tree/abc123/packs\n", out)
 
 	out, err = docsText("", "master")
 	require.NoError(t, err)

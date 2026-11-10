@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
-	"github.com/elee1766/jobshop/pkg/storage/store/storetest"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storetest"
 )
 
 // TestCollectionIndexPlans checks declared-field and unique lookups use

@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 func TestInitRootPack(t *testing.T) {

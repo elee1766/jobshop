@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/ids"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite/sqldb"
-	"github.com/elee1766/jobshop/pkg/storage/store/storerules"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/ids"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite/sqldb"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storerules"
 )
 
 // Options configures Open.

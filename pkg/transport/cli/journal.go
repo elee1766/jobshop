@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // sessionJournalCmd reads a session's journal through the controller

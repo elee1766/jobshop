@@ -19,9 +19,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/integrations/identity"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 const identityYAML = `
@@ -39,8 +39,8 @@ identities:
     app_id: 1
     private_key_file: %[1]s/key.pem
     api_url: %[2]s
-    installations: {elee1766: 11}
-    repos: ["elee1766/*"]
+    installations: {gfx-labs: 11}
+    repos: ["gfx-labs/*"]
   second:
     kind: github-app
     app_id: 2
@@ -82,7 +82,7 @@ func TestIdentityToken(t *testing.T) {
 	ctx := t.Context()
 
 	dev := scope{session: "s1", project: "js", pool: "dev"}
-	r, err := c.identityToken(ctx, dev, rpc.IdentityParams{Target: "elee1766/jobshop"})
+	r, err := c.identityToken(ctx, dev, rpc.IdentityParams{Target: "gfx-labs/jobshop"})
 	require.NoError(t, err)
 	assert.Equal(t, rpc.IdentityTokenResult{Identity: "elee", Kind: config.IdentityGitHubApp, Token: "ghs-11", Expires: r.(rpc.IdentityTokenResult).Expires}, r)
 
@@ -92,7 +92,7 @@ func TestIdentityToken(t *testing.T) {
 	}{
 		{dev, "acme/site"}, // covered, but not this project's identity
 		{dev, "ENG"},       // linear only for the linear pool
-		{scope{session: "s2", project: "other"}, "elee1766/jobshop"}, // project with no identities
+		{scope{session: "s2", project: "other"}, "gfx-labs/jobshop"}, // project with no identities
 		{dev, "someone/else"},
 	} {
 		_, err := c.identityToken(ctx, tc.sc, rpc.IdentityParams{Target: tc.target})

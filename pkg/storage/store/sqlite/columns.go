@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite/sqldb"
-	"github.com/elee1766/jobshop/pkg/storage/store/storerules"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite/sqldb"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storerules"
 )
 
 // fieldCols are storerules.Columns as the SQL parameter types.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/nullism/bqb"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Thread and Changes are built in Go (#579 step 3), like List.

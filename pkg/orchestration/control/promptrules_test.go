@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // setRules rewrites the root's prompt_rules section.

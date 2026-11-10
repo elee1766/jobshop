@@ -9,13 +9,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/execution/automation"
-	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
-	packcue "github.com/elee1766/jobshop/pkg/pack/cue"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/hooks"
+	packcue "github.com/gfx-labs/jobshop/pkg/pack/cue"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 type hookRunPlan struct {

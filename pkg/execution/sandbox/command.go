@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/acphost/pkg/userns"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // ErrSetup is a sandbox or isolation failure: the command never ran.

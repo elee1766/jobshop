@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // TestSandboxProfiles: system mounts and env come from config (#625).

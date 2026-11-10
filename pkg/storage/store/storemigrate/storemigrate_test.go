@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
-	"github.com/elee1766/jobshop/pkg/storage/store/storemigrate"
-	"github.com/elee1766/jobshop/pkg/storage/store/storetest"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/postgres"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storemigrate"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storetest"
 )
 
 // dsnEnv names a Postgres server the test may create a database on, as

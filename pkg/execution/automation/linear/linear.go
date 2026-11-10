@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/integrations/apicall"
 	"go.starlark.net/starlark"
 )
 

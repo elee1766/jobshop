@@ -14,7 +14,7 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     return response.json();
   };
   if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'elee1766/jobshop', pr: '977', issue: 'JOB-136' } });
+  const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'gfx-labs/jobshop', pr: '977', issue: 'JOB-136' } });
   const child = await call('ticket.create', { title: 'menu child ' + run.id, parent_id: run.id });
   const menu = page.getByRole('menu', { name: /^Actions for / });
   const footer = menu.locator('.ticket-menu-id code');
@@ -112,7 +112,7 @@ test('ticket menu stays inside the viewport at the edges', async ({ page, reques
     expect(response.ok(), await response.text()).toBeTruthy();
     return response.json();
   };
-  const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'elee1766/jobshop', pr: '976', issue: 'JOB-136' } });
+  const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'gfx-labs/jobshop', pr: '976', issue: 'JOB-136' } });
   try {
     await page.setViewportSize({ width: 700, height: 420 });
     await page.goto('./');

@@ -100,7 +100,7 @@ func NewMetricsFor(res *resource.Resource) (*Metrics, error) {
 		return nil, err
 	}
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(orDefault(res)), sdkmetric.WithReader(exp))
-	meter := mp.Meter("github.com/elee1766/jobshop")
+	meter := mp.Meter("github.com/gfx-labs/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
 	var errs [30]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))

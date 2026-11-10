@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/triggers"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/triggers"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // resourceWaitSince is when t started waiting: its last activity, or

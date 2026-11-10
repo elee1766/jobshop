@@ -6,8 +6,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	sqldb "github.com/elee1766/jobshop/pkg/storage/store/postgres/pgdb"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	sqldb "github.com/gfx-labs/jobshop/pkg/storage/store/postgres/pgdb"
 )
 
 // SetResources replaces the resource capacities and provider names in

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/storage/store/sqlite/sqldb"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/sqlite/sqldb"
 )
 
 // stmtCacheMax bounds the cache. sqldb queries are a fixed set, but

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // live delivers state, not invalidations. A ready event closes the gap between

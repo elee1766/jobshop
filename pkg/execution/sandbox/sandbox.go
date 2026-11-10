@@ -12,7 +12,7 @@ import (
 	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/elee1766/acphost/pkg/xerr"
 
-	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/config"
 )
 
 // System mounts and kept env names are host-specific and come from config

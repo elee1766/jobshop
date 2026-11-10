@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // Targeted wait wake (#679). An event wakes only the waits it can

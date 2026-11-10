@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/elee1766/jobshop/pkg/tooling/flaky"
+	"github.com/gfx-labs/jobshop/pkg/tooling/flaky"
 )
 
 func main() {

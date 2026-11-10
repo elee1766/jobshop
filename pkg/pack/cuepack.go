@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/elee1766/jobshop/pkg/pack/cue"
+	"github.com/gfx-labs/jobshop/pkg/pack/cue"
 )
 
 // CUEFileName is the native pack entry point. Its package, not only

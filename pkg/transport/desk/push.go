@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Push notifies subscribed browsers of new attention items (the

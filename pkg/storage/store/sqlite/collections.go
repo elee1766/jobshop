@@ -14,8 +14,8 @@ import (
 
 	"github.com/nullism/bqb"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Collections on SQLite (#579, docs/notes/579-collections-store.md).

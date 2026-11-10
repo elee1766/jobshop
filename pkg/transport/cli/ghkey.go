@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Keyed GitHub writes (#415). GitHub has no idempotency key, so the key

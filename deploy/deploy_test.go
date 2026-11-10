@@ -46,7 +46,7 @@ func runClosedLoop(t *testing.T, trace []byte, states string) (string, int) {
 	return string(out), 0
 }
 
-const merged = "https://github.com/elee1766/jobshop/pull/74=MERGED"
+const merged = "https://github.com/gfx-labs/jobshop/pull/74=MERGED"
 
 func TestClosedLoopPass(t *testing.T) {
 	b, err := os.ReadFile("testdata/closed-loop-pass.json")
@@ -56,7 +56,7 @@ func TestClosedLoopPass(t *testing.T) {
 	assert.Contains(t, out, "ok    created by trigger replan")
 	assert.Contains(t, out, "ok    dev tickets from the planner: js-dev1 js-dev2")
 	assert.Contains(t, out, "ok    reached refinery: js-dev1")
-	assert.Contains(t, out, "ok    merged PR: js-dev1 https://github.com/elee1766/jobshop/pull/74")
+	assert.Contains(t, out, "ok    merged PR: js-dev1 https://github.com/gfx-labs/jobshop/pull/74")
 	assert.Contains(t, out, "closed-loop check passed")
 }
 
@@ -76,7 +76,7 @@ func TestClosedLoopFail(t *testing.T) {
 		{"no dev ticket", func(m map[string]any) { m["holders"] = []any{"js-other"} }, merged, "no dev ticket created by the planner session (js-other)"},
 		{"no refinery", func(m map[string]any) { child(m, 0)["pool"] = "dev" }, merged, "no dev ticket reached the refinery pool"},
 		{"pr not merged", func(map[string]any) {}, "", "no merged PR referenced by a refinery ticket (js-dev1)"},
-		{"no pr link", func(m map[string]any) { child(m, 0)["links"] = []any{"https://github.com/elee1766/jobshop/issues/70"} }, merged, "no merged PR"},
+		{"no pr link", func(m map[string]any) { child(m, 0)["links"] = []any{"https://github.com/gfx-labs/jobshop/issues/70"} }, merged, "no merged PR"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

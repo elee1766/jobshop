@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // TypeScript returns rpc.d.ts: the client API with RPC method

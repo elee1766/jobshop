@@ -3,7 +3,7 @@ package hooks
 import (
 	"strconv"
 
-	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/domain"
 )
 
 // StepInput is a step ticket as a callback sees it. A callback command

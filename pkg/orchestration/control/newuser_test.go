@@ -10,11 +10,11 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
-	"github.com/elee1766/jobshop/pkg/transport/cli"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/transport/cli"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // guideBlocks returns the fenced blocks of the "A minimal pack" section of

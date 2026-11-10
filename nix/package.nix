@@ -33,8 +33,8 @@ let
     ldflags = [
       "-s"
       "-w"
-      "-X github.com/elee1766/jobshop/pkg/transport/cli.version=${binVersion}"
-      "-X github.com/elee1766/jobshop/pkg/transport/cli.commit=${rev}"
+      "-X github.com/gfx-labs/jobshop/pkg/transport/cli.version=${binVersion}"
+      "-X github.com/gfx-labs/jobshop/pkg/transport/cli.commit=${rev}"
     ];
 
     # Tests run in CI with -race; the Nix build only produces the binary.
@@ -58,7 +58,7 @@ if builtins ? resolveGoPackages then
       # Module hashes come from go.sum (no lockfile).
       subPackages = [ "./cmd/jobshop" ];
       # Declare generated embeds without building the frontend during evaluation.
-      packageOverrides."github.com/elee1766/jobshop/pkg/transport/desk".srcOverlay =
+      packageOverrides."github.com/gfx-labs/jobshop/pkg/transport/desk".srcOverlay =
         runCommand "jobshop-desk-source" { }
           ''
             mkdir -p "$out"

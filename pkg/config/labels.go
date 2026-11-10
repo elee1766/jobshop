@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // maxLabelLen bounds one pool label.

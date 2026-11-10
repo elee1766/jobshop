@@ -11,7 +11,7 @@ test('in flight stays a home section across widths, shortcuts and history', asyn
   };
   const started = [];
   for (const [pr, issue] of [['990', 'JOB-130'], ['991', 'JOB-131']]) {
-    const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'elee1766/jobshop', pr, issue } });
+    const { run } = await call('run.start', { workflow: process.env.DESK_LINK_WORKFLOW, vars: { repo: 'gfx-labs/jobshop', pr, issue } });
     started.push(run.id);
   }
   const wide = { width: 1100, height: 800 };

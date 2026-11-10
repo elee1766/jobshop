@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	packpkg "github.com/elee1766/jobshop/pkg/pack"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	packpkg "github.com/gfx-labs/jobshop/pkg/pack"
 )
 
 // TestSessionDirArgExpands (#566): ${SESSION_DIR} in a pack's agent args

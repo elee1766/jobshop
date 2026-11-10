@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	"github.com/elee1766/jobshop/pkg/support/clock"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	"github.com/gfx-labs/jobshop/pkg/support/clock"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // newClock is the fake clock the trigger tests start at.
@@ -245,9 +245,9 @@ func TestTicketTrace(t *testing.T) {
 	require.NoError(t, p.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: plan.ID}, nil))
 	var dev domain.Ticket
 	require.NoError(t, p.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
-		Title: "Resolve #70", Pool: "dev", Body: "https://github.com/elee1766/jobshop/issues/70",
+		Title: "Resolve #70", Pool: "dev", Body: "https://github.com/gfx-labs/jobshop/issues/70",
 	}, &dev))
-	require.NoError(t, p.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "filed https://github.com/elee1766/jobshop/issues/70"}, nil))
+	require.NoError(t, p.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "filed https://github.com/gfx-labs/jobshop/issues/70"}, nil))
 	require.NoError(t, p.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{}, nil))
 	clk.Advance(time.Second)
 	// Created by the planner after it closed the plan ticket: not a child.
@@ -258,7 +258,7 @@ func TestTicketTrace(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "fake", Pool: "dev"}, &ds))
 	d := dial(t, ds.Socket)
 	require.NoError(t, d.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: dev.ID}, nil))
-	require.NoError(t, d.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "PR https://github.com/elee1766/jobshop/pull/71 head abc"}, nil))
+	require.NoError(t, d.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "PR https://github.com/gfx-labs/jobshop/pull/71 head abc"}, nil))
 
 	var tr rpc.TraceNode
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{ID: plan.ID}, &tr))
@@ -266,15 +266,15 @@ func TestTicketTrace(t *testing.T) {
 	assert.Equal(t, "controller", tr.CreatedBy)
 	assert.Equal(t, domain.StatusClosed, tr.Status)
 	assert.Equal(t, []string{ps.Ticket.ID}, tr.Holders)
-	assert.Equal(t, []string{"https://github.com/elee1766/jobshop/issues/70"}, tr.Links)
+	assert.Equal(t, []string{"https://github.com/gfx-labs/jobshop/issues/70"}, tr.Links)
 	require.Len(t, tr.Children, 1, "only the ticket filed while holding the plan")
 	c := tr.Children[0]
 	assert.Equal(t, dev.ID, c.ID)
 	assert.Equal(t, ps.Ticket.ID, c.CreatedBy)
 	assert.Equal(t, []string{ds.Ticket.ID}, c.Holders)
 	assert.Equal(t, []string{
-		"https://github.com/elee1766/jobshop/issues/70",
-		"https://github.com/elee1766/jobshop/pull/71",
+		"https://github.com/gfx-labs/jobshop/issues/70",
+		"https://github.com/gfx-labs/jobshop/pull/71",
 	}, c.Links)
 
 	// A session traces its current ticket with no id.

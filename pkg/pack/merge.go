@@ -8,7 +8,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/pack/tmpl"
+	"github.com/gfx-labs/jobshop/pkg/pack/tmpl"
 )
 
 // mergedSections are the top-level keys packs contribute to. Their

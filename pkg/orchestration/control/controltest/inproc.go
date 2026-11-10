@@ -9,7 +9,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/execution/session"
+	"github.com/gfx-labs/jobshop/pkg/execution/session"
 )
 
 // InProcHosts runs session hosts as goroutines of the test process

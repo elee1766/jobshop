@@ -6,8 +6,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // drainAll is the key in Controller.drained that drains every pool.

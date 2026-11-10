@@ -14,8 +14,8 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Attachments of a message are files the sender uploaded. They are kept

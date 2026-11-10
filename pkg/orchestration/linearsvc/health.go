@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // Linear outages (JOB-118). A Linear call that times out, fails to

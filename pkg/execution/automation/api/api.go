@@ -10,8 +10,8 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/integrations/linear"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/integrations/linear"
 )
 
 // Limits are host ceilings. Zero values select bounded defaults in the engine.

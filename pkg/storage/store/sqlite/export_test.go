@@ -6,7 +6,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // ListSQL returns the List statement of spec on s, for plan tests.

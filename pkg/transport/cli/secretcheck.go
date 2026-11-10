@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // Outbound secret check (#574): jobshop gh and jobshop linear writes are

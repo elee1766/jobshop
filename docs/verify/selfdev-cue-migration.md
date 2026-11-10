@@ -18,7 +18,7 @@ config changes.
    (copy the host CUE root to a scratch dir and point its local module
    replacement at the candidate). It must load every `.star` file named by
    a workflow, trigger, scan signal, hook or desk command.
-3. `jobshop identity check elee1766/jobshop` and `jobshop identity check
+3. `jobshop identity check gfx-labs/jobshop` and `jobshop identity check
    elee1766/acphost` name the GitHub App identity and return a token.
 
 ## After activation

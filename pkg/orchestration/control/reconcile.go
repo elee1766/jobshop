@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
 )
 
 // pumpReconcile runs the GitHub App delivery reconcile (#335) every

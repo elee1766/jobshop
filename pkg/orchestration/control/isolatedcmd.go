@@ -8,9 +8,9 @@ import (
 
 	"github.com/elee1766/acphost/pkg/proc"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // isolatedCmd is a command the controller runs for a hook, prompt rule,

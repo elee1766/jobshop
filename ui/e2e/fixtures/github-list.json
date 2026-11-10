@@ -2,8 +2,8 @@
   "items": [
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1111",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1111",
       "id": "#1111",
       "kind": "pr",
       "title": "chore(master): release 0.9.21",
@@ -16,12 +16,12 @@
         "autorelease: pending"
       ],
       "updated_at": "2026-11-09T10:42:19Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1111"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1111"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1112",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1112",
       "id": "#1112",
       "kind": "pr",
       "title": "feat(tooling): import-graph boundary check and package ownership map (JOB-165)",
@@ -32,12 +32,12 @@
       "checks": "pass",
       "labels": [],
       "updated_at": "2026-11-09T10:40:51Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1112"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1112"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1110",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1110",
       "id": "#1110",
       "kind": "pr",
       "title": "feat(desk): timeline view of a trace with state-shaded bars and blocker arrows (#1103)",
@@ -48,12 +48,12 @@
       "checks": "pass",
       "labels": [],
       "updated_at": "2026-11-09T10:13:30Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1110"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1110"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1109",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1109",
       "id": "#1109",
       "kind": "pr",
       "title": "test(desk): run context menu, message header and iframe tab e2e in CI (JOB-162)",
@@ -64,12 +64,12 @@
       "checks": "pass",
       "labels": [],
       "updated_at": "2026-11-09T09:33:26Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1109"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1109"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1108",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1108",
       "id": "#1108",
       "kind": "pr",
       "title": "chore(master): release 0.9.20",
@@ -82,12 +82,12 @@
         "autorelease: tagged"
       ],
       "updated_at": "2026-11-09T09:26:41Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1108"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1108"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1107",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1107",
       "id": "#1107",
       "kind": "pr",
       "title": "feat(desk): label human and agent messages with sender headers (JOB-137)",
@@ -98,12 +98,12 @@
       "checks": "pass",
       "labels": [],
       "updated_at": "2026-11-09T09:22:33Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1107"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1107"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1105",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1105",
       "id": "#1105",
       "kind": "pr",
       "title": "feat(desk): add ticket context menu with quick actions and copy id (JOB-136)",
@@ -114,12 +114,12 @@
       "checks": "pass",
       "labels": [],
       "updated_at": "2026-11-09T09:19:48Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1105"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1105"
     },
     {
       "provider": "github",
-      "scope": "elee1766/jobshop",
-      "ref": "elee1766/jobshop#1106",
+      "scope": "gfx-labs/jobshop",
+      "ref": "gfx-labs/jobshop#1106",
       "id": "#1106",
       "kind": "pr",
       "title": "chore(master): release 0.9.19",
@@ -132,7 +132,7 @@
         "autorelease: tagged"
       ],
       "updated_at": "2026-11-09T09:12:25Z",
-      "url": "https://github.com/elee1766/jobshop/pull/1106"
+      "url": "https://github.com/gfx-labs/jobshop/pull/1106"
     }
   ],
   "next": "Y3Vyc29yOjg=",

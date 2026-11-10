@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
-	"github.com/elee1766/jobshop/pkg/execution/automation/command"
-	automationhttp "github.com/elee1766/jobshop/pkg/execution/automation/http"
-	"github.com/elee1766/jobshop/pkg/execution/automation/jev"
-	"github.com/elee1766/jobshop/pkg/execution/automation/tickets"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/command"
+	automationhttp "github.com/gfx-labs/jobshop/pkg/execution/automation/http"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/jev"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/tickets"
 	"go.starlark.net/starlark"
 )
 

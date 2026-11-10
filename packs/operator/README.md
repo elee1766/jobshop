@@ -47,11 +47,11 @@ The pack is CUE (`pack.cue`, `#Pack`). Compose it from the host's root
 CUE file next to the repo packs:
 
 ```cue
-import operatorpack "github.com/elee1766/jobshop/packs/operator"
+import operatorpack "github.com/gfx-labs/jobshop/packs/operator"
 
 packs: operator: operatorpack.#Pack & {
 	path: "packs/operator"
-	vars: {jobshop_repo: "elee1766/jobshop", checkout: "/var/lib/jobshop/src/jobshop", agent: "jcode"}
+	vars: {jobshop_repo: "gfx-labs/jobshop", checkout: "/var/lib/jobshop/src/jobshop", agent: "jcode"}
 }
 ```
 
@@ -71,7 +71,7 @@ starts `pr-work` and comments `PR <url> head <sha>` on the run's
 `implement` step so the dev session adopts it and the refinery merges
 it. Example: `jobshop run start pr-work --var issue=301 --key issue-301`,
 `jobshop run show <run>`, `jobshop comment -t <implement step> "PR
-https://github.com/elee1766/jobshop/pull/302 head 1a2b3c4"`.
+https://github.com/gfx-labs/jobshop/pull/302 head 1a2b3c4"`.
 
 The pack's `push` action hook (`guard.star:push`) denies `jobshop guard
 push --target` master or main (any ref form) and a push with no target

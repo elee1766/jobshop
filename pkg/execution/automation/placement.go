@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation/api"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation/api"
 	"go.starlark.net/starlark"
 )
 

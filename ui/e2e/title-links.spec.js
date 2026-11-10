@@ -12,7 +12,7 @@ test('Markdown links in titles open their destination and leave the row action a
   const key = crypto.randomUUID().slice(0, 8);
   const created = [];
   try {
-    const parent = await call('ticket.create', { title: `Parent ${key} [JOB-117](https://linear.app/gfx-labs/issue/JOB-117) and [jobshop#1021](https://github.com/elee1766/jobshop/pull/1021)` });
+    const parent = await call('ticket.create', { title: `Parent ${key} [JOB-117](https://linear.app/gfx-labs/issue/JOB-117) and [jobshop#1021](https://github.com/gfx-labs/jobshop/pull/1021)` });
     created.push(parent.id);
     const plain = await call('ticket.create', { title: `Plain ${key} *not italic* <b>not bold</b>`, parent_id: parent.id });
     const unsafe = await call('ticket.create', { title: `Unsafe ${key} [click](javascript:alert%281%29) [data](data:text/html,x)`, parent_id: parent.id });

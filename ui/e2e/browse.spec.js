@@ -18,7 +18,7 @@ const githubShow = load('github-show');
 const scope = (extra = {}) => ({
   revision: 1,
   linear: [{ team: 'JOB', workspace: 'gfx-labs' }],
-  github: [{ repo: 'elee1766/jobshop' }],
+  github: [{ repo: 'gfx-labs/jobshop' }],
   writes: { enabled: false, reason: 'Provider writes are not connected yet.' },
   limits: { page_size: 50, max_page_size: 100, thread_page: 25 },
   ...extra,
@@ -150,7 +150,7 @@ test('an issue opens in place: properties, linked work, threads, replies and dis
   await expect(detail.getByLabel(/New comment \(writes are not connected\)/)).toBeDisabled();
   // Real links only: the two attached PRs.
   const linked = detail.getByRole('region', { name: 'Linked work' });
-  await expect(linked.getByRole('link', { name: /elee1766\/jobshop#1097/ }).first()).toBeVisible();
+  await expect(linked.getByRole('link', { name: /gfx-labs\/jobshop#1097/ }).first()).toBeVisible();
   // A reply sits under its parent and names who it answers.
   const reply = detail.locator('.browse-replies .browse-message').first();
   await expect(reply).toContainText(/replying to/);
@@ -173,9 +173,9 @@ test('a linked PR in a configured repo opens in the github view, and a run opens
       {
         kind: 'run',
         ref: 'js-run2',
-        title: 'Review [jobshop#1097](https://github.com/elee1766/jobshop/pull/1097): migrate Desk',
+        title: 'Review [jobshop#1097](https://github.com/gfx-labs/jobshop/pull/1097): migrate Desk',
         state: 'done',
-        relation: 'via elee1766/jobshop#1097',
+        relation: 'via gfx-labs/jobshop#1097',
       },
     ],
   };
@@ -186,10 +186,10 @@ test('a linked PR in a configured repo opens in the github view, and a run opens
   // A run title's Markdown link shows as its label, and the row opens the trace.
   const review = linked.getByRole('link', { name: 'Review jobshop#1097: migrate Desk' });
   await expect(review).toHaveAttribute('href', '?view=trace&ref=js-run2');
-  await expect(linked.getByRole('row', { name: /Review jobshop#1097/ })).toContainText('via elee1766/jobshop#1097');
-  await linked.getByRole('link', { name: /elee1766\/jobshop#1097/ }).first().click();
+  await expect(linked.getByRole('row', { name: /Review jobshop#1097/ })).toContainText('via gfx-labs/jobshop#1097');
+  await linked.getByRole('link', { name: /gfx-labs\/jobshop#1097/ }).first().click();
   await expect(page).toHaveURL(/view=github/);
-  await expect(page).toHaveURL(/item=elee1766%2Fjobshop%231097/);
+  await expect(page).toHaveURL(/item=gfx-labs%2Fjobshop%231097/);
   await expect(page.getByRole('region', { name: 'Pull request' }).getByRole('heading', { level: 2 }).first()).toContainText('migrate Desk');
   await page.goBack();
   await expect(page).toHaveURL(/view=linear/);
@@ -203,7 +203,7 @@ test('github pr: header, tabs with counts, checks and files from the provider', 
   const table = page.getByRole('table', { name: /Pull requests/ });
   await expect(table).toBeVisible();
   await expect(table.getByRole('columnheader', { name: 'ci' })).toBeVisible();
-  await page.goto('./?view=github&item=elee1766%2Fjobshop%231097');
+  await page.goto('./?view=github&item=gfx-labs%2Fjobshop%231097');
   const detail = page.getByRole('region', { name: 'Pull request', exact: true });
   await expect(detail.getByRole('heading', { level: 2 }).first()).toContainText('(JOB-150)');
   await expect(detail.getByText(/merged · elee-agent \(app\)/)).toBeVisible();
@@ -329,7 +329,7 @@ test('mobile shows one pane at a time with a way back', async ({ page, isMobile 
   const list = page.getByRole('region', { name: /GitHub/ });
   await expect(list.getByRole('table')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Pull request' })).toBeHidden();
-  await page.goto('./?view=github&item=elee1766%2Fjobshop%231097');
+  await page.goto('./?view=github&item=gfx-labs%2Fjobshop%231097');
   await expect(page.getByRole('region', { name: 'Pull request' })).toBeVisible();
   await expect(list).toBeHidden();
   const body = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, view: window.innerWidth }));
@@ -341,7 +341,7 @@ test('mobile shows one pane at a time with a way back', async ({ page, isMobile 
 
 test('the state is in the URL and survives a reload, Back and Forward', async ({ page }) => {
   await mock(page);
-  await page.goto('./?view=github&kind=all&list=merged&group=checks&item=elee1766%2Fjobshop%231097&tab=files');
+  await page.goto('./?view=github&kind=all&list=merged&group=checks&item=gfx-labs%2Fjobshop%231097&tab=files');
   await expect(page.getByRole('tab', { name: /files/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('List', { exact: true })).toHaveValue('merged');
   await expect(page.getByLabel('Kind', { exact: true })).toHaveValue('all');

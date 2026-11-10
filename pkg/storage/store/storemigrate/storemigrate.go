@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Tables are the copied tables in dependency order: tickets before the

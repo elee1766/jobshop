@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/pack/cue"
+	"github.com/gfx-labs/jobshop/pkg/pack/cue"
 )
 
 func TestCheckSchema(t *testing.T) {

@@ -27,8 +27,8 @@ import (
 
 	"github.com/klauspost/compress/gzhttp"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // dist holds the built UI. Only dist/.keep is tracked, so the package

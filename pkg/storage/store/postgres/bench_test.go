@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
-	"github.com/elee1766/jobshop/pkg/storage/store/storetest"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/postgres"
+	"github.com/gfx-labs/jobshop/pkg/storage/store/storetest"
 )
 
 // BenchmarkStore runs the hot-path benchmarks (JOB-43) on a database

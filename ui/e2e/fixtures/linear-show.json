@@ -46,18 +46,18 @@
     },
     {
       "kind": "pr",
-      "ref": "elee1766/jobshop#1097",
+      "ref": "gfx-labs/jobshop#1097",
       "title": "feat(desk): migrate Desk to React, Jotai, Wouter and Tailwind (JOB-150)",
       "state": "merged",
-      "url": "https://github.com/elee1766/jobshop/pull/1097",
+      "url": "https://github.com/gfx-labs/jobshop/pull/1097",
       "relation": "attached"
     },
     {
       "kind": "pr",
-      "ref": "elee1766/jobshop#1092",
+      "ref": "gfx-labs/jobshop#1092",
       "title": "docs(desk): add React migration inventory, Svelte baseline and budgets (JOB-150)",
       "state": "merged",
-      "url": "https://github.com/elee1766/jobshop/pull/1092",
+      "url": "https://github.com/gfx-labs/jobshop/pull/1092",
       "relation": "attached"
     }
   ],
@@ -86,7 +86,7 @@
           "author": "elee-agent",
           "at": "2026-11-09T01:14:21.008Z",
           "url": "https://linear.app/gfx-labs/issue/JOB-150#comment-89a72b99",
-          "body": "PR https://github.com/elee1766/jobshop/pull/1097 (head b9a1dd4, CI green). This is the full React migration: Svelte removed, budgets measured and met, e2e 65 passed on desktop and mobile and behind a path prefix, nix and CI updated, rollback documented in docs/notes/JOB-150-desk-react-port.md. The issue stays open until review checks the whole acceptance list. Code change."
+          "body": "PR https://github.com/gfx-labs/jobshop/pull/1097 (head b9a1dd4, CI green). This is the full React migration: Svelte removed, budgets measured and met, e2e 65 passed on desktop and mobile and behind a path prefix, nix and CI updated, rollback documented in docs/notes/JOB-150-desk-react-port.md. The issue stays open until review checks the whole acceptance list. Code change."
         }
       ]
     },
@@ -142,7 +142,7 @@
           "author": "elee-agent",
           "at": "2026-11-08T23:21:06.232Z",
           "url": "https://linear.app/gfx-labs/issue/JOB-150#comment-fb0efc68",
-          "body": "PR https://github.com/elee1766/jobshop/pull/1092. Code change, first slice only (inventory, Svelte baseline, budgets, ui/perf scripts); no app code. Port slices follow after review."
+          "body": "PR https://github.com/gfx-labs/jobshop/pull/1092. Code change, first slice only (inventory, Svelte baseline, budgets, ui/perf scripts); no app code. Port slices follow after review."
         }
       ]
     },

@@ -35,7 +35,7 @@ Stop the controller's drain from racing the check only if you want to see
 the spool row; otherwise skip the `sp` line.
 
 ```sh
-B=$(jq -nc '{action:"created",repository:{full_name:"elee1766/jobshop"},
+B=$(jq -nc '{action:"created",repository:{full_name:"gfx-labs/jobshop"},
   issue:{number:444},comment:{id:1,body:"verify ingest",user:{login:"elee1766"},
   updated_at:"2026-11-04T00:00:00Z"},sender:{login:"elee1766"}}')
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'X-GitHub-Event: issue_comment' \
@@ -107,12 +107,12 @@ comment goes `dispatched` and the session gets exactly one message.
 
 ## 6. Webhook and poller give one row
 
-With `ingest.pollers` covering elee1766/jobshop (`ingest-pollers.md`
+With `ingest.pollers` covering gfx-labs/jobshop (`ingest-pollers.md`
 step 1) and the webhook live, comment once on an issue, wait one poll
 interval:
 
 ```sh
-q "select delivery_id, state from inbox where natural_key like 'github:comment:elee1766/jobshop:<comment id>:%'"
+q "select delivery_id, state from inbox where natural_key like 'github:comment:gfx-labs/jobshop:<comment id>:%'"
 ```
 
 Pass: exactly one row; its delivery id is `github:<guid>` or

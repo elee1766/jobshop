@@ -40,7 +40,7 @@ There are two kinds of edit (#592):
      --from-file <file>`. Each memory file is capped (2200 characters):
      replace or delete stale lines rather than only appending; the write
      fails over the cap. One write per scope per pass.
-   - Prompt fix: file an issue on elee1766/jobshop titled `Curate:
+   - Prompt fix: file an issue on gfx-labs/jobshop titled `Curate:
      <short summary>` whose body names the prompt, the wrong instruction
      and the learning ids. Then `git switch -c issue-<n>`, edit under
      `packs/`, run `go build ./... && go vet ./... && go test ./...`,

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // The Linear and GitHub views against the real providers (JOB-163). It needs a
 // Desk on a controller with a Linear identity for team JOB, a GitHub identity
-// for elee1766/jobshop and the two held runs of docs/verify/desk-linear-github.md.
+// for gfx-labs/jobshop and the two held runs of docs/verify/desk-linear-github.md.
 // Read only. Without that scope the whole file skips, so the suite still passes
 // against a plain Desk.
 
@@ -13,7 +13,7 @@ test.beforeEach(async ({ request, baseURL }) => {
   });
   const scope = res.ok() ? await res.json() : { linear: [], github: [] };
   test.skip(
-    !scope.linear.some((s) => s.team === 'JOB') || !scope.github.some((s) => s.repo === 'elee1766/jobshop'),
+    !scope.linear.some((s) => s.team === 'JOB') || !scope.github.some((s) => s.repo === 'gfx-labs/jobshop'),
     'Desk has no live Linear and GitHub scope configured',
   );
 });
@@ -36,7 +36,7 @@ test('linear lists real issues and opens one with its real links and run', async
 test('github lists real prs and a pr shows checks and files', async ({ page }) => {
   await page.goto('./?view=github&list=all');
   await expect(page.getByRole('table', { name: /Pull requests/ }).locator('.browse-open').first()).toBeVisible();
-  await page.goto('./?view=github&list=merged&item=elee1766%2Fjobshop%231110');
+  await page.goto('./?view=github&list=merged&item=gfx-labs%2Fjobshop%231110');
   const detail = page.getByRole('region', { name: 'Pull request', exact: true });
   await expect(detail.getByRole('heading', { level: 2 }).first()).toContainText('timeline view');
   await expect(detail.getByRole('tab', { name: /files 35/ })).toBeVisible();
@@ -50,7 +50,7 @@ test('nothing the providers return carries a credential', async ({ page }) => {
   page.on('response', async (res) => {
     if (res.url().includes('/api/rpc/browse.')) bodies.push(await res.text());
   });
-  await page.goto('./?view=github&list=all&item=elee1766%2Fjobshop%231110');
+  await page.goto('./?view=github&list=all&item=gfx-labs%2Fjobshop%231110');
   await expect(page.getByRole('region', { name: 'Pull request', exact: true }).getByRole('heading', { level: 2 }).first()).toBeVisible();
   await page.goto('./?view=linear&item=JOB-163');
   await expect(page.getByRole('region', { name: 'Issue', exact: true }).getByRole('heading', { level: 2 }).first()).toBeVisible();

@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/knowledge"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 func learnings(t *testing.T, c *Controller, f store.LearningFilter) []domain.Learning {
@@ -221,7 +221,7 @@ func TestLearnUpdate(t *testing.T) {
 		return out.(domain.Learning).ID
 	}
 	a, b := add(), add()
-	pr := "https://github.com/elee1766/jobshop/pull/9"
+	pr := "https://github.com/gfx-labs/jobshop/pull/9"
 
 	_, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{})
 	require.ErrorIs(t, err, domain.ErrInvalid)

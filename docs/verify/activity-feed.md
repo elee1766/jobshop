@@ -9,7 +9,7 @@
    1h` from a session in a pool with the `activity` grant (or the admin
    socket) lists pushes, PRs, comments and CI. `<root>/activity.json`
    has an `events_etag` per repo.
-4. Desk `?view=activity`: today's group shows both elee1766/jobshop and
+4. Desk `?view=activity`: today's group shows both gfx-labs/jobshop and
    elee1766/acphost items; "humans" (default) hides elee-agent; items
    about an issue with a pr-work run show the run id, and it opens the
    run drawer, whose "External activity" lists the same items.

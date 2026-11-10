@@ -3,8 +3,8 @@ package storetest
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // Short forms of Store.Slot and Store.Resources for the slot tests.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/orchestration/ingest"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/integrations/github"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/ingest"
 )
 
 // pumpPollers runs each ingest.pollers entry (#341) on its interval

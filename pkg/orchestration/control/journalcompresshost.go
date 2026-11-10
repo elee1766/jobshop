@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/storage/journal/compress"
-	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/storage/journal/compress"
+	"github.com/gfx-labs/jobshop/pkg/storage/store"
 )
 
 // compressor is the journal compression sweeper (#631,

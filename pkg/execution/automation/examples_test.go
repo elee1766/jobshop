@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/gfx-labs/jobshop/pkg/execution/automation"
 )
 
 func TestDocumentedHookExamples(t *testing.T) {

@@ -1,7 +1,7 @@
 package selfdev
 
 import (
-	github "github.com/elee1766/jobshop/packs/github"
+	github "github.com/gfx-labs/jobshop/packs/github"
 	"list"
 )
 
@@ -23,7 +23,7 @@ import (
 	memory_cap:           *2200 | int & >=0
 	curate_min_learnings: *10 | int & >=0
 	curate_every:         *"24h" | string
-	curate_scope: *["repo:elee1766/jobshop", "pool:dev", "pool:dev-sonnet", "pool:plan", "pool:refinery", "pool:triage", "pool:deploy-check", "pool:learn"] | [...string]
+	curate_scope: *["repo:gfx-labs/jobshop", "pool:dev", "pool:dev-sonnet", "pool:plan", "pool:refinery", "pool:triage", "pool:deploy-check", "pool:learn"] | [...string]
 	evaluate_runs:        *20 | int & >=0
 	evaluate_age:         *"72h" | string
 	learn_sessions:       *1 | int & >=0
@@ -45,7 +45,7 @@ import (
 		prefix: P
 		vars: {
 			asset_prefix:         "../github/"
-			repo:                 "elee1766/jobshop"
+			repo:                 "gfx-labs/jobshop"
 			checkout:             V.repo
 			agent:                V.agent
 			dev_sessions:         V.dev_sessions
@@ -69,7 +69,7 @@ import (
 			ci_workflow:          "ci"
 			check_cmd:            "go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')"
 			docs_rule:            "behavior as built goes in a new file `docs/notes/<issue>-<slug>.md` (short, dated), a runbook check in a new file `docs/verify/<slug>.md`. Do not edit docs/plan.md (frozen 2026-11-05); a design decision is one dated comment on the decision log issue #569. Never append a numbered section to docs/gasserver-verify.md."
-			guide:                "Jobshop is Go, module github.com/elee1766/jobshop. Read AGENTS.md and docs/ first (docs/plan.md is the design archive; newer decisions are on issue #569)."
+			guide:                "Jobshop is Go, module github.com/gfx-labs/jobshop. Read AGENTS.md and docs/ first (docs/plan.md is the design archive; newer decisions are on issue #569)."
 			deploy_check:         "`jobshop version --server` prints the running controller's `jobshop <version> (<commit>)`. Plain `jobshop version` is this session's binary, fixed when the session started, so it is stale after a self-deploy (#180). The commit must be the merge commit (or the needed SHA) or a descendant: `git fetch origin && git merge-base --is-ancestor <sha> <commit>`. Self-deploy rebuilds with the newest green master commit every 10 minutes."
 		}
 	}
@@ -109,7 +109,7 @@ import (
 		"live-check": {
 			vars: ["runbook", "issue"]
 			issue:             "issue"
-			repo:              "elee1766/jobshop"
+			repo:              "gfx-labs/jobshop"
 			escalate_pool:     "plan"
 			on_start:          "workflow.star:live_check"
 			on_step_completed: "workflow.star:completed"
@@ -144,12 +144,12 @@ import (
 	}, {
 		name: "selfdev-guide"
 		at:   "system"
-		match: {chat: false, repos: ["elee1766/jobshop"]}
+		match: {chat: false, repos: ["gfx-labs/jobshop"]}
 		file: "prompts/guide.md"
 	}, {
 		name: "selfdev-live-check"
 		at:   "system"
-		match: {chat: false, pools: ["plan"], repos: ["elee1766/jobshop"]}
+		match: {chat: false, pools: ["plan"], repos: ["gfx-labs/jobshop"]}
 		file: "prompts/live-check.md"
 	}]])
 }

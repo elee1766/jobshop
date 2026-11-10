@@ -3,7 +3,7 @@ package control
 import (
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // outboundCeiling bounds an outbound call whose caller sets no deadline.

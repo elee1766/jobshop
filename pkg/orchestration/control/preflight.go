@@ -13,9 +13,9 @@ import (
 	"github.com/elee1766/acphost/pkg/userns"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	execsandbox "github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	execsandbox "github.com/gfx-labs/jobshop/pkg/execution/sandbox"
+	"github.com/gfx-labs/jobshop/pkg/support/telemetry"
 )
 
 // preflightSpec is what pool's sessions ask the host for, enough for

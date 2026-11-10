@@ -12,8 +12,8 @@ Check that a session prompt carries the local memory (#266, #592).
    `JOBSHOP_SOCKET= jobshop session prompt <dev session>` shows
    `=== rule:selfdev-memory ===` with `Memory (global,
    memory/global.md):` and that line. `jobshop memory log` lists the edit.
-4. For a ticket on elee1766/jobshop, `jobshop memory write
-   repo/elee1766__jobshop ...` makes the same prompt show
+4. For a ticket on gfx-labs/jobshop, `jobshop memory write
+   repo/gfx-labs__jobshop ...` makes the same prompt show
    `Memory (repo, ...)`, and `=== rule:selfdev-guide ===` appears.
 5. A write over 2200 characters fails with `over the memory cap` and
    leaves the file as it was.

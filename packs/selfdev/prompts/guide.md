@@ -1,5 +1,5 @@
 Jobshop repo notes (packs/selfdev, #592). These hold on every
-elee1766/jobshop turn, alongside AGENTS.md.
+gfx-labs/jobshop turn, alongside AGENTS.md.
 
 - pkg/config and pkg/orchestration/control change fast: `git fetch` and rebase onto
   origin/master before the first push, and reuse helpers master added.

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
-	"github.com/elee1766/jobshop/pkg/transport/rpc/rpcschema"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc/rpcschema"
 )
 
 // The committed client declarations must match the rpc types. Regenerate

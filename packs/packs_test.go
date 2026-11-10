@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/orchestration/control"
-	"github.com/elee1766/jobshop/pkg/orchestration/control/controltest"
-	"github.com/elee1766/jobshop/pkg/transport/rpc"
+	"github.com/gfx-labs/jobshop/pkg/config"
+	"github.com/gfx-labs/jobshop/pkg/domain"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control"
+	"github.com/gfx-labs/jobshop/pkg/orchestration/control/controltest"
+	"github.com/gfx-labs/jobshop/pkg/transport/rpc"
 )
 
 // fakeGitHub answers the reads the github pack's triggers make. Times
@@ -86,13 +86,13 @@ func packRoot(t *testing.T, apiURL string) config.Root {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	module := filepath.Dir(wd)
-	write(t, root.Dir, "cue.mod/module.cue", "module: \"acceptance.example/host@v0\"\nlanguage: version: \"v0.17.0\"\ndeps: \"github.com/elee1766/jobshop@v0\": {v: \"v0.0.0\", default: true}\n")
-	write(t, root.Dir, "cue.mod/local-module.cue", fmt.Sprintf("deps: \"github.com/elee1766/jobshop@v0\": replaceWith: %q\n", module))
+	write(t, root.Dir, "cue.mod/module.cue", "module: \"acceptance.example/host@v0\"\nlanguage: version: \"v0.17.0\"\ndeps: \"github.com/gfx-labs/jobshop@v0\": {v: \"v0.0.0\", default: true}\n")
+	write(t, root.Dir, "cue.mod/local-module.cue", fmt.Sprintf("deps: \"github.com/gfx-labs/jobshop@v0\": replaceWith: %q\n", module))
 	write(t, root.Dir, "pack.cue", fmt.Sprintf(`package acceptance
 import (
-    githubpack "github.com/elee1766/jobshop/packs/github"
-    operatorpack "github.com/elee1766/jobshop/packs/operator"
-    selfdevpack "github.com/elee1766/jobshop/packs/selfdev"
+    githubpack "github.com/gfx-labs/jobshop/packs/github"
+    operatorpack "github.com/gfx-labs/jobshop/packs/operator"
+    selfdevpack "github.com/gfx-labs/jobshop/packs/selfdev"
 )
 default_project: "js"
 projects: js: {}
