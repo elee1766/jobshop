@@ -8,11 +8,11 @@ seed a live instance.
    with `--tick=1s`, and serve Desk from the same binary.
 2. Create a parent task with a child (`--parent`), add `needs-human` to the
    child, comment on it, close it. Open `?view=trace&ref=<parent>`: it opens as
-   the timeline (#1136; `layout=graph` or the `graph` button shows the graph).
+   the timeline, the only trace view (#1179; an old `layout=graph` URL opens it too).
 3. Expected: one row per ticket, the child nested under the parent. The child
    has queued then yellow human segments ending at its close, and a comment
-   tick. An open row's bar reaches the dashed now line. `graph` returns to the
-   graph and keeps the ref. Collapse and expand work from the keyboard. The
+   tick. An open row's bar reaches the dashed now line. There is no `graph`
+   button. Collapse and expand work from the keyboard. The
    detail under the chart lists every segment with exact times.
 4. A step with a wait: park it (`jobshop wait add 'github.checks:...'`). Its
    bar shows a striped waiting segment, and the detail names the condition and

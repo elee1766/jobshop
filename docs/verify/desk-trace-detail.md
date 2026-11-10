@@ -37,12 +37,11 @@ isolated controller (see `desk-redesign.md`). Never seed a live instance.
 9. A command or script step has no `attempts` and no `holder`. A batch and a run
    show `n of m closed`. A ticket whose history was compacted says part of its
    history is not kept.
-10. Open `&layout=graph`: the same pane under the graph.
-11. Change the ticket (add a comment) while the tab is `comments`: the count
+10. Change the ticket (add a comment) while the tab is `comments`: the count
     rises, the tab and page scroll stay.
-12. Check 1000, 790 and 390 px, light and dark: no page overflow, the tab bar
+11. Check 1000, 790 and 390 px, light and dark: no page overflow, the tab bar
     stays in the viewport, every tab and link reachable by keyboard.
-13. `DESK_URL=<desk> npm --prefix ui run test:e2e -- trace-detail.spec.js
+12. `DESK_URL=<desk> npm --prefix ui run test:e2e -- trace-detail.spec.js
     timeline.spec.js` passes on both projects, also with `DESK_PREFIX=1`. With
     `DESK_MUTATE=1` also `live.spec.js`, `title-links.spec.js` and
     `trace-session.spec.js` (`live.spec.js` and `trace-axis.spec.js` have

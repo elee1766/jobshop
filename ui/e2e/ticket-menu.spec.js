@@ -71,19 +71,10 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await menu.getByRole('menuitem', { name: 'open in trace' }).click();
     await expect(page).toHaveURL(new RegExp('ref=' + run.id));
 
-    // Trace: cards and relationships carry the same menu with their own id.
-    // The trace opens as the timeline (#1136): the cards are in the graph.
-    await page.getByRole('region', { name: 'Ticket timeline' }).getByRole('button', { name: 'graph', exact: true }).click();
-    const card = page.locator(`.graph-card[data-ticket="${child.id}"]`);
-    await expect(card).toBeVisible();
-    await card.getByRole('button', { name: 'Actions for ' + child.id }).click();
-    await expect(footer).toHaveText(child.id);
-    await expect(menu.getByRole('menuitem', { name: 'inspect' })).toBeVisible();
-    // The whole graph is open: a ticket in it is selected, never opened again.
-    await expect(menu.getByRole('menuitem', { name: 'open as graph root' })).toHaveCount(0);
-    await expect(menu.getByRole('menuitem', { name: 'open in trace' })).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
+    // Trace: the detail pane and relationships carry the same menu with
+    // their own id. The timeline rows are selected, not opened again.
+    const timeline = page.getByRole('region', { name: 'Ticket timeline' });
+    await expect(timeline.locator(`button.tl-name[title$="(${child.id})"]`)).toBeVisible();
 
     // Relationships sit behind the relations tab of the detail pane (JOB-185).
     await page.getByRole('tablist', { name: 'Ticket detail' }).getByRole('tab', { name: /^relations/ }).click();
@@ -98,9 +89,9 @@ test('ticket menu: home row, trace card and relationship entry', async ({ page, 
     await expect(page).toHaveURL(new RegExp('ref=' + run.id));
 
     // The inspected ticket no longer offers inspect.
-    await page.locator(`.graph-card[data-ticket="${run.id}"]`).getByRole('button', { name: 'Actions for ' + run.id }).click();
-    await expect(footer).toHaveText(run.id);
-    await expect(menu.getByRole('menuitem', { name: 'inspect' })).toBeVisible();
+    await page.getByLabel('Ticket details', { exact: true }).locator('.ticket-links').getByRole('button', { name: 'Actions for ' + child.id }).click();
+    await expect(footer).toHaveText(child.id);
+    await expect(menu.getByRole('menuitem', { name: 'inspect' })).toHaveCount(0);
     await expect(menu.getByRole('menuitem', { name: 'open as graph root' })).toHaveCount(0);
     await page.keyboard.press('Escape');
   } finally {

@@ -114,26 +114,13 @@ async function open(page, extra = '', { tl = timeline, sessions } = {}) {
   await page.goto('./?view=trace&ref=js-run' + extra);
 }
 
-test('a trace opens as the timeline, the graph is one click away and back', async ({ page }) => {
+test('a trace opens as the timeline and an old layout=graph URL still does', async ({ page }) => {
   await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl).toBeVisible();
-  const graph = page.getByRole('region', { name: 'Ticket dependency graph' });
-  await expect(graph).toHaveCount(0);
-  await tl.getByRole('button', { name: 'graph' }).click();
-  await expect(page).toHaveURL(/layout=graph/);
-  await expect(graph).toBeVisible();
-  await graph.getByRole('button', { name: 'timeline' }).click();
-  await expect(page).not.toHaveURL(/layout=/);
-  await expect(tl).toBeVisible();
-});
-
-test('layout=graph opens the graph and layout=timeline still opens the timeline', async ({ page }) => {
+  await expect(tl.getByRole('button', { name: 'graph' })).toHaveCount(0);
   await open(page, '&layout=graph');
-  await expect(page.getByRole('region', { name: 'Ticket dependency graph' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Ticket timeline' })).toHaveCount(0);
-  await open(page, '&layout=timeline');
-  await expect(page.getByRole('region', { name: 'Ticket timeline' })).toBeVisible();
+  await expect(tl).toBeVisible();
 });
 
 test('bars show state, retries, waits and conflicts without color alone', async ({ page }) => {

@@ -345,13 +345,6 @@ test('choosing a bar on the chart opens the events tab on that entry', async ({ 
   await expect(page.getByLabel('Timeline of js-dev')).toHaveCount(0);
 });
 
-test('the graph layout uses the same pane', async ({ page }) => {
-  await open(page, 'js-dev', '&layout=graph');
-  await expect(page.getByRole('region', { name: 'Ticket dependency graph' })).toBeVisible();
-  await expect(facts(page).locator('div').filter({ hasText: /^attempts/ })).toContainText('failed 1 of 3 allowed');
-  await expect(tabs(page).getByRole('tab', { name: 'events' })).toBeVisible();
-});
-
 test('tabs do not overflow and no page scrolls sideways', async ({ page }) => {
   for (const width of [390, 700, 1000]) {
     await page.setViewportSize({ width, height: 800 });

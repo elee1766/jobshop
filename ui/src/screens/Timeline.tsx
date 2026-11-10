@@ -42,13 +42,11 @@ export function Timeline({
   sessions,
   selected,
   onSelect,
-  onGraph,
 }: {
   timeline: TimelineResult;
   sessions?: Record<string, HolderInfo>;
   selected: string;
   onSelect: (id: string) => void;
-  onGraph: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [zoom, setZoom] = useState(1);
@@ -136,7 +134,6 @@ export function Timeline({
           <button disabled={zoom === 1} onClick={() => setZoom(1)}>
             fit
           </button>
-          <button onClick={onGraph}>graph</button>
         </div>
       </div>
       {timeline.truncated && (
