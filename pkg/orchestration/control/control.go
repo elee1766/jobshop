@@ -614,6 +614,7 @@ func (c *Controller) tick() {
 	c.step(ctx, "scan_sessions", c.scanSessions)
 	c.passStep(ctx, cfg, "sweep_runs", c.sweepRuns)
 	c.kickHooks()
+	c.passStep(ctx, cfg, "sweep_derived", c.sweepDerived)
 	c.passStep(ctx, cfg, "sweep_escalation_chats", c.sweepEscalationChats)
 	c.passStep(ctx, cfg, "sweep_attention_chats", c.sweepAttentionChats)
 	c.step(ctx, "sweep_batches", c.sweepBatches)

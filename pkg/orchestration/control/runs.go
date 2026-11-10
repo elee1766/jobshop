@@ -551,12 +551,20 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t domain.Tic
 		// A run wait reads the state: wake the waits on this run (#679).
 		c.wakeWaitsSubjects(workflow.RunSubject(t.ID))
 	}
-	if err != nil || resolution == "" {
+	if err != nil {
 		return t, err
+	}
+	if resolution == "" {
+		if state == domain.RunRunning {
+			// A resumed run no longer needs its earlier escalations (JOB-195).
+			c.settleEscalations(ctx, t.ID)
+		}
+		return t, nil
 	}
 	t, err = store.Close(ctx, c.store, actor, t.ID, nil, resolution)
 	if err == nil {
 		c.removeRunDir(t.ID)
+		c.settleEscalations(ctx, t.ID)
 	}
 	return t, err
 }
