@@ -88,3 +88,9 @@ export const rpcMethodsAtom = atom<string[] | null>(null);
 // its events tab on that entry. n counts choices, so choosing the same bar
 // again scrolls to it again.
 export const segmentChoiceAtom = atom<{ id: string; index: number; n: number } | null>(null);
+
+// The comment or history tick open in the lower panel of the TL page (#1183):
+// the row and the marker's key (see markerKey in lib/timeline.ts). It is
+// here, not in the timeline, because the chart presses the tick and the panel
+// under it shows the text.
+export const markAtom = atom<{ id: string; key: string } | null>(null);

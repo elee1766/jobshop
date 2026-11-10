@@ -2,7 +2,7 @@ import { Menu } from '@base-ui/react/menu';
 import { useAtomValue } from 'jotai';
 import { useEffect, useRef, useState } from 'react';
 import { copyText } from '../lib/clipboard.ts';
-import { useDeskRoute } from '../lib/route.ts';
+import { setParams, useDeskRoute } from '../lib/route.ts';
 import { attach, discuss, inspect, openTrace } from '../state/actions.ts';
 import { errorAtom, selectedAtom } from '../state/live.ts';
 import { store } from '../state/store.ts';
@@ -131,6 +131,7 @@ function Popup({ state }: { state: TicketMenuState }) {
   function viewSession() {
     if (!target.inspectable) openTrace(target.id);
     store.set(watchedSessionAtom, target.session || '');
+    if (target.session) setParams({ tab: 'session' });
   }
 
   return (
@@ -160,7 +161,7 @@ function Popup({ state }: { state: TicketMenuState }) {
           >
             {!target.inspectable && !target.provider && (
               <Menu.Item className="ticket-menu-item" onClick={() => openTrace(target.id)}>
-                open in trace
+                open in TL
               </Menu.Item>
             )}
             {target.inspectable && !isSelected && (

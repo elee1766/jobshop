@@ -20,7 +20,7 @@ export const views: Exclude<View, 'embed' | BrowseView>[] = ['home', 'trace', 'i
 const routable: View[] = [...views, 'embed', ...browseViews];
 export const viewLabel: Record<Exclude<View, 'embed' | BrowseView>, string> = {
   home: 'home',
-  trace: 'trace',
+  trace: 'TL',
   improvements: 'learn',
   system: 'sys',
 };

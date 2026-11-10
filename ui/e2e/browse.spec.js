@@ -71,7 +71,7 @@ test('linear and github are tabs of their own, not iframes', async ({ page, isMo
   await page.goto('./');
   if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'more' }).click();
   const names = await nav(page).getByRole('button').allTextContents();
-  expect(names.slice(0, 6)).toEqual(['home', 'trace', 'learn', 'sys', 'linear', 'github']);
+  expect(names.slice(0, 6)).toEqual(['home', 'TL', 'learn', 'sys', 'linear', 'github']);
   await nav(page).getByRole('button', { name: 'linear', exact: true }).click();
   await expect(page).toHaveURL(/view=linear/);
   await expect(page.getByRole('table', { name: 'Issues' })).toBeVisible();
@@ -315,7 +315,7 @@ test('attach to chat adds a provider reference that is not a ticket id', async (
   await expect(table).toBeVisible();
   await table.getByRole('row', { name: /JOB-165/ }).getByRole('button', { name: /Actions for JOB-165/ }).click();
   const menu = page.getByRole('menu', { name: 'Actions for JOB-165' });
-  await expect(menu.getByRole('menuitem', { name: 'open in trace' })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'open in TL' })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: 'copy reference' })).toBeVisible();
   const out = menu.getByRole('menuitem', { name: /open in Linear/ });
   await expect(out).toHaveAttribute('href', /^https:\/\/linear\.app\//);

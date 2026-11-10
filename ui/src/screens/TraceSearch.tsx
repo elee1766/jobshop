@@ -81,11 +81,11 @@ export function TraceSearch({ reference, onOpen }: { reference: string; onOpen: 
   return (
     <>
       <div className="tag trace-search-bar">
-        <span className="mono">/trace</span>
+        <span className="mono">/tl</span>
         <search aria-label="Search tickets">
           <form onSubmit={submit}>
             <input
-              aria-label="Trace reference"
+              aria-label="TL reference"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               maxLength={512}

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, showTimeline } from './trace-view.js';
 
 // Creates tickets only on an explicitly opted-in disposable controller.
 test.skip(!process.env.DESK_MUTATE, 'set DESK_MUTATE=1 against an isolated controller');
@@ -26,7 +26,7 @@ test('trace search finds completed tickets beyond the first page and opens their
     }
     await page.goto('./?view=trace');
     const form = page.getByRole('search', { name: 'Search tickets' });
-    const input = form.getByRole('textbox', { name: 'Trace reference' });
+    const input = form.getByRole('textbox', { name: 'TL reference' });
     const results = page.getByRole('region', { name: 'Ticket search results' });
     await input.fill(key);
     await input.press('Enter');
@@ -38,7 +38,8 @@ test('trace search finds completed tickets beyond the first page and opens their
     await expect(targetLink).toHaveAttribute('title', target.id);
     await targetLink.click();
     await showDetails(page);
-    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
+    await expect(page.locator('.lower-who')).toContainText(target.id);
+    await showTimeline(page);
     await expect(input).toHaveValue(target.id);
     await input.fill(repo + '#4520');
     await form.getByRole('combobox', { name: 'Ticket status' }).selectOption('closed');
@@ -55,11 +56,13 @@ test('trace search finds completed tickets beyond the first page and opens their
     await results.getByRole('button', { name: 'dismiss', exact: true }).click();
     await expect(results).toHaveCount(0);
     await showDetails(page);
-    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
+    await expect(page.locator('.lower-who')).toContainText(target.id);
+    await showTimeline(page);
     await input.fill(repo + '#4520');
     await form.getByRole('button', { name: 'open', exact: true }).click();
     await showDetails(page);
-    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
+    await expect(page.locator('.lower-who')).toContainText(target.id);
+    await showTimeline(page);
     await expect(page).toHaveURL(new RegExp('ref=' + encodeURIComponent(repo + '#4520')));
     const bounds = await form.evaluate(node => ({ right: node.getBoundingClientRect().right, width: innerWidth }));
     expect(bounds.right).toBeLessThanOrEqual(bounds.width);

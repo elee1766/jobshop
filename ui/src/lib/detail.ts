@@ -17,8 +17,20 @@ import { relationshipText } from './trace.ts';
 
 const at = (t: string | undefined) => (t ? Date.parse(t) : NaN);
 
-// The tabs of the pane, in order, with the value kept in the URL (?tab=).
-export const detailTabs = ['events', 'io', 'relations', 'body', 'comments', 'raw'] as const;
+// The tabs of the lower area, with the value kept in the URL (?tab=). The
+// marker and session tabs only exist while a tick or a session is open; the
+// page falls back to events when the one in the URL has nothing to show.
+export const detailTabs = [
+  'events',
+  'marker',
+  'session',
+  'details',
+  'io',
+  'relations',
+  'body',
+  'comments',
+  'raw',
+] as const;
 export type DetailTab = (typeof detailTabs)[number];
 
 export function detailTab(value: string): DetailTab {

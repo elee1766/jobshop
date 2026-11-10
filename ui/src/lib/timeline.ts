@@ -196,3 +196,7 @@ export function arrowPath(x1: number, y1: number, x2: number, y2: number, gap = 
   const mid = (y1 + y2) / 2;
   return `M ${x1} ${y1} H ${x1 + gap} V ${mid} H ${x2 - gap} V ${y2} H ${x2}`;
 }
+
+// A marker has no id of its own: its time, kind and the comment or history
+// row it came from name it.
+export const markerKey = (m: TimelineMarker) => `${m.at}|${m.kind}|${m.comment ?? m.seq ?? ''}`;

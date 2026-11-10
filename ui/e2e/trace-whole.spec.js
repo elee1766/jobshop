@@ -102,7 +102,6 @@ test('opening the timeline on a sub-item shows every row with that one selected 
   await expect(picked.getByRole('button', { name: 'Step 35' })).toHaveAttribute('aria-pressed', 'true');
   // The row sits low in a long list: it is scrolled into the chart.
   await inView(picked, tl.locator('.tl-scroll'), false);
-  await expect(page.getByLabel('Ticket details')).toHaveCount(0);
   await showDetails(page);
   await expect(page.getByLabel('Ticket details').getByRole('heading', { level: 2 })).toContainText('Step 35');
   await expect(page.getByText('open as graph root')).toHaveCount(0);

@@ -669,14 +669,25 @@ td pre {
   margin-right: 4px;
 }
 .trace-layout { min-width: 0; }
-/* The timeline or the details fill the page, never both (#1181). A watched
-   session sits under the timeline at a fixed height, so the chart keeps its
-   size with or without one. The details scroll inside their own box. */
-.trace-layout > .trace-bottom { height: 60dvh; min-height: 320px; }
-.trace-details > .trace-bottom { max-height: calc(100dvh - 110px); min-height: 320px; overflow: auto; overscroll-behavior: contain; }
-.trace-details > .trace-bottom.watching { height: calc(100dvh - 110px); }
-.trace-details > .graph-heading { column-gap: var(--space-4); flex-wrap: nowrap; }
-.trace-details > .graph-heading > .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The TL page (#1183): the chart, then one lower area for the selection. The
+   area is below the chart in the flow, so the chart is the same size with or
+   without a session. The tab bar is the area's first row and sticks to the
+   top of the page while a long panel scrolls under it. */
+.lower-bar { position: sticky; top: 0; z-index: 3; column-gap: var(--space-4); flex-wrap: nowrap; border-top: 1px solid var(--column); }
+.lower-bar > .detail-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; min-width: 0; }
+.lower-who { min-width: 0; margin: 0 0 0 auto; font-size: inherit; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lower-who a { color: inherit; }
+.lower .detail-panel { padding-top: 0; }
+.lower .session-viewer { height: 70dvh; min-height: 320px; border: 0; }
+.lower .tl-marker-panel { border-top: 0; }
+.lower .tl-marker-body { max-height: none; overflow: visible; }
+/* The popup is the area on a phone: a full-screen sheet over the page. The
+   chart is still mounted under it, so closing returns to where it was. */
+.lower-popup { position: fixed; z-index: 20; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; background: var(--paper); color: inherit; }
+.lower-popup > .tag { flex: none; }
+.lower-popup-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.lower-popup .lower-bar { top: 0; }
+.lower-popup .session-viewer { height: 100%; position: static; box-shadow: none; }
 /* Proportionate search: the field grows to a readable width, not the bar,
    and shrinks before the bar wraps. */
 .trace-search-bar { flex-wrap: nowrap; }
@@ -717,9 +728,6 @@ span.ticket-status { display: inline-block; }
   .ref-col { display: table-cell; }
   .ref-stack { display: none; }
 }
-.trace-bottom { min-width: 0; min-height: 0; }
-.trace-bottom.watching { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.trace-bottom.watching > .inspector { overflow: auto; }
 .session-viewer { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--column); border-top: 1px solid var(--column); background: var(--paper); }
 .session-viewer .tag { flex-wrap: wrap; flex-shrink: 0; }
 .session-identity { padding: var(--space-3); font-size: var(--font-size-small); overflow-wrap: anywhere; border-bottom: 1px solid var(--rule); }
@@ -899,12 +907,7 @@ output.block { display: block; margin: 6px 0; }
   .trace-layout {
     display: block;
   }
-  .trace-layout > .trace-bottom { height: auto; min-height: 0; }
-  .trace-details > .trace-bottom, .trace-details > .trace-bottom.watching { height: auto; max-height: none; overflow: visible; }
-  .trace-details > .graph-heading { position: sticky; top: 0; z-index: 2; background: var(--tag); }
-  .trace-bottom.watching { display: block; }
-  .trace-bottom.watching > .inspector { max-height: none; overflow: visible; }
-  .session-viewer { position: fixed; z-index: 8; inset: auto 0 46px; height: 76dvh; border: 1px solid var(--column); box-shadow: 0 -8px 24px #0002; }
+  .lower-bar { flex-wrap: wrap; }
   .inspector {
     border-left: 0;
     border-top: 1px solid var(--column);
@@ -1105,9 +1108,12 @@ output.block { display: block; margin: 6px 0; }
 .tl-row { position: relative; display: flex; border-bottom: 1px solid var(--rule); }
 .tl-row:nth-child(even) { background: var(--row-alt); }
 .tl-row.tl-picked { background: var(--hi); }
+/* The parent of the selection: a tint and a left rule, well under the
+   selection's strength. The row's name carries the same fact in words. */
+.tl-row.tl-parent:not(.tl-picked) { background: color-mix(in srgb, var(--hi) 35%, var(--paper)); box-shadow: inset 3px 0 0 var(--column); }
 .tl-row[data-conflict] .tl-track { outline: 1px solid var(--tl-conflict); outline-offset: -2px; }
 .tl-label { position: sticky; left: 0; z-index: 2; flex: none; display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; min-width: 0; background: inherit; border-right: 1px solid var(--rule); font-size: var(--font-size-small); }
-.tl-row:not(.tl-picked):not(:nth-child(even)) .tl-label { background: var(--paper); }
+.tl-row:not(.tl-picked):not(.tl-parent):not(:nth-child(even)) .tl-label { background: var(--paper); }
 .tl-fold { flex: none; width: 20px; min-height: 20px; padding: 0; text-align: center; background: transparent; border: 0; }
 span.tl-fold { display: inline-block; }
 .tl-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; background: transparent; border: 0; padding: 0 var(--space-1); }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails, showTimeline } from './trace-view.js';
+import { showDetails, showTimeline, openTab } from './trace-view.js';
 
 // The trace detail pane (JOB-185): summary, now, tabs and grouped events.
 // The live stream is mocked, so this runs against any Desk and writes nothing.
@@ -180,6 +180,7 @@ const tabs = (page) => pane(page).getByRole('tablist', { name: 'Ticket detail' }
 
 test('a retried step: facts, time by state, attempts and the closing line', async ({ page }) => {
   await open(page, 'js-dev');
+  await openTab(page, 'details');
   const f = facts(page);
   await expect(f).toContainText('started');
   await expect(f.locator('div').filter({ hasText: /^ended/ })).toBeVisible();
@@ -194,21 +195,23 @@ test('a retried step: facts, time by state, attempts and the closing line', asyn
   await expect(share).toContainText('in a turn 8m');
   await expect(share).toContainText('held, idle 6m');
   await expect(share).toContainText('waiting on an event 10m');
+  await openTab(page, 'events');
   const ended = pane(page).getByLabel('How it ended');
   await expect(ended).toContainText('PR merged');
 });
 
-test('summary and now fit above the tabs without scrolling the pane at 1000 px', async ({ page, isMobile }) => {
+test('the tabs come before any panel content, so no scrolling reaches them (#1183)', async ({ page, isMobile }) => {
   test.skip(isMobile, 'a fixed 1000 px viewport');
   await page.setViewportSize({ width: 1000, height: 800 });
   await open(page, 'js-dev');
-  const header = await pane(page).locator('.ticket-overview').boundingBox();
   const tablist = await tabs(page).boundingBox();
-  // From the title to the tab bar is less than one screen, so the summary
-  // is read without scrolling inside the pane.
-  expect(tablist.y - header.y).toBeLessThan(420);
-  await expect(pane(page).getByLabel('Summary')).toBeVisible();
+  const panel = await pane(page).getByRole('tabpanel').boundingBox();
+  expect(tablist.y + tablist.height).toBeLessThanOrEqual(panel.y + 1);
+  await expect(pane(page).getByLabel('Summary')).toHaveCount(0);
   await expect(pane(page).getByLabel('How it ended')).toBeVisible();
+  await openTab(page, 'details');
+  await expect(pane(page).getByLabel('Summary')).toBeVisible();
+  await expect(pane(page).getByLabel('How it ended')).toHaveCount(0);
 });
 
 test('events are grouped one entry per span, newest first; comments are markers on the timeline', async ({ page }) => {
@@ -244,9 +247,11 @@ test('tabs are kept in the URL, reachable by keyboard, and an unknown one opens 
   await open(page, 'js-dev');
   const bar = tabs(page);
   // Both comments are markers on the timeline, so there is no comments tab.
-  await expect(bar.getByRole('tab')).toHaveText(['events', 'input / result', 'relations 2', 'body', 'raw']);
+  await expect(bar.getByRole('tab')).toHaveText(['events', 'details', 'input / result', 'relations 2', 'body', 'raw']);
   await expect(bar.getByRole('tab', { name: 'events' })).toHaveAttribute('aria-selected', 'true');
   await bar.getByRole('tab', { name: 'events' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL(/tab=details/);
   await page.keyboard.press('ArrowRight');
   await expect(page).toHaveURL(/tab=io/);
   await expect(bar.getByRole('tab', { name: 'input / result' })).toBeFocused();
@@ -287,6 +292,7 @@ test('an open step in a turn says what it is doing now, with the tool', async ({
   await open(page, 'js-live');
   const now = pane(page).getByLabel('Now', { exact: true });
   await expect(now).toContainText('turn running: go test ./...');
+  await openTab(page, 'details');
   const holder = facts(page).locator('div').filter({ hasText: /^holder/ });
   await expect(holder).toContainText('js-s-3');
   await expect(holder).toContainText('turn running');
@@ -294,6 +300,7 @@ test('an open step in a turn says what it is doing now, with the tool', async ({
   await expect(facts(page).locator('div').filter({ hasText: /^open for/ })).toBeVisible();
   await holder.getByRole('button', { name: 'js-s-3' }).click();
   await expect(page.getByRole('region', { name: 'Read-only session' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'session', selected: true })).toBeVisible();
 });
 
 test('a human hold, a deferral, a controller-run step and a batch each render', async ({ page }) => {
@@ -308,6 +315,7 @@ test('a human hold, a deferral, a controller-run step and a batch each render', 
   await expect(now).toContainText('deferred');
   await expect(now).toContainText('until');
   // No session claimed it: no attempts fact and no holder.
+  await openTab(page, 'details');
   await expect(facts(page).locator('div').filter({ hasText: /^attempts/ })).toHaveCount(0);
   await expect(facts(page).locator('div').filter({ hasText: /^holder/ })).toHaveCount(0);
   await pane(page).getByRole('tab', { name: 'input / result' }).click();
@@ -316,6 +324,7 @@ test('a human hold, a deferral, a controller-run step and a batch each render', 
   await open(page, 'js-batch');
   await expect(pane(page).getByLabel('Now', { exact: true })).toContainText('running');
   // Partial history is said, and what cannot be computed is left out.
+  await openTab(page, 'details');
   await expect(pane(page).locator('.summary-note')).toContainText('not kept');
   await pane(page).getByRole('tab', { name: 'input / result' }).click();
   await expect(pane(page).getByRole('tabpanel').getByLabel('input')).toContainText('JOB-1, JOB-2');
@@ -323,8 +332,9 @@ test('a human hold, a deferral, a controller-run step and a batch each render', 
 
 test('a run shows its steps as progress and its inputs', async ({ page }) => {
   await open(page, 'js-run');
-  await expect(facts(page).locator('div').filter({ hasText: /^steps/ })).toContainText('1 of');
   await expect(pane(page).getByLabel('Now', { exact: true })).toContainText('running');
+  await openTab(page, 'details');
+  await expect(facts(page).locator('div').filter({ hasText: /^steps/ })).toContainText('1 of');
   await pane(page).getByRole('tab', { name: 'input / result' }).click();
   await expect(pane(page).getByRole('tabpanel').getByLabel('input')).toContainText('acme/widget');
   await expect(pane(page).getByRole('tabpanel').getByLabel('input')).toContainText('pr-work');

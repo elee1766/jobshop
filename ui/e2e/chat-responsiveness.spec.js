@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { showDetails } from './trace-view.js';
+import { showDetails, openTab } from './trace-view.js';
 
 test.skip(!process.env.DESK_MUTATE, 'requires an isolated controller and the ACP test agent');
 
@@ -126,7 +126,7 @@ test('chat and read-only inspector reach the beginning of journal history', asyn
     await openChat(page, isMobile, name);
     await loadBeginning(page.locator('.transcript'));
     await page.goto('./?view=trace&ref=' + session.id);
-    await showDetails(page);
+    await openTab(page, 'details');
     await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     await loadBeginning(page.getByRole('region', { name: 'Read-only session' }).locator('.session-output'));
   } finally {
@@ -180,7 +180,7 @@ test('consecutive tool calls sit tighter than separate messages', async ({ page,
     await post(request, 'api/chat/send', { key: session.ticket.fields.key, text: 'tool run two' });
     await check(page.locator('.transcript'));
     await page.goto('./?view=trace&ref=' + session.id);
-    await showDetails(page);
+    await openTab(page, 'details');
     await page.getByRole('button', { name: 'view session ↗', exact: true }).click();
     await check(page.getByRole('region', { name: 'Read-only session' }).locator('.session-output'));
   } finally {

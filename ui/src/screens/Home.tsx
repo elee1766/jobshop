@@ -125,8 +125,8 @@ const AttentionRow = memo(function AttentionRow({ itemKey }: { itemKey: string }
     <article className={focused ? 'focused' : undefined} ref={target ? ticketMenuRef(target) : undefined}>
       <Reference item={item} />
       {item.kind !== 'pool' && item.kind !== 'outage' && (
-        <a href={'?view=trace&ref=' + encodeURIComponent(item.id)} aria-label={'Trace ' + (item.ref || item.id)}>
-          trace
+        <a href={'?view=trace&ref=' + encodeURIComponent(item.id)} aria-label={'TL ' + (item.ref || item.id)}>
+          TL
         </a>
       )}
       {target && <TicketMenuButton target={target} />}
