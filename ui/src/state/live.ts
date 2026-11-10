@@ -26,7 +26,7 @@ import { store } from './store.ts';
 // Collections keep membership apart from contents, so a changed ticket
 // renders its own row and nothing else.
 
-export const attentionKinds = ['question', 'decision', 'ticket', 'run', 'wait', 'guard', 'pool'];
+export const attentionKinds = ['question', 'decision', 'ticket', 'run', 'wait', 'guard', 'pool', 'outage'];
 export const attentionKey = (item: AttentionItem) => item.kind + ':' + item.id;
 
 export const attention = collection<AttentionItem>(attentionKey);

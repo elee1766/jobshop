@@ -954,6 +954,8 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		err := domain.ErrNoWork
 		switch {
 		case pool.Chat(): // chat sessions answer messages only
+		case r.c.poolOutaged(r.pool):
+			// A host outage (JOB-194) pauses claims; the session waits.
 		case cordon != nil:
 			if cordonWork != "" {
 				t, _, err = r.c.store.Claim(ctx, cordonWork, r.id, r.c.leaseDur())
@@ -976,7 +978,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				// it; a warm pool keeps min_sessions (or the manual
 				// target) open with no work.
 				switch {
-				case cordon != nil || r.c.keepWarm(ctx, r.pool) || r.holdForJobs(ctx):
+				case cordon != nil || r.c.keepWarm(ctx, r.pool) || r.holdForJobs(ctx) || r.c.poolOutaged(r.pool):
 					idleSince = r.c.now()
 				case r.prestarted():
 					return r.suspend(nc)
@@ -1239,6 +1241,11 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		// not a failed attempt. A repeat counts, so a ticket no agent
 		// finishes still reaches its retry limit.
 		repeat := r.releasedUnclosedBefore(ctx, t.ID)
+		// A step left unclosed during a host outage is not a failed
+		// attempt either (JOB-194).
+		if _, outage := r.c.outageHold(t); outage {
+			repeat = false
+		}
 		release := until
 		if repeat {
 			release = time.Time{}

@@ -33,6 +33,8 @@ func (c *Controller) executeAttention(ctx context.Context, sc scope, a attention
 		_, err = c.runCancel(ctx, sc, rpc.IDParams{ID: a.Target})
 	case attention.VerbUnquarantine:
 		_, err = c.poolUnquarantine(ctx, sc, rpc.PoolParams{Pool: a.Target})
+	case attention.VerbProbe:
+		err = c.probeOutageNow(a.Target)
 	case attention.VerbClear:
 		_, err = c.waitClear(ctx, sc, rpc.WaitClearParams{ID: a.Target, Reason: "operator decision"})
 	case attention.VerbGuard:

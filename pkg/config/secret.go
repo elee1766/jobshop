@@ -111,6 +111,18 @@ func (s Secret) In(dir string) Secret {
 	return s
 }
 
+// SecretError is a secret command that failed or timed out: the host's
+// credential helper is broken, not the caller's request (JOB-194). Its
+// text never names the command.
+type SecretError struct {
+	msg string
+	err error
+}
+
+func (e *SecretError) Error() string { return e.msg }
+
+func (e *SecretError) Unwrap() error { return e.err }
+
 // ReadSecret returns the bytes behind s: the file's contents, or the
 // command's stdout. The command runs with sh -c as the jobshop user on
 // every read, so rotation needs no restart. Callers trim as they need.
@@ -132,14 +144,14 @@ func ReadSecret(ctx context.Context, s Secret) ([]byte, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, fmt.Errorf("secret command: timed out after %s", SecretCommandTimeout)
+			return nil, &SecretError{msg: fmt.Sprintf("secret command: timed out after %s", SecretCommandTimeout), err: ctx.Err()}
 		}
 		// Only stderr's last line: the command, and the secret, stay out of logs.
 		msg := strings.TrimSpace(stderr.String())
 		if i := strings.LastIndexByte(msg, '\n'); i >= 0 {
 			msg = msg[i+1:]
 		}
-		return nil, fmt.Errorf("secret command: %w: %s", err, msg)
+		return nil, &SecretError{msg: fmt.Sprintf("secret command: %v: %s", err, msg), err: err}
 	}
 	return out, nil
 }

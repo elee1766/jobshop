@@ -215,7 +215,7 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("identity %s: GET %s: %s: %s", name, path, resp.Status, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("identity %s: %w", name, &HTTPError{Op: "GET " + path, Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body))})
 	}
 	var u struct {
 		Login string `json:"login"`
@@ -271,7 +271,7 @@ func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now t
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusCreated {
-		return Token{}, fmt.Errorf("installation %d token: %s: %s", inst, resp.Status, strings.TrimSpace(string(body)))
+		return Token{}, &HTTPError{Op: fmt.Sprintf("installation %d token", inst), Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body))}
 	}
 	var r struct {
 		Token     string    `json:"token"`
@@ -335,7 +335,7 @@ func (m *Minter) mintLinear(ctx context.Context, id config.Identity, scopes []st
 		if msg == "" {
 			msg = resp.Status
 		}
-		return Token{}, fmt.Errorf("linear app token: %s: %s", resp.Status, msg)
+		return Token{}, &HTTPError{Op: "linear app token", Code: resp.StatusCode, Status: resp.Status, Body: msg}
 	}
 	if r.AccessToken == "" {
 		return Token{}, errors.New("linear app token: empty token")

@@ -401,6 +401,16 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 			p.Resolution = res
 		}
 	}
+	if p.Resolution == "failed" && cl != nil {
+		// A step failing while its pool's credentials are broken is the
+		// host's failure (JOB-194): hand it back, count no attempt.
+		if why, held := c.outageHold(cur); held {
+			if _, err := c.releaseForOutage(ctx, cfg, sc.actor, *cl, "closed failed", why); err != nil {
+				return nil, err
+			}
+			return c.store.Get(ctx, id)
+		}
+	}
 	t, err := c.store.Release(ctx, sc.actor, id, cl, store.Outcome{Close: p.Resolution, StepResult: result})
 	if err != nil {
 		return nil, err
@@ -522,6 +532,10 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 	} else if holder == "" {
 		return nil, fmt.Errorf("%w: admin claims need --holder", domain.ErrInvalid)
 	}
+	if !sc.admin && p.ID == "" && c.poolOutaged(pool) {
+		// A host outage (JOB-194) pauses the pool's claims.
+		return nil, fmt.Errorf("%w: pool %s is paused by a host outage", domain.ErrNoWork, pool)
+	}
 	var (
 		r   rpc.ClaimResult
 		err error
@@ -614,6 +628,14 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 			}
 		}
 		until = *p.Until
+	}
+	if until.IsZero() {
+		if cur, gerr := c.store.Get(ctx, id); gerr == nil {
+			if why, held := c.outageHold(cur); held {
+				// Not an attempt of the step's own (JOB-194).
+				return c.releaseForOutage(ctx, c.config(), "", cl, "released", why)
+			}
+		}
 	}
 	t, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: p.Reason, Until: until})
 	if err != nil {

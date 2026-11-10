@@ -114,6 +114,7 @@ func (s attentionSource) Health() attention.Health {
 			h.Paused = append(h.Paused, attention.Pause{Pool: p, Until: until, Why: c.poolPauseWhy(p)})
 		}
 	}
+	h.Outages = c.outageHealthLocked()
 	return h
 }
 

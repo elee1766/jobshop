@@ -152,9 +152,9 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 			}
 			c.scaleEvent(ctx, name, "uncordon", id, desired)
 		}
-		// Backoff (rate limit), a crash-loop pause and spawn quarantine
-		// block scale up only: they never cordon.
-		if plan.Start > 0 && !backingOff[name] && !c.poolPaused(name) {
+		// Backoff (rate limit), a crash-loop pause, a host outage and spawn
+		// quarantine block scale up only: they never cordon.
+		if plan.Start > 0 && !backingOff[name] && !c.poolPaused(name) && !c.poolOutaged(name) {
 			start := plan.Start
 			if free := c.slotCapacity(ctx, cfg, name); free >= 0 {
 				// A full per-session id range is a capacity limit (#540).

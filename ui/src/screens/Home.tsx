@@ -28,7 +28,7 @@ const minuteOf = (t: number) => Math.floor(t / 60000) * 60000;
 
 // Attention items that are not tickets (a quarantined pool, config and
 // ingest health) have no ticket id to copy or open.
-const notTickets = new Set(['pool', 'config', 'config-invalid', 'ingest', 'journal-lag']);
+const notTickets = new Set(['pool', 'outage', 'config', 'config-invalid', 'ingest', 'journal-lag']);
 
 export function Home() {
   const route = useDeskRoute();
@@ -124,7 +124,7 @@ const AttentionRow = memo(function AttentionRow({ itemKey }: { itemKey: string }
   return (
     <article className={focused ? 'focused' : undefined} ref={target ? ticketMenuRef(target) : undefined}>
       <Reference item={item} />
-      {item.kind !== 'pool' && (
+      {item.kind !== 'pool' && item.kind !== 'outage' && (
         <a href={'?view=trace&ref=' + encodeURIComponent(item.id)} aria-label={'Trace ' + (item.ref || item.id)}>
           trace
         </a>

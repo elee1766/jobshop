@@ -1087,6 +1087,20 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		}
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
+	// A "mint" file makes the turn ask for an identity token for acme/widget
+	// first, as `jobshop gh` does, and close failed when the host cannot mint
+	// one (JOB-194). A "failclose" file closes failed on its own account.
+	if _, err := os.Stat("mint"); err == nil {
+		var tok rpc.IdentityTokenResult
+		if err := c.Call(ctx, rpc.MethodIdentityToken, rpc.IdentityParams{Target: "acme/widget"}, &tok); err != nil {
+			_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Resolution: "failed"}, nil)
+			return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+		}
+	}
+	if _, err := os.Stat("failclose"); err == nil {
+		_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Resolution: "failed"}, nil)
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
 	// An "outcome" file holds the outcome word to close with (#385).
 	var outcome string
 	if b, err := os.ReadFile("outcome"); err == nil {

@@ -973,12 +973,24 @@ type PoolParams struct {
 type PoolStatusResult struct {
 	Quarantined map[string]string    `json:"quarantined"`
 	Paused      map[string]time.Time `json:"paused"`
+	// Outages are pools paused because the host cannot get credentials
+	// for an identity they use (JOB-194), until its probe succeeds.
+	Outages map[string]PoolOutage `json:"outages,omitempty"`
 	// Pools are the ticket pools' scale columns (#281).
 	Pools []PoolScale `json:"pools,omitempty"`
 	// HostMax is limits.max_sessions; 0 means no host cap.
 	HostMax int `json:"host_max,omitempty"`
 	// Disabled are pools set enabled: false (JOB-24): validated, not run.
 	Disabled []string `json:"disabled,omitempty"`
+}
+
+// PoolOutage is why a pool is paused by a host outage (JOB-194).
+type PoolOutage struct {
+	Identity string `json:"identity"`
+	// Reason is the latest mint or probe error, one line.
+	Reason    string    `json:"reason"`
+	Since     time.Time `json:"since"`
+	NextProbe time.Time `json:"next_probe"`
 }
 
 // PoolListParams filters pool.list. Every Label must match: a pool label
@@ -1770,6 +1782,7 @@ const (
 	AttentionTicket     = "ticket"      // open ticket labeled needs-human (escalations, pool quarantines)
 	AttentionQuestion   = "question"    // open ticket labeled question: a worker asks a human
 	AttentionPool       = "pool"        // quarantined pool with no open escalation
+	AttentionOutage     = "outage"      // identity the host cannot get credentials for: its pools wait (JOB-194)
 	AttentionConfig     = "config"      // controller serves its last good config: a live pack failed to load (#227)
 	AttentionResource   = "resource"    // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)

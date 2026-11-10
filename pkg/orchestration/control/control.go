@@ -91,6 +91,10 @@ type Options struct {
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
+	// OutageProbe is how often a host outage (an identity that cannot get
+	// credentials, JOB-194) is probed for recovery. Default 1m; tests
+	// shorten it.
+	OutageProbe time.Duration
 	// RestartDelay is the pause before restarting an interrupted session.
 	// Default 2s.
 	RestartDelay time.Duration
@@ -166,6 +170,9 @@ type Controller struct {
 	// poolPauseReason is the last session error and failed preflight
 	// checks behind a crash-loop pause (JOB-27); nil until first set.
 	poolPauseReason map[string]string
+	// outages are identities that cannot get credentials (JOB-194), by
+	// identity name; see outage.go. Memory only: a restart probes again.
+	outages map[string]*hostOutage
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
 	// syncPrunedAt is the last guard/desk handler journal prune.
@@ -344,6 +351,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	if opt.Backoff <= 0 {
 		opt.Backoff = time.Minute
+	}
+	if opt.OutageProbe <= 0 {
+		opt.OutageProbe = time.Minute
 	}
 	if opt.RestartDelay <= 0 {
 		opt.RestartDelay = 2 * time.Second
@@ -602,6 +612,8 @@ func (c *Controller) tick() {
 	c.passStep(ctx, cfg, "sweep", c.sweep)
 	// Right after the sweep, so slots of expired claims reset this pass.
 	c.passStep(ctx, cfg, "provider_pass", c.providerPass)
+	// Before supervise, so a recovered host starts sessions this pass.
+	c.passStep(ctx, cfg, "probe_outages", c.probeOutages)
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
 		c.passStep(ctx, cfg, "run_triggers", c.runTriggers)

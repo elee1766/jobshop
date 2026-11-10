@@ -161,6 +161,9 @@ func (s identitySource) Token(ctx context.Context) (string, error) {
 		return "", err
 	}
 	t, err := s.c.minter.Token(ctx, s.name, id, s.target)
+	if err != nil {
+		s.c.noteIdentityError(ctx, s.name, err)
+	}
 	return t.Token, err
 }
 
@@ -172,5 +175,8 @@ func (s identitySource) Renew(ctx context.Context, stale string) (string, error)
 		return "", err
 	}
 	t, err := s.c.minter.Renew(ctx, s.name, id, s.target, stale)
+	if err != nil {
+		s.c.noteIdentityError(ctx, s.name, err)
+	}
 	return t.Token, err
 }

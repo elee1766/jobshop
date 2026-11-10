@@ -301,6 +301,7 @@ func (c *Controller) poolUnquarantine(ctx context.Context, sc scope, p rpc.PoolP
 		return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Pool)
 	}
 	c.unquarantinePools(p.Pool)
+	c.clearOutages(p.Pool)
 	c.log.InfoContext(ctx, "pool unquarantined", "pool", p.Pool)
 	return c.poolStatus(), nil
 }
@@ -317,6 +318,7 @@ func (c *Controller) poolStatus() rpc.PoolStatusResult {
 			res.Paused[p] = until
 		}
 	}
+	res.Outages = c.outageStatusLocked()
 	return res
 }
 
@@ -356,5 +358,6 @@ func (c *Controller) poolList(ctx context.Context, sc scope, p rpc.PoolListParam
 	res.Pools = slices.DeleteFunc(res.Pools, func(s rpc.PoolScale) bool { return !keep[s.Name] })
 	maps.DeleteFunc(res.Quarantined, func(name, _ string) bool { return !keep[name] })
 	maps.DeleteFunc(res.Paused, func(name string, _ time.Time) bool { return !keep[name] })
+	maps.DeleteFunc(res.Outages, func(name string, _ rpc.PoolOutage) bool { return !keep[name] })
 	return res, nil
 }
