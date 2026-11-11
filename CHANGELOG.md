@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.19](https://github.com/gfx-labs/jobshop/compare/v0.10.18...v0.10.19) (2026-11-11)
+
+
+### Bug fixes
+
+* **hooks:** replan counts ready dev work in its own pack instance ([#1221](https://github.com/gfx-labs/jobshop/issues/1221)) ([#1222](https://github.com/gfx-labs/jobshop/issues/1222)) ([6cae8ac](https://github.com/gfx-labs/jobshop/commit/6cae8ac82b02530dbf3b1dfac01c751643d75a82))
+
 ## [0.10.18](https://github.com/gfx-labs/jobshop/compare/v0.10.17...v0.10.18) (2026-11-11)
 
 
