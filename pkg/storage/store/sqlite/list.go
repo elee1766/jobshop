@@ -142,11 +142,16 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 			w.And("t.created_at < ?", ns(f.Created.Until))
 		}
 	}
+	// Label and meta filters are uncorrelated IN lists, not EXISTS: with
+	// statistics SQLite planned the EXISTS form for some values as a scan
+	// of tickets that probed ticket_meta_lookup per row, 330ms for one
+	// trigger's newest ticket on selfdev (JOB-191). The IN list is read
+	// once through the lookup index.
 	if f.Label != "" {
-		w.And("EXISTS (SELECT 1 FROM labels l WHERE l.ticket_id = t.id AND l.label = ?)", f.Label)
+		w.And("t.id IN (SELECT l.ticket_id FROM labels l WHERE l.label = ?)", f.Label)
 	}
 	for _, m := range metas {
-		w.And("EXISTS (SELECT 1 FROM ticket_meta m WHERE m.ticket_id = t.id AND m.pack = ? AND m.mkey = ? AND m.value = ?)",
+		w.And("t.id IN (SELECT m.ticket_id FROM ticket_meta m WHERE m.pack = ? AND m.mkey = ? AND m.value = ?)",
 			m.Pack, m.Key, m.Value)
 	}
 	if f.Ready {

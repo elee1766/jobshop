@@ -107,3 +107,49 @@ func TestLastFirePlan(t *testing.T) {
 	p := explain(t, db, q, args...)
 	require.Contains(t, p, "ri_hook_like_trigger", p)
 }
+
+// TestTicketMetaPlan checks a List by meta or label reads the matching
+// tickets through the lookup index, not a scan of tickets probing it per
+// row. With statistics SQLite planned the correlated EXISTS form as that
+// scan: 330ms for one trigger's newest ticket on selfdev (JOB-191).
+func TestTicketMetaPlan(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	path := testPath(t)
+	s, err := sqlite.Open(ctx, path, sqlite.Options{})
+	require.NoError(t, err)
+	var g store.Graph
+	for i := range 1500 {
+		// Most tickets share one repo, as on a real instance; the trigger
+		// names are spread thin.
+		meta := fmt.Sprintf(`{"github":{"repo":"o/r%d"},"trigger":{"name":"t%d"}}`, i%50/45, i%40)
+		var labels []string
+		if i%10 == 0 {
+			labels = []string{"plan"}
+		}
+		g.Tickets = append(g.Tickets, store.NewTicket{Project: "js", Kind: "task", Title: "x", Meta: json.RawMessage(meta), Labels: labels})
+	}
+	_, err = s.Apply(ctx, "test", g)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = sqlite.Open(ctx, path, sqlite.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=query_only(1)")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	for _, f := range []store.Filter{
+		{MetaPack: "trigger", MetaKey: "name", MetaValue: "t3", Order: store.OrderNewest, Limit: 1},
+		{MetaPack: "trigger", MetaKey: "name", MetaValue: "never"},
+		{MetaPack: "github", MetaKey: "repo", MetaValue: "o/r0", Order: store.OrderNewest, Limit: 1},
+		{Kind: "run", MetaPack: "trigger", MetaKey: "name", MetaValue: "t3", Order: store.OrderNewest},
+		{Label: "plan", MetaPack: "trigger", MetaKey: "name", MetaValue: "t0"},
+		{Label: "plan"},
+	} {
+		q, args, err := sqlite.TicketListSQL(s, f)
+		require.NoError(t, err)
+		p := explain(t, db, q, args...)
+		require.NotContains(t, p, "SCAN t ", "%+v: %s", f, p)
+	}
+}

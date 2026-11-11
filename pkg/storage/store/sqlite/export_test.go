@@ -66,3 +66,12 @@ func ClaimSQL(ctx context.Context, s *Store, spec store.CollectionSpec, f store.
 	}
 	return texts, args, nil
 }
+
+// TicketListSQL returns the List statement for f, for plan tests.
+func TicketListSQL(s *Store, f store.Filter) (string, []any, error) {
+	q, err := listQuery(f, ns(s.now()))
+	if err != nil {
+		return "", nil, err
+	}
+	return s.render(q)
+}
