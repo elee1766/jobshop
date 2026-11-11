@@ -1,6 +1,6 @@
 // Package tickets implements the read-only store built-ins:
 //
-//	tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False, comments=False)
+//	tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False, comments=False, ready=False)
 //	runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100, comments=False)
 //	sessions(pool="", status=None, limit=100)
 //
@@ -40,7 +40,7 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	switch fn.Name() {
 	case "tickets":
 		err = starlark.UnpackArgs(fn.Name(), args, kwargs, "kind?", &q.Kind, "status?", &status, "project?", &q.Project, "pool?", &q.Pool, "label?", &q.Label,
-			"workflow?", &q.Workflow, "key?", &q.Key, "state?", &q.State, "parent?", &q.Parent, "holder?", &q.Holder, "meta?", &meta, "order?", &q.Order, "limit?", &q.Limit, "body?", &body, "comments?", &q.Comments)
+			"workflow?", &q.Workflow, "key?", &q.Key, "state?", &q.State, "parent?", &q.Parent, "holder?", &q.Holder, "meta?", &meta, "order?", &q.Order, "limit?", &q.Limit, "body?", &body, "comments?", &q.Comments, "ready?", &q.Ready)
 	case "runs":
 		q.Kind = "run"
 		err = starlark.UnpackArgs(fn.Name(), args, kwargs, "workflow?", &q.Workflow, "key?", &q.Key, "status?", &status, "state?", &q.State, "meta?", &meta, "order?", &q.Order, "limit?", &q.Limit, "comments?", &q.Comments)

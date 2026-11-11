@@ -25,6 +25,10 @@ type (
 		invocation string
 		attempt    int64
 		now        time.Time
+		// owner is the configuration key the handler belongs to
+		// ("triggers.x", "workflows.x"), so store reads resolve pool and
+		// workflow names in its pack instance (#1221).
+		owner string
 	}
 )
 
@@ -215,7 +219,7 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		_, _ = c.saveHook(ctx, col, rec, in, state)
 		return
 	}
-	invokeCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts, now: in.AcceptedAt})
+	invokeCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts, now: in.AcceptedAt, owner: invocationOwner(in)})
 	args := []any{in.RunInput}
 	if in.StepInput != nil {
 		args = append(args, in.StepInput)
@@ -305,5 +309,17 @@ func hookTickets(ctx context.Context, q api.TicketQuery) ([]any, error) {
 	if !ok {
 		return nil, errors.New("capability call has no durable invocation")
 	}
-	return trace.engine.host.ReadTickets(ctx, q)
+	return trace.engine.host.ReadTickets(ctx, trace.owner, q)
+}
+
+// invocationOwner is the configuration key of a trigger or workflow
+// callback, empty for a sync call.
+func invocationOwner(in Invocation) string {
+	switch {
+	case in.Trigger != "":
+		return "triggers." + in.Trigger
+	case in.RunInput != nil:
+		return "workflows." + in.RunInput.Workflow
+	}
+	return ""
 }

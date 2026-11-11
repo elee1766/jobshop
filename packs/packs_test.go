@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -214,6 +215,48 @@ func TestPacks(t *testing.T) {
 		assert.Contains(t, r.Reason, "never push to", ref)
 	}
 	assert.Equal(t, domain.GuardAllow, guard("fix-301").Decision)
+}
+
+// replan counts claimable tickets in its own instance's dev pool (#1221).
+// packRoot composes the github pack twice: unprefixed through selfdev
+// (dev, plan) and as github- (github-dev, github-plan). A deferred ticket
+// in dev holds neither: selfdev's replan does not count it, and
+// github-replan reads github-dev, not dev.
+func TestReplanIgnoresDeferred(t *testing.T) {
+	server := httptest.NewServer(&fakeGitHub{})
+	defer server.Close()
+	c := controltest.Start(t, packRoot(t, server.URL), control.Options{})
+	planned := func(trigger, pool string, status domain.Status) []domain.Ticket {
+		var out []domain.Ticket
+		c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: "task", Pool: pool, Status: status, Meta: map[string]string{"trigger.name": trigger}}, &out)
+		return out
+	}
+	both := func() bool {
+		return len(planned("replan", "plan", domain.StatusOpen)) == 1 && len(planned("github-replan", "github-plan", domain.StatusOpen)) == 1
+	}
+	c.PassUntil(both, "replan did not file planning tasks on empty dev pools")
+
+	var deferred domain.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Title: "waits a week", Pool: "dev"}, &deferred)
+	until := controltest.Epoch.Add(7 * 24 * time.Hour)
+	c.Call(rpc.MethodTicketUpdate, rpc.UpdateParams{ID: deferred.ID, DeferUntil: &until}, nil)
+	for _, p := range append(planned("replan", "plan", domain.StatusOpen), planned("github-replan", "github-plan", domain.StatusOpen)...) {
+		c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: p.ID}, nil)
+	}
+	c.Clock.Advance(11 * time.Minute)
+	c.PassUntil(both, "a deferred ticket in dev held replan back")
+	assert.Len(t, planned("replan", "plan", ""), 2)
+	assert.Len(t, planned("github-replan", "github-plan", ""), 2)
+
+	// Ready work in dev holds selfdev's replan, not github-replan.
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Title: "ready now", Pool: "dev"}, nil)
+	for _, p := range append(planned("replan", "plan", domain.StatusOpen), planned("github-replan", "github-plan", domain.StatusOpen)...) {
+		c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: p.ID}, nil)
+	}
+	c.Clock.Advance(11 * time.Minute)
+	c.PassUntil(func() bool { return len(planned("github-replan", "github-plan", domain.StatusOpen)) == 1 }, "ready work in dev held github-replan back")
+	c.Pass(3)
+	assert.Empty(t, planned("replan", "plan", domain.StatusOpen), "dev has ready work")
 }
 
 // pr-work routes before it implements: the route step's outcome picks the

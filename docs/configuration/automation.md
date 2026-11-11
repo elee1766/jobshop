@@ -300,7 +300,7 @@ linear.graphql(query, variables={}, team="", timeout="")
 ## Store reads, json and time
 
 ```text
-tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False, comments=False)
+tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False, comments=False, ready=False)
 runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100, comments=False)
 sessions(pool="", status=["open", "in_progress"], limit=100)
 ```
@@ -316,7 +316,12 @@ prints them; a ticket with none has an empty list. Without it there is no
 built-in: ask for comments on few tickets (a `key`, a `parent`, a small
 `limit`). `status` is a string or list of `open`, `in_progress`,
 `closed`. `meta` maps up to three `"pack.key"` names to string values,
-for example `{"trigger.name": "scan"}`. `limit` is 1 to 500. Reads see the
+for example `{"trigger.name": "scan"}`. `limit` is 1 to 500.
+`ready=True` keeps claimable tickets only (open, not deferred, waiting or
+blocked), the count a trigger's `ready_below` uses. In a trigger or
+workflow callback of a prefixed pack instance, `pool` and `workflow`
+name the instance's own pool or workflow when it has one (`dev` reads
+`acphost-dev`), as `create_ticket` and `start_run` resolve them. Reads see the
 whole store, are journaled and replayed like other calls, and count toward
 the call limit. They do not fence: a decision made on a read can race a
 write, and the controller still checks every returned action.

@@ -87,3 +87,19 @@ func TestStoreReadCommentsOverDataLimit(t *testing.T) {
 		t.Fatalf("got %v, want the limit error naming runs", err)
 	}
 }
+
+// tickets(ready=True) asks the host for claimable tickets only (#1221).
+func TestStoreReadReady(t *testing.T) {
+	var seen []api.TicketQuery
+	engine := hook(t, `def handle(event, args):
+    tickets(pool="dev", ready=True, limit=1)
+    tickets(pool="dev")
+    return []
+`, automation.Options{Tickets: commentReader(&seen)})
+	if _, err := engine.Invoke(t.Context(), "main.star:handle", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 || !seen[0].Ready || seen[0].Pool != "dev" || seen[0].Limit != 1 || seen[1].Ready {
+		t.Fatalf("queries %#v", seen)
+	}
+}
