@@ -3,10 +3,12 @@ load("lib.star", "green", "listed", "older_than")
 # Trigger handlers. args carry the pack vars each one needs; they return
 # actions and never write to GitHub themselves.
 
-# replan files one planning task when dev has nothing ready. The task key
-# dedups while it is open; the trigger cooldown runs from its close.
+# replan files one planning task when dev has nothing ready. Ready means
+# claimable, as the trigger's ready_below counts: a deferred or blocked
+# ticket does not hold planning back (#1221). The task key dedups while it
+# is open; the trigger cooldown runs from its close.
 def replan(event, args):
-    ready = tickets(pool = args["dev_pool"], status = "open", limit = 1)
+    ready = tickets(pool = args["dev_pool"], ready = True, limit = 1)
     if ready:
         return []
     return [create_ticket(

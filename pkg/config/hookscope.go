@@ -58,29 +58,46 @@ func (c *Config) ResolvePinnedHookReference(owner, kind, name string, scope *dom
 	return resolved, nil
 }
 
-// ResolveHookReference keeps dynamic references inside the declaring instance.
-func (c *Config) ResolveHookReference(owner, kind, name string) (string, error) {
-	var own *pack.Instance
-	section, ownerName, ok := strings.Cut(owner, ".")
-	if !ok {
-		return "", fmt.Errorf("hook owner must name its configuration section")
-	}
+// hookInstance is the pack instance that declares owner ("workflows.x" or
+// "triggers.x"), or nil.
+func (c *Config) hookInstance(owner string) *pack.Instance {
+	section, ownerName, _ := strings.Cut(owner, ".")
 	for i := range c.Instances {
 		in := &c.Instances[i]
 		if section == "workflows" && slices.Contains(in.Workflows, ownerName) || section == "triggers" && slices.Contains(in.Triggers, ownerName) {
-			own = in
-			break
+			return in
 		}
 	}
-	candidates := func(in pack.Instance) []string {
-		if kind == "workflow" {
-			return in.Workflows
-		}
-		return in.Pools
+	return nil
+}
+
+func hookCandidates(in pack.Instance, kind string) []string {
+	if kind == "workflow" {
+		return in.Workflows
 	}
-	if own != nil && own.Prefix != "" && slices.Contains(candidates(*own), own.Prefix+name) {
-		name = own.Prefix + name
+	return in.Pools
+}
+
+// HookReadName maps a pool or workflow name a hook reads with tickets(),
+// runs() or sessions() to its own instance's prefixed name when that
+// exists, the way ResolveHookReference does for actions (#1221). Any
+// other name is returned unchanged: reads see the whole store.
+func (c *Config) HookReadName(owner, kind, name string) string {
+	own := c.hookInstance(owner)
+	if name != "" && own != nil && own.Prefix != "" && slices.Contains(hookCandidates(*own, kind), own.Prefix+name) {
+		return own.Prefix + name
 	}
+	return name
+}
+
+// ResolveHookReference keeps dynamic references inside the declaring instance.
+func (c *Config) ResolveHookReference(owner, kind, name string) (string, error) {
+	if !strings.Contains(owner, ".") {
+		return "", fmt.Errorf("hook owner must name its configuration section")
+	}
+	own := c.hookInstance(owner)
+	candidates := func(in pack.Instance) []string { return hookCandidates(in, kind) }
+	name = c.HookReadName(owner, kind, name)
 	if own != nil {
 		for _, in := range c.Instances {
 			if slices.Contains(candidates(in), name) && !slices.Contains(candidates(*own), name) {

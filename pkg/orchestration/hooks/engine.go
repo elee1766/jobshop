@@ -49,8 +49,10 @@ type Host interface {
 	// LinearClient returns the shared client of the Linear identity
 	// covering team, for the linear built-in.
 	LinearClient(ctx context.Context, team string) (*linear.Client, error)
-	// ReadTickets serves tickets(), runs() and sessions().
-	ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error)
+	// ReadTickets serves tickets(), runs() and sessions(). owner is the
+	// calling handler's configuration key ("triggers.x", "workflows.x"),
+	// empty for a guard hook, desk command or signal script.
+	ReadTickets(ctx context.Context, owner string, q api.TicketQuery) ([]any, error)
 }
 
 // Collections is the persistence surface needed by the hook journal.

@@ -91,6 +91,9 @@ type TicketQuery struct {
 	Limit    int
 	// Comments adds a "comments" list, oldest first, to every result.
 	Comments bool
+	// Ready keeps claimable tickets only (store.Filter.Ready): open, not
+	// deferred, waiting or blocked, as a trigger's ready_below counts.
+	Ready bool
 }
 
 // TicketReader returns matching tickets as JSON-shaped maps.

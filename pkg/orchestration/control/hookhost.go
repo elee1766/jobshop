@@ -359,12 +359,20 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 
 // ReadTickets serves tickets(), runs() and sessions(): a read of the whole
 // store, as the controller sees it. Hooks are trusted code; writes still go
-// through returned actions.
-func (h hookHost) ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error) {
+// through returned actions. A trigger or workflow callback's pool and
+// workflow names map to its pack instance's prefixed names, as
+// create_ticket and start_run resolve them, so an instance reads its own
+// pools (#1221).
+func (h hookHost) ReadTickets(ctx context.Context, owner string, q api.TicketQuery) ([]any, error) {
+	if owner != "" {
+		cfg := h.c.config()
+		q.Pool = cfg.HookReadName(owner, "pool", q.Pool)
+		q.Workflow = cfg.HookReadName(owner, "workflow", q.Workflow)
+	}
 	f := store.Filter{
 		Kind: domain.Kind(q.Kind), Project: q.Project, Pool: q.Pool, Label: q.Label,
 		Workflow: q.Workflow, Key: q.Key, State: q.State, ParentID: q.Parent, Holder: q.Holder,
-		Order: store.Order(q.Order), Limit: q.Limit,
+		Order: store.Order(q.Order), Limit: q.Limit, Ready: q.Ready,
 	}
 	for _, s := range q.Statuses {
 		f.Statuses = append(f.Statuses, domain.Status(s))
