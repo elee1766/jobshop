@@ -28,8 +28,8 @@ type reportArgs struct {
 // one line is a restated question, not context.
 const minContextLines = 2
 
-func (a reportArgs) send(g *Globals, state, until string) error {
-	p := rpc.ReportParams{ID: a.ID, State: state, Note: a.Note, Question: a.Question}
+func (a reportArgs) send(g *Globals, state, until string, wait bool) error {
+	p := rpc.ReportParams{ID: a.ID, State: state, Note: a.Note, Question: a.Question, Wait: wait}
 	if err := a.question(&p); err != nil {
 		return err
 	}
@@ -115,30 +115,33 @@ func contextLines(s string) int {
 
 type reportProgressCmd struct{ reportArgs }
 
-func (c reportProgressCmd) Run(g *Globals) error { return c.send(g, rpc.ReportProgress, "") }
+func (c reportProgressCmd) Run(g *Globals) error { return c.send(g, rpc.ReportProgress, "", false) }
 
 type reportWaitingCmd struct {
 	reportArgs
 	Until string `help:"Release the ticket deferred until then: a duration (2h) or RFC3339 time."`
+	Wait  bool   `help:"With -q: park the ticket on the new question (wait add question:id=<q> --resume), so it comes back to this session when the question is closed. End the turn after. To also resume on another event, run wait add --any yourself."`
 }
 
-func (c reportWaitingCmd) Run(g *Globals) error { return c.send(g, rpc.ReportWaiting, c.Until) }
+func (c reportWaitingCmd) Run(g *Globals) error {
+	return c.send(g, rpc.ReportWaiting, c.Until, c.Wait)
+}
 
 type reportReadyCmd struct{ reportArgs }
 
-func (c reportReadyCmd) Run(g *Globals) error { return c.send(g, rpc.ReportReady, "") }
+func (c reportReadyCmd) Run(g *Globals) error { return c.send(g, rpc.ReportReady, "", false) }
 
 type reportBlockedCmd struct{ reportArgs }
 
-func (c reportBlockedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportBlocked, "") }
+func (c reportBlockedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportBlocked, "", false) }
 
 type reportFailedCmd struct{ reportArgs }
 
-func (c reportFailedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportFailed, "") }
+func (c reportFailedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportFailed, "", false) }
 
 type reportDroppedCmd struct{ reportArgs }
 
-func (c reportDroppedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportDropped, "") }
+func (c reportDroppedCmd) Run(g *Globals) error { return c.send(g, rpc.ReportDropped, "", false) }
 
 type answerCmd struct {
 	Question string `arg:"" help:"Question ticket id."`

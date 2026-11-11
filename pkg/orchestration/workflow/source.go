@@ -54,6 +54,19 @@ type RunSource interface {
 	Run(ctx context.Context, id string) (RunState, error)
 }
 
+// QuestionSource reads whether a question ticket is closed (the question
+// condition, JOB-202).
+type QuestionSource interface {
+	// Question reports the question's resolution and whether it is closed.
+	Question(ctx context.Context, id string) (QuestionState, error)
+}
+
+// QuestionState is what the question condition needs of a question ticket.
+type QuestionState struct {
+	Closed     bool
+	Resolution string
+}
+
 // ReplySource answers a thread.reply condition. The controller owns it
 // because the answer depends on its subscription filters (bots, ignore
 // lists, authors, Linear identities).
@@ -76,10 +89,11 @@ func (r RunState) Ended() bool {
 
 // Sources is everything one pass observes through.
 type Sources struct {
-	GitHub  Source
-	Linear  LinearSource
-	Runs    RunSource
-	Replies ReplySource
+	GitHub    Source
+	Linear    LinearSource
+	Runs      RunSource
+	Questions QuestionSource
+	Replies   ReplySource
 	// Commit is the build the controller runs, for deploy conditions.
 	// Empty: it cannot tell what is deployed.
 	Commit string

@@ -1308,6 +1308,7 @@ export interface ReportParams {
   context?: string;
   options?: QuestionOption[];
   until?: string;
+  wait?: boolean;
 }
 
 export interface ReportResult {
@@ -1914,6 +1915,7 @@ export interface WaitCond {
   absent?: boolean;
   tag?: string;
   run?: string;
+  question?: string;
   head?: string;
   sha?: string;
   login?: string;

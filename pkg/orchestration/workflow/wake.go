@@ -32,6 +32,9 @@ func LinearSubject(key string) string { return "linear:" + strings.ToUpper(key) 
 // RunSubject names the waits on one run.
 func RunSubject(id string) string { return "run:" + id }
 
+// QuestionSubject names the waits on one question ticket (JOB-202).
+func QuestionSubject(id string) string { return "question:" + id }
+
 // CondSubjects are the subjects whose events can change cd. Checks on
 // a PR also match repo-wide events: status events and some check runs
 // name only the sha. Deploy has none: the startup pass (a deploy
@@ -52,6 +55,8 @@ func CondSubjects(cd domain.WaitCond) []string {
 		return []string{RepoSubject(cd.Repo)}
 	case domain.WaitRun:
 		return []string{RunSubject(cd.Run)}
+	case domain.WaitQuestion:
+		return []string{QuestionSubject(cd.Question)}
 	case domain.WaitLinearState, domain.WaitLinearLabel:
 		return []string{LinearSubject(cd.Thread)}
 	case domain.WaitReply:

@@ -34,6 +34,9 @@ const (
 	WaitLinearState = "linear.state"
 	// WaitLinearLabel: Linear issue Thread has Label, or with Absent lacks it.
 	WaitLinearLabel = "linear.label"
+	// WaitQuestion: the Desk question Question is closed, with any
+	// resolution (answered, withdrawn, dismissed, cancelled) (JOB-202).
+	WaitQuestion = "question"
 )
 
 // Wait modes.
@@ -74,6 +77,8 @@ type WaitCond struct {
 	// Tag is for github.tag, Run for run.
 	Tag string `json:"tag,omitempty"`
 	Run string `json:"run,omitempty"`
+	// Question is a question ticket id, for question.
+	Question string `json:"question,omitempty"`
 	// Head is the PR head the condition is about. Empty means the head
 	// seen on the first evaluation, which is then recorded.
 	Head  string `json:"head,omitempty"`
@@ -205,6 +210,11 @@ func (c WaitCond) validate() error {
 	case WaitRun:
 		if c.Run == "" || c.State != "done" && c.State != "closed" {
 			return fmt.Errorf("%s needs id and state done or closed", c.Type)
+		}
+		return nil
+	case WaitQuestion:
+		if c.Question == "" {
+			return fmt.Errorf("%s needs id (a question ticket)", c.Type)
 		}
 		return nil
 	case WaitLinearState:

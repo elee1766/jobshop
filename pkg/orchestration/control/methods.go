@@ -432,6 +432,7 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 		c.endSession(ctx, cfg, t.ID, "session closed")
 	}
 	c.escalationClosed(ctx, t)
+	c.wakeQuestionClosed(t)
 	return t, nil
 }
 

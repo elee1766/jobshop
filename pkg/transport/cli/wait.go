@@ -19,7 +19,7 @@ type waitCmd struct {
 }
 
 type waitAddCmd struct {
-	Conds   []string `arg:"" name:"cond" help:"TYPE:key=val,...  Types: github.review (pr, login, head, state), github.checks (pr or repo+sha, state=success|failure, required, workflow=<name or file>: follow that workflow's newest run on the commit instead of every check; a cancelled run ends the wait as invalidated; check=<name or glob>, alias name=: follow only the checks of that name (job names on a PR), a glob like 'go (*)' covers a matrix, one name per condition, does not combine with workflow=), github.pr (pr, state=merged|closed|head_changed), github.label (issue, label; met when the issue has the label or is closed), github.tag (repo, tag), deploy (repo, sha; met when the controller's build commit contains sha), run (id, state=done|closed), linear.state (issue=KEY, state name or type), linear.label (issue=KEY, label, present=false waits for removal), thread.reply (thread, from), time (at). pr is owner/name#n or a PR URL; at is a duration or RFC3339."`
+	Conds   []string `arg:"" name:"cond" help:"TYPE:key=val,...  Types: github.review (pr, login, head, state), github.checks (pr or repo+sha, state=success|failure, required, workflow=<name or file>: follow that workflow's newest run on the commit instead of every check; a cancelled run ends the wait as invalidated; check=<name or glob>, alias name=: follow only the checks of that name (job names on a PR), a glob like 'go (*)' covers a matrix, one name per condition, does not combine with workflow=), github.pr (pr, state=merged|closed|head_changed), github.label (issue, label; met when the issue has the label or is closed), github.tag (repo, tag), deploy (repo, sha; met when the controller's build commit contains sha), run (id, state=done|closed), question (id=<question ticket>; met when that question is closed, answered or not), linear.state (issue=KEY, state name or type), linear.label (issue=KEY, label, present=false waits for removal), thread.reply (thread, from), time (at). pr is owner/name#n or a PR URL; at is a duration or RFC3339."`
 	Reason  string   `short:"r" required:"" help:"Why the ticket waits."`
 	Owner   string   `help:"Who must act (a login, team or person)."`
 	Any     bool     `help:"Clear when any condition holds (default: all)."`
@@ -82,6 +82,10 @@ func parseWaitCond(s string, now time.Time) (domain.WaitCond, error) {
 		case "tag", "release":
 			cd.Tag = v
 		case "id":
+			if typ == domain.WaitQuestion {
+				cd.Question = v
+				break
+			}
 			cd.Run = v
 		case "present":
 			var present bool

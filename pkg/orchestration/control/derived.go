@@ -134,6 +134,7 @@ func (c *Controller) closeDerived(ctx context.Context, t domain.Ticket, resoluti
 	}
 	c.log.InfoContext(ctx, "derived ticket closed", "ticket", t.ID, "resolution", resolution, "why", why)
 	c.escalationClosed(ctx, closed)
+	c.wakeQuestionClosed(closed)
 }
 
 // commentOnce adds text as the controller's comment on id unless it is

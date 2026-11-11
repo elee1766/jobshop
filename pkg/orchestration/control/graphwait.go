@@ -152,6 +152,8 @@ func waitTarget(cfg *config.Config, project string, cd domain.WaitCond) (string,
 	switch cd.Type {
 	case domain.WaitRun:
 		return cd.Run, nil
+	case domain.WaitQuestion:
+		return cd.Question, nil
 	case domain.WaitLinearState:
 		return ext("Linear "+cd.Thread+": "+cd.State, linearIssueURL(cfg, project, cd.Thread, ""))
 	case domain.WaitLinearLabel:

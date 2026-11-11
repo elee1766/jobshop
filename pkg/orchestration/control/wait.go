@@ -143,10 +143,8 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 	if err := w.Validate(); err != nil {
 		return nil, err
 	}
-	for _, cd := range w.Conds {
-		if cd.Type == domain.WaitDeploy && c.opt.Commit == "" {
-			return nil, fmt.Errorf("%w: deploy wait: this controller reports no build commit, so it cannot tell what is deployed", domain.ErrInvalid)
-		}
+	if err := c.checkWaitConds(ctx, t, w); err != nil {
+		return nil, err
 	}
 	fields, err := withWait(t, w)
 	if err != nil {
@@ -352,16 +350,58 @@ func (c *Controller) evalWait(ctx context.Context, pass *workflow.Pass, t domain
 // build commit.
 func (c *Controller) waitSources(src workflow.Source, ths threads.Source) workflow.Sources {
 	return workflow.Sources{
-		GitHub:  src,
-		Linear:  c.linearWaitSrc(),
-		Runs:    runWaitSource{c: c},
-		Replies: threads.Replies{E: c.threadEngine(), Src: ths},
-		Commit:  c.opt.Commit,
+		GitHub:    src,
+		Linear:    c.linearWaitSrc(),
+		Runs:      runWaitSource{c: c},
+		Questions: questionWaitSource{c: c},
+		Replies:   threads.Replies{E: c.threadEngine(), Src: ths},
+		Commit:    c.opt.Commit,
 	}
 }
 
 func (c *Controller) newWaitPass(src workflow.Source, ths threads.Source) *workflow.Pass {
 	return workflow.NewPass(c.waitSources(src, ths))
+}
+
+// questionWaitSource reads question tickets for the question condition.
+type questionWaitSource struct{ c *Controller }
+
+func (q questionWaitSource) Question(ctx context.Context, id string) (workflow.QuestionState, error) {
+	t, err := q.c.store.Get(ctx, id)
+	if err != nil {
+		return workflow.QuestionState{}, err
+	}
+	return workflow.QuestionState{Closed: t.Status == domain.StatusClosed, Resolution: t.Resolution}, nil
+}
+
+// checkWaitConds refuses conditions that can never hold for t: a deploy
+// wait on a controller with no build commit, a question that is not a
+// question ticket or lives in another project (JOB-202). An
+// already-closed question is fine, the wait clears on its first
+// evaluation.
+func (c *Controller) checkWaitConds(ctx context.Context, t domain.Ticket, w *domain.Wait) error {
+	for _, cd := range w.Conds {
+		if cd.Type == domain.WaitDeploy && c.opt.Commit == "" {
+			return fmt.Errorf("%w: deploy wait: this controller reports no build commit, so it cannot tell what is deployed", domain.ErrInvalid)
+		}
+		if cd.Type != domain.WaitQuestion {
+			continue
+		}
+		q, err := c.store.Get(ctx, cd.Question)
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: question wait: %s is not a ticket", domain.ErrInvalid, cd.Question)
+		}
+		if err != nil {
+			return err
+		}
+		if _, ok := questionOf(q); !ok {
+			return fmt.Errorf("%w: question wait: %s is not a question", domain.ErrInvalid, cd.Question)
+		}
+		if q.Project != t.Project {
+			return forbidden("question %s is in another project", cd.Question)
+		}
+	}
+	return nil
 }
 
 // runWaitSource reads run tickets for the run condition.
