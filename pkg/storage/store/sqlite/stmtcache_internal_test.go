@@ -85,6 +85,9 @@ func TestSeedMatchesMigrate(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close() })
 	require.NoError(t, migrate(ctx, b))
+	// Open optimizes after migrating; the template is optimized already.
+	_, err = b.ExecContext(ctx, optimizeSQL)
+	require.NoError(t, err)
 	require.Equal(t, schema(b), schema(a))
 	require.NoFileExists(t, seeded+".seed")
 

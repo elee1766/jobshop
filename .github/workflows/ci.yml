@@ -99,16 +99,17 @@ jobs:
           for d in /tmp "$RUNNER_TEMP" /dev/shm; do echo "$d: $(dd if=/dev/zero of=$d/jobshop-dd bs=4k count=500 oflag=dsync 2>&1 | tail -n1)"; rm -f $d/jobshop-dd; done
           go test -c -race -tags victorialogs -gcflags='modernc.org/...=-d=checkptr=0' -gcflags='modernc.org/sqlite/lib=-race=false' -o "$RUNNER_TEMP/control.test" ./pkg/orchestration/control
           cd pkg/orchestration/control
-          mkdir -p /dev/shm/jt
-          for v in "/tmp 0" "/dev/shm/jt 0" "/tmp 4"; do
-            set -- $v
+          for c in 2 4 6 8 32; do
             s=$(date +%s)
-            if [ "$2" = 0 ]; then TMPDIR=$1 "$RUNNER_TEMP/control.test" > "$RUNNER_TEMP/out.txt" 2>&1; else TMPDIR=$1 GOMAXPROCS=$2 "$RUNNER_TEMP/control.test" > "$RUNNER_TEMP/out.txt" 2>&1; fi
+            "$RUNNER_TEMP/control.test" -test.cpu $c -test.parallel $c > "$RUNNER_TEMP/out.txt" 2>&1
             rc=$?
-            echo "TMPDIR=$1 GOMAXPROCS=$2 control $(( $(date +%s)-s ))s rc=$rc $(tail -n1 "$RUNNER_TEMP/out.txt")"
-            for f in cpu io; do echo "  $f: $(cat /sys/fs/cgroup/$f.pressure 2>/dev/null | tr '\n' ' ')"; done
+            echo "cpu=$c control $(( $(date +%s)-s ))s rc=$rc $(tail -n1 "$RUNNER_TEMP/out.txt") load=$(cut -d' ' -f1 /proc/loadavg)"
           done
-          df -h /dev/shm
+          for c in 4 8; do
+            s=$(date +%s)
+            "$RUNNER_TEMP/control.test" -test.parallel $c > "$RUNNER_TEMP/out.txt" 2>&1
+            echo "gomaxprocs=default parallel=$c control $(( $(date +%s)-s ))s rc=$? load=$(cut -d' ' -f1 /proc/loadavg)"
+          done
       - name: go test
         id: test
         env:
