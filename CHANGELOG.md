@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.20](https://github.com/gfx-labs/jobshop/compare/v0.10.19...v0.10.20) (2026-11-11)
+
+
+### Performance
+
+* **store:** read ticket meta and label filters through the lookup index (JOB-191) ([#1224](https://github.com/gfx-labs/jobshop/issues/1224)) ([d5fcd8e](https://github.com/gfx-labs/jobshop/commit/d5fcd8ed0c1733cf2fa4c9271cebbb08e5d60556))
+
 ## [0.10.19](https://github.com/gfx-labs/jobshop/compare/v0.10.18...v0.10.19) (2026-11-11)
 
 
