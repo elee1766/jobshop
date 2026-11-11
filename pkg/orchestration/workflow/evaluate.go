@@ -118,6 +118,15 @@ func evalCond(ctx context.Context, pass *Pass, w *domain.Wait, cd *domain.WaitCo
 		return true, fmt.Sprintf("deployed %s contains %s", short(pass.src.Commit), short(cd.SHA)), err
 	case domain.WaitRun:
 		return evalRun(ctx, pass, cd)
+	case domain.WaitQuestion:
+		q, err := pass.src.Questions.Question(ctx, cd.Question)
+		if err != nil {
+			return false, "", err
+		}
+		if !q.Closed {
+			return false, "question " + cd.Question + " is open", nil
+		}
+		return true, fmt.Sprintf("question %s closed (%s)", cd.Question, q.Resolution), nil
 	case domain.WaitLinearState, domain.WaitLinearLabel:
 		return evalLinear(ctx, pass, cd)
 	case domain.WaitChecks:

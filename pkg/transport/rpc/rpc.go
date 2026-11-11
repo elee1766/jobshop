@@ -2044,6 +2044,9 @@ type ReportParams struct {
 	Options []domain.QuestionOption `json:"options,omitempty"`
 	// Until (waiting only) releases the ticket deferred until then.
 	Until *time.Time `json:"until,omitempty"`
+	// Wait (waiting with a question) parks the ticket on its new question,
+	// as `wait add question:id=<q> --resume` (JOB-202).
+	Wait bool `json:"wait,omitempty"`
 }
 
 // ReportResult is the reported ticket and the question filed, if any.

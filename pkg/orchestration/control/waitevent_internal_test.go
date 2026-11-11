@@ -130,6 +130,7 @@ func TestWaitEventKindsValidate(t *testing.T) {
 		{Type: domain.WaitTag, Repo: "acme/widget"},
 		{Type: domain.WaitDeploy, Repo: "acme/widget", SHA: "main"},
 		{Type: domain.WaitRun, Run: "js-1", State: "running"},
+		{Type: domain.WaitQuestion},
 		{Type: domain.WaitLinearState, Thread: "acme/widget#1", State: "Done"},
 		{Type: domain.WaitLinearLabel, Thread: "ENG-1"},
 	} {

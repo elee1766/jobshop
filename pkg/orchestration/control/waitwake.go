@@ -113,3 +113,14 @@ func (c *Controller) nextWaitTime(ts []domain.Ticket) time.Duration {
 	}
 	return workflow.NextDue(ws, c.now(), c.waitEvery())
 }
+
+// wakeQuestionClosed wakes the waits on question t once it is closed, by
+// whichever path closed it (JOB-202). Any other ticket is ignored.
+func (c *Controller) wakeQuestionClosed(t domain.Ticket) {
+	if t.Kind != domain.KindMessage || t.Status != domain.StatusClosed {
+		return
+	}
+	if _, ok := questionOf(t); ok {
+		c.wakeWaitsSubjects(workflow.QuestionSubject(t.ID))
+	}
+}

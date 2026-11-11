@@ -69,6 +69,17 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 		return nil, err
 	}
 	q := strings.TrimSpace(p.Question)
+	if p.Wait {
+		// Checked before the question is filed, so a refusal leaves nothing behind.
+		switch {
+		case p.State != rpc.ReportWaiting || q == "":
+			return nil, fmt.Errorf("%w: --wait goes with report waiting -q", domain.ErrInvalid)
+		case p.Until != nil:
+			return nil, fmt.Errorf("%w: --wait and --until both release the ticket, give one", domain.ErrInvalid)
+		case t.Kind != domain.KindTask && t.Kind != domain.KindStep:
+			return nil, fmt.Errorf("%w: only tasks and steps wait (%s is a %s)", domain.ErrInvalid, id, t.Kind)
+		}
+	}
 	if q == "" && (strings.TrimSpace(p.Context) != "" || len(p.Options) > 0) {
 		return nil, fmt.Errorf("%w: context and options go with a question", domain.ErrInvalid)
 	}
@@ -117,6 +128,18 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	}
 	if err != nil {
 		return nil, err
+	}
+	if p.Wait && res.Question != nil {
+		// Park on the answer. A held ticket is released as a deferral and
+		// comes back to this session when the question closes (JOB-202).
+		w := rpc.WaitAddParams{
+			ID: id, Resume: true, Owner: "operator",
+			Reason: "waiting for the answer to question " + res.Question.ID,
+			Conds:  []domain.WaitCond{{Type: domain.WaitQuestion, Question: res.Question.ID}},
+		}
+		if _, err := c.waitAdd(ctx, sc, w); err != nil {
+			return nil, err
+		}
 	}
 	if p.Until != nil && !sc.admin {
 		// Waiting until a time hands the ticket back deferred, as release --until.
@@ -320,6 +343,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		return nil, err
 	}
 	c.linearSvc().Unblock(ctx, qt)
+	c.wakeQuestionClosed(res.Question)
 	if !sc.admin {
 		c.followAnswer(ctx, sc.session, qt, qm, res.Message)
 	}

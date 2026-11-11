@@ -1364,11 +1364,12 @@ Arguments:
                 state=merged|closed|head_changed), github.label (issue, label;
                 met when the issue has the label or is closed), github.tag
                 (repo, tag), deploy (repo, sha; met when the controller's build
-                commit contains sha), run (id, state=done|closed), linear.state
-                (issue=KEY, state name or type), linear.label (issue=KEY, label,
-                present=false waits for removal), thread.reply (thread, from),
-                time (at). pr is owner/name#n or a PR URL; at is a duration or
-                RFC3339.
+                commit contains sha), run (id, state=done|closed), question
+                (id=<question ticket>; met when that question is closed,
+                answered or not), linear.state (issue=KEY, state name or type),
+                linear.label (issue=KEY, label, present=false waits for
+                removal), thread.reply (thread, from), time (at). pr is
+                owner/name#n or a PR URL; at is a duration or RFC3339.
 
 Flags:
   -h, --help              Show context-sensitive help.
@@ -2934,6 +2935,11 @@ Flags:
   -t, --ticket=STRING        Ticket id (default: the session's current ticket).
       --until=STRING         Release the ticket deferred until then: a duration
                              (2h) or RFC3339 time.
+      --wait                 With -q: park the ticket on the new question (wait
+                             add question:id=<q> --resume), so it comes back
+                             to this session when the question is closed. End
+                             the turn after. To also resume on another event,
+                             run wait add --any yourself.
 ```
 
 ## jobshop report ready
