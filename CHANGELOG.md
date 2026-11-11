@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.18](https://github.com/gfx-labs/jobshop/compare/v0.10.17...v0.10.18) (2026-11-11)
+
+
+### Features
+
+* **control:** question wait condition (JOB-202) ([#1219](https://github.com/gfx-labs/jobshop/issues/1219)) ([3af722e](https://github.com/gfx-labs/jobshop/commit/3af722e446f32595bd469f5e96c3d92a2f64b0d3))
+
 ## [0.10.17](https://github.com/gfx-labs/jobshop/compare/v0.10.16...v0.10.17) (2026-11-10)
 
 
