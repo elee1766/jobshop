@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.23](https://github.com/gfx-labs/jobshop/compare/v0.10.22...v0.10.23) (2026-11-12)
+
+
+### Features
+
+* **control:** provider health checks take failing slots out of the pool (JOB-204) ([#1232](https://github.com/gfx-labs/jobshop/issues/1232)) ([70d6ae5](https://github.com/gfx-labs/jobshop/commit/70d6ae5ae5a784a2660dc557c6a142bddf42c5b2))
+
 ## [0.10.22](https://github.com/gfx-labs/jobshop/compare/v0.10.21...v0.10.22) (2026-11-12)
 
 
