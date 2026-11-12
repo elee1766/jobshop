@@ -181,6 +181,11 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 		if !sc.admin || f.From == "" {
 			f.From = sc.actor
 		}
+		if f.Interrupt {
+			if err := c.checkInterrupt(ctx, f.To); err != nil {
+				return nil, err
+			}
+		}
 		if p.Fields, err = json.Marshal(f); err != nil {
 			return nil, err
 		}

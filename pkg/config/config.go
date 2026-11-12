@@ -1371,6 +1371,26 @@ func (p Pool) Chat() bool { return p.Type == PoolChat }
 // `session attach --rw`.
 const AttachRW = "rw"
 
+// Pool.Interrupt values (JOB-206): whether an interrupt message cancels
+// a running turn of the pool's sessions.
+const (
+	// InterruptAllow (default) cancels the turn and delivers at once.
+	InterruptAllow = "allow"
+	// InterruptQueue accepts interrupt messages but delivers them after
+	// the turn, like any other message.
+	InterruptQueue = "queue"
+	// InterruptRefuse rejects interrupt sends to the pool; one the
+	// controller files itself is delivered after the turn.
+	InterruptRefuse = "refuse"
+)
+
+// CancelsTurn reports whether an interrupt message cancels a running
+// turn of the pool's sessions.
+func (p Pool) CancelsTurn() bool { return p.Interrupt == "" || p.Interrupt == InterruptAllow }
+
+// RefusesInterrupt reports whether interrupt sends to the pool fail.
+func (p Pool) RefusesInterrupt() bool { return p.Interrupt == InterruptRefuse }
+
 // Pool is a queue of work in one project served by sessions of one agent.
 type Pool struct {
 	// Enabled false keeps the pool validated but not loaded (JOB-24).
@@ -1384,6 +1404,10 @@ type Pool struct {
 	// Attach "rw" lets `session attach --rw` send messages to the pool's
 	// sessions. Default "" (read-only attach).
 	Attach string `yaml:"attach"`
+	// Interrupt decides what an interrupt message does to a running turn
+	// (JOB-206): "allow" (default) cancels it and delivers, "queue"
+	// delivers after the turn, "refuse" rejects interrupt sends.
+	Interrupt string `yaml:"interrupt"`
 	// MaxSessions caps concurrent sessions. 0 means the pool never starts
 	// sessions on its own (manual sessions only).
 	MaxSessions int `yaml:"max_sessions"`
@@ -1635,6 +1659,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.Attach != "" && p.Attach != AttachRW {
 			return nil, fmt.Errorf("%s: pool %s: attach %q must be empty or %q", src("pools", name), name, p.Attach, AttachRW)
+		}
+		switch p.Interrupt {
+		case "", InterruptAllow, InterruptQueue, InterruptRefuse:
+		default:
+			return nil, fmt.Errorf("%s: pool %s: interrupt %q must be %q, %q or %q", src("pools", name), name, p.Interrupt, InterruptAllow, InterruptQueue, InterruptRefuse)
 		}
 		// An unknown admin method is dropped with a warning, not fatal: a
 		// pack or last good config written for a newer binary must not stop

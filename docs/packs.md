@@ -57,7 +57,8 @@ packs:
 `prompt` or `prompt_file` (the session's standing instructions),
 `max_sessions`, `min_sessions`, `max_tickets`, `idle_timeout`, `turn_timeout`,
 `admin` (admin RPC
-grants). `max_tickets` (default 0, unlimited; not for chat pools) makes
+grants), `interrupt` (`allow`, `queue` or `refuse`: whether an interrupt
+message may cancel a running turn, [note](notes/JOB-206-pool-interrupt.md)). `max_tickets` (default 0, unlimited; not for chat pools) makes
 sessions single use: a session ends `ticket_limit` after it closes that many
 tickets, and while its ticket waits (`wait add --resume`, or a timed defer)
 it is suspended and takes no slot, so `max_sessions` counts only tickets
