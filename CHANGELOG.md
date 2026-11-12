@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.21](https://github.com/gfx-labs/jobshop/compare/v0.10.20...v0.10.21) (2026-11-12)
+
+
+### Performance
+
+* **ci:** run control tests in slices, stop schema reloads on fresh SQLite stores (JOB-187) ([#1226](https://github.com/gfx-labs/jobshop/issues/1226)) ([d485402](https://github.com/gfx-labs/jobshop/commit/d485402d47db6faba172e6ac180951db5579c93f))
+
 ## [0.10.20](https://github.com/gfx-labs/jobshop/compare/v0.10.19...v0.10.20) (2026-11-11)
 
 
