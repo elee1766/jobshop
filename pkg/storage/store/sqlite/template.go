@@ -42,6 +42,12 @@ func templateBytes(ctx context.Context) []byte {
 		if err := migrate(ctx, db); err != nil {
 			return
 		}
+		// Open's PRAGMA optimize analyzes a fresh copy and changes its
+		// schema, so every connection then reloads it. Analyzed here, the
+		// copy has statistics and Open finds nothing due (JOB-187).
+		if _, err := db.ExecContext(ctx, optimizeSQL); err != nil {
+			return
+		}
 		out := filepath.Join(dir, "db")
 		if _, err := db.ExecContext(ctx, "VACUUM INTO ?", out); err != nil {
 			return

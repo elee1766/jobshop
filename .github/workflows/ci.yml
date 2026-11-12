@@ -88,6 +88,8 @@ jobs:
       # (modernc.org/sqlite/lib) is not race-instrumented either: it was
       # ~40% of pkg/orchestration/control CPU on the 2-vCPU runner and keeps its state
       # behind its own mutexes. The Go wrapper stays instrumented (JOB-117).
+      # The script holds those flags and runs control's tests in slices
+      # (JOB-187).
       - name: go test
         id: test
         env:
@@ -96,7 +98,7 @@ jobs:
           # Reports are written when a race is found, not at exit.
           GORACE: atexit_sleep_ms=0
         run: |
-          go test -json -race -tags victorialogs -gcflags='modernc.org/...=-d=checkptr=0' -gcflags='modernc.org/sqlite/lib=-race=false' ./... > test.json 2>&1 || rc=$?
+          .github/scripts/go-test.sh test.json || rc=$?
           # Readable log from the JSON stream.
           go run ./pkg/tooling/flaky/cmd/ci-flaky -print -in test.json
           # These packages skip without their service. Here a skip means the
