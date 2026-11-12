@@ -41,6 +41,9 @@ func (s *Store) Slot(ctx context.Context, actor string, e domain.SlotEvent) (dom
 	case domain.SlotReset:
 		sl, err := s.slotReset(ctx, e.Pool, e.ID, e.OK)
 		return sl, "", err
+	case domain.SlotHealth:
+		sl, err := s.slotHealthFailed(ctx, e.Pool, e.ID)
+		return sl, "", err
 	}
 	return domain.Slot{}, "", fmt.Errorf("%w: slot op %q", domain.ErrInvalid, e.Op)
 }
@@ -179,6 +182,29 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 		return s.writeSlot(ctx, q, r)
 	})
 	return out, reopened, err
+}
+
+// slotHealthFailed marks a ready slot gone after a failed health check
+// (JOB-204). A slot in any other state is returned as it is: a claim
+// took it while the check ran, and the reset after that claim checks it.
+func (s *Store) slotHealthFailed(ctx context.Context, pool, id string) (out domain.Slot, err error) {
+	if err := checkSlot(pool, id); err != nil {
+		return out, err
+	}
+	err = s.tx(ctx, func(q sqldb.Querier) error {
+		r, err := s.getSlot(ctx, q, pool, id)
+		if err != nil {
+			return err
+		}
+		if r.State != domain.SlotReady {
+			out = slotOf(r)
+			return nil
+		}
+		r.State = domain.SlotGone
+		out = slotOf(r)
+		return s.writeSlot(ctx, q, r)
+	})
+	return out, err
 }
 
 // slots lists every slot, or pool's when set.

@@ -19,8 +19,15 @@ import (
 )
 
 // slotRoot is a root with a provider resource emu whose provider script
-// logs each call to calls and fails a reset while failreset exists.
+// logs each call to calls, fails a reset while failreset exists and a
+// health check of slot <id> while failhealth-<id> exists.
 func slotRoot(t *testing.T) config.Root {
+	t.Helper()
+	return slotRootWith(t, "idle_release: 10m")
+}
+
+// slotRootWith is slotRoot with extra provider settings.
+func slotRootWith(t *testing.T, provider string) config.Root {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
 	require.NoError(t, err)
@@ -28,6 +35,7 @@ func slotRoot(t *testing.T) config.Root {
 	root := config.Root{Dir: dir}
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "prov.sh"), []byte(`echo "$1 $2 $JOBSHOP_RESOURCE" >> calls
 if [ "$1" = reset ] && [ -f failreset ]; then exit 1; fi
+if [ "$1" = health ] && [ -f "failhealth-$2" ]; then exit 1; fi
 exit 0
 `), 0o600))
 	pack := filepath.Join(dir, "pk")
@@ -49,7 +57,7 @@ exit 0
   - path: pk
 resources:
   emu:
-    provider: {command: "sh prov.sh", idle_release: 10m}
+    provider: {command: "sh prov.sh", %s}
 projects:
   js: {}
 agents:
@@ -57,7 +65,7 @@ agents:
     command: %q
 pools:
   dev: {project: js, agent: fake, max_sessions: 0, dir: %q}
-`, os.Args[0], dir)
+`, provider, os.Args[0], dir)
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	return root
 }
@@ -129,6 +137,50 @@ func TestProviderSlots(t *testing.T) {
 	passUntilWall(t, root, func() bool { return strings.Contains(providerCalls(t, root), "remove e1 emu") }, "idle remove asked")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodResourceRemove, rpc.SlotParams{Resource: "emu", Slot: "e1"}, nil))
 	assert.NotContains(t, slotsOf(t, admin), "e1")
+}
+
+// TestProviderSlotHealth: with health_every, ready slots idle that long
+// get a health call; a failing one leaves the pool and a step runs on the
+// healthy one. A passing slot is not checked again until health_every
+// after its check (JOB-204).
+func TestProviderSlotHealth(t *testing.T) {
+	t.Parallel()
+	root := slotRootWith(t, "health_every: 5m")
+	clk := clock.NewFake(time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC))
+	admin, _ := startAuto(t, root, clk)
+	for _, id := range []string{"e1", "e2"} {
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodResourceAdd, rpc.SlotParams{Resource: "emu", Slot: id}, nil))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "failhealth-e1"), nil, 0o600))
+	pass(t, root.Dir, 2)
+	assert.NotContains(t, providerCalls(t, root), "health", "not idle long enough")
+
+	clk.Advance(6 * time.Minute)
+	passUntilWall(t, root, func() bool {
+		s := slotsOf(t, admin)
+		return s["e1"].State == domain.SlotGone && strings.Contains(providerCalls(t, root), "health e2 emu")
+	}, "failed health check: e1 gone")
+	assert.Equal(t, domain.SlotReady, slotsOf(t, admin)["e2"].State)
+	pass(t, root.Dir, 2)
+	assert.Equal(t, 1, strings.Count(providerCalls(t, root), "health e2 emu"), "checked once per health_every")
+	assert.Equal(t, 1, strings.Count(providerCalls(t, root), "health e1 emu"), "a gone slot is not checked")
+
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "device", Vars: map[string]string{"issue": "1"}})
+	passUntilWall(t, root, func() bool {
+		return showRun(t, admin, r.Run.ID).Steps[0].Status == domain.StatusClosed
+	}, "step ran on the healthy slot")
+	assert.JSONEq(t, `{"serial":"","slot":"e2"}`, stepFields(t, showRun(t, admin, r.Run.ID).Steps[0]).Output)
+
+	// The provider adds e1 back: in the pool again, timed from the add.
+	require.NoError(t, os.Remove(filepath.Join(root.Dir, "failhealth-e1")))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodResourceAdd, rpc.SlotParams{Resource: "emu", Slot: "e1"}, nil))
+	assert.Equal(t, domain.SlotReady, slotsOf(t, admin)["e1"].State)
+	clk.Advance(6 * time.Minute)
+	passUntilWall(t, root, func() bool {
+		return strings.Count(providerCalls(t, root), "health e1 emu") == 2
+	}, "re-added slot checked")
+	pass(t, root.Dir, 1)
+	assert.Equal(t, domain.SlotReady, slotsOf(t, admin)["e1"].State, "passing check keeps it")
 }
 
 // TestProviderSlotUnhealthy: a slot that goes unhealthy while held

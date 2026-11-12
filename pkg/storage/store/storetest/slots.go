@@ -161,6 +161,36 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, []string{"js-b"}, ready())
 }
 
+// testSlotHealth: a failed health check takes a ready slot out of the
+// pool; a slot a claim took while the check ran keeps its claim
+// (JOB-204).
+func testSlotHealth(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	require.NoError(t, setProviders(ctx, s, []string{"emu"}))
+	slotSteps(t, s, "emu", "js-h")
+	_, err := addSlot(ctx, s, "emu", "e1", nil)
+	require.NoError(t, err)
+	_, err = addSlot(ctx, s, "emu", "e2", nil)
+	require.NoError(t, err)
+
+	sl, err := slotHealthFailed(ctx, s, "emu", "e1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.SlotGone, sl.State)
+	assert.Equal(t, domain.SlotGone, slotState(t, s, "emu", "e1").State)
+
+	// The claim takes e2, the only ready slot; a late failed check on it
+	// leaves the claim alone.
+	_, _, err = s.Claim(ctx, "js-h", "s1", lease)
+	require.NoError(t, err)
+	sl, err = slotHealthFailed(ctx, s, "emu", "e2")
+	require.NoError(t, err)
+	assert.Equal(t, domain.SlotHeld, sl.State)
+	assert.Equal(t, "js-h", slotState(t, s, "emu", "e2").Ticket)
+
+	_, err = slotHealthFailed(ctx, s, "emu", "nope")
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
 // testConcurrentSlotClaims: holders race for steps sharing two slots;
 // each claim takes a distinct slot and no more than two run at once.
 func testConcurrentSlotClaims(t *testing.T, s store.Store, _ *Clock) {

@@ -142,6 +142,48 @@ func TestPassDemandAndIdle(t *testing.T) {
 	assert.Equal(t, []string{"demand", "remove e1", "demand"}, calls(t, h.dir), "changed demand sent, no remove while waiting")
 }
 
+// TestHealthDue: a ready slot is due health_every after its last state
+// change, then health_every after its last check; held slots and
+// resources without health_every are never due (JOB-204).
+func TestHealthDue(t *testing.T) {
+	t.Parallel()
+	c, h := newClient(t)
+	cfg := &config.Config{Resources: map[string]config.Resource{
+		"emu": {Provider: &config.Provider{Command: "p", HealthEvery: "5m"}},
+		"gpu": {Provider: &config.Provider{Command: "p"}},
+	}}
+	t0 := h.now
+	slots := []domain.Slot{
+		{Pool: "emu", ID: "e1", State: domain.SlotReady, UpdatedAt: t0},
+		{Pool: "emu", ID: "e2", State: domain.SlotHeld, UpdatedAt: t0},
+		{Pool: "gpu", ID: "g1", State: domain.SlotReady, UpdatedAt: t0},
+	}
+	ids := func(due []domain.Slot) []string {
+		var out []string
+		for _, sl := range due {
+			out = append(out, sl.Pool+"/"+sl.ID)
+		}
+		return out
+	}
+	assert.Empty(t, c.HealthDue(cfg, slots), "not idle long enough")
+
+	h.now = t0.Add(5 * time.Minute)
+	due := c.HealthDue(cfg, slots)
+	assert.Equal(t, []string{"emu/e1"}, ids(due))
+	c.Checked(due[0])
+	h.now = t0.Add(9 * time.Minute)
+	assert.Empty(t, c.HealthDue(cfg, slots), "checked 4m ago")
+	h.now = t0.Add(10 * time.Minute)
+	assert.Equal(t, []string{"emu/e1"}, ids(c.HealthDue(cfg, slots)))
+
+	// Held, then reset: timed from the reset, not the old check.
+	slots[0].State = domain.SlotHeld
+	assert.Empty(t, c.HealthDue(cfg, slots))
+	slots[0].State, slots[0].UpdatedAt = domain.SlotReady, h.now
+	h.now = h.now.Add(4 * time.Minute)
+	assert.Empty(t, c.HealthDue(cfg, slots))
+}
+
 // TestEnvAndPrompt: the env lists each held slot, then its env sorted;
 // the prompt quotes values for a shell.
 func TestEnvAndPrompt(t *testing.T) {

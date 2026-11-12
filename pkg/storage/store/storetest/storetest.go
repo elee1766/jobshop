@@ -72,6 +72,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"StructuredStepResultFences", testStructuredStepResultFences},
 		{"Resources", testResources},
 		{"ProviderSlots", testProviderSlots},
+		{"SlotHealth", testSlotHealth},
 		{"ConcurrentSlotClaims", testConcurrentSlotClaims},
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},

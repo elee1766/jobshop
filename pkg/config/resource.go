@@ -149,8 +149,9 @@ func (c *Config) checkStepResources(w *Workflow, needs []string) error {
 
 // Provider owns a resource's slots (#407): it adds and removes them
 // (`jobshop resource add|remove|unhealthy`), and the controller calls it
-// to reset a slot after each claim, to report demand, and to remove idle
-// slots. Set exactly one of Command and URL.
+// to reset a slot after each claim, to report demand, to remove idle
+// slots and, with HealthEvery, to check idle slots. Set exactly one of
+// Command and URL.
 type Provider struct {
 	// Command is run as `sh -c '<command> "$@"' <op> [id]`, with the call
 	// as JSON on stdin. Exit 0 is ok.
@@ -165,6 +166,11 @@ type Provider struct {
 	// DemandEvery is how often demand is sent when it has not changed.
 	// Default 1m.
 	DemandEvery string `yaml:"demand_every"`
+	// HealthEvery checks a ready slot (`health <id>`) once it has been
+	// idle this long since its last check or state change (JOB-204). A
+	// failed check takes the slot out of the pool (gone) until the
+	// provider adds it again. Empty: never.
+	HealthEvery string `yaml:"health_every"`
 }
 
 // Provider defaults.
@@ -191,6 +197,9 @@ func (p *Provider) DemandEveryDuration() time.Duration {
 // IdleReleaseDuration is IdleRelease, 0 when unset.
 func (p *Provider) IdleReleaseDuration() time.Duration { return durOr(p.IdleRelease, 0) }
 
+// HealthEveryDuration is HealthEvery, 0 (no checks) when unset.
+func (p *Provider) HealthEveryDuration() time.Duration { return durOr(p.HealthEvery, 0) }
+
 func (p *Provider) check() error {
 	if (p.Command == "") == (p.URL == "") {
 		return errors.New("provider: set exactly one of command and url")
@@ -201,7 +210,7 @@ func (p *Provider) check() error {
 			return fmt.Errorf("provider: url %q must be an http or https URL", p.URL)
 		}
 	}
-	for k, v := range map[string]string{"timeout": p.Timeout, "idle_release": p.IdleRelease, "demand_every": p.DemandEvery} {
+	for k, v := range map[string]string{"timeout": p.Timeout, "idle_release": p.IdleRelease, "demand_every": p.DemandEvery, "health_every": p.HealthEvery} {
 		if v == "" {
 			continue
 		}

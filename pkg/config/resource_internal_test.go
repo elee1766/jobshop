@@ -24,6 +24,9 @@ func TestResourceChecks(t *testing.T) {
 		{"provider both", Resource{Provider: &Provider{Command: "p", URL: "https://h"}}, "exactly one"},
 		{"provider bad url", Resource{Provider: &Provider{URL: "ftp://h"}}, "http or https"},
 		{"provider bad dur", Resource{Provider: &Provider{Command: "p", Timeout: "x"}}, "positive duration"},
+		{"provider health", Resource{Provider: &Provider{Command: "p", HealthEvery: "5m"}}, ""},
+		{"provider bad health", Resource{Provider: &Provider{Command: "p", HealthEvery: "0s"}}, "health_every \"0s\" must be a positive duration"},
+		{"provider health junk", Resource{Provider: &Provider{Command: "p", HealthEvery: "soon"}}, "health_every"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Config{Resources: map[string]Resource{"r": tt.r}}

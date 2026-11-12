@@ -45,6 +45,7 @@ func (c *Controller) providerPass(ctx context.Context, cfg *config.Config) {
 		return
 	}
 	c.resetSlots(ctx, cfg)
+	c.checkSlots(ctx, cfg)
 	c.slots().Pass(ctx, cfg)
 	// A slot can turn ready here, which readies the tickets waiting on
 	// it. No ticket write says so, so wake the idle runners (JOB-197).
@@ -92,6 +93,58 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 		}
 		if _, _, serr := c.store.Slot(ctx, "", domain.SlotEvent{Op: domain.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: err == nil}); serr != nil {
 			c.log.ErrorContext(ctx, "record slot reset", "resource", sl.Pool, "slot", sl.ID, "err", serr)
+		}
+	}
+}
+
+// healthResult is a finished health check and the slot state it ran on.
+type healthResult struct {
+	err error
+	at  time.Time // the slot's UpdatedAt when the check started
+}
+
+// checkSlots runs the provider's health check on each ready slot idle
+// health_every since its last check or state change (JOB-204), off the
+// pass, one per slot. A failure takes the slot out of the pool (gone).
+// A result for a slot that changed while the check ran (claimed, reset,
+// re-added) is dropped: the check no longer says anything about it.
+func (c *Controller) checkSlots(ctx context.Context, cfg *config.Config) {
+	rep, err := c.store.Resources(ctx, "")
+	if err != nil {
+		if ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "read slots for health checks", "err", err)
+		}
+		return
+	}
+	sp := c.slots()
+	for _, sl := range sp.HealthDue(cfg, rep.Slots) {
+		p := cfg.Resources[sl.Pool].Provider
+		key := "health\x00" + sl.Pool + "\x00" + sl.ID
+		v, done := c.offTake(key)
+		if !done {
+			call := slotprovider.Call{Op: "health", Resource: sl.Pool, Slot: sl.ID, Env: sl.Env}
+			at := sl.UpdatedAt
+			c.offGo(key, "provider", p.TimeoutDuration(), true, func(ctx context.Context) any {
+				return healthResult{err: sp.Call(ctx, p, call), at: at}
+			})
+			if v, done = c.offTake(key); !done {
+				continue // recorded by a later pass
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		res, _ := v.(healthResult)
+		if !res.at.Equal(sl.UpdatedAt) {
+			continue // the slot changed under the check; check it again later
+		}
+		sp.Checked(sl)
+		if res.err == nil {
+			continue
+		}
+		c.log.WarnContext(ctx, "resource health check failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", res.err)
+		if _, _, serr := c.store.Slot(ctx, "", domain.SlotEvent{Op: domain.SlotHealth, Pool: sl.Pool, ID: sl.ID}); serr != nil {
+			c.log.ErrorContext(ctx, "record slot health", "resource", sl.Pool, "slot", sl.ID, "err", serr)
 		}
 	}
 }

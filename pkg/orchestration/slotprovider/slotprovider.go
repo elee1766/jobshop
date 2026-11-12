@@ -56,7 +56,7 @@ type Host interface {
 
 // Call is the JSON a provider gets on stdin or as the POST body.
 type Call struct {
-	Op       string             `json:"op"` // reset, demand, remove
+	Op       string             `json:"op"` // reset, demand, remove, health
 	Resource string             `json:"resource"`
 	Slot     string             `json:"slot,omitempty"`
 	Env      map[string]string  `json:"env,omitempty"`
@@ -74,6 +74,10 @@ type Client struct {
 	// removing marks slots already asked to be removed, so a slow
 	// provider is not asked every pass.
 	removing map[string]time.Time
+	// checked is when each ready slot's last health check finished
+	// (JOB-204). A check does not write the slot, so its UpdatedAt does
+	// not move; this does.
+	checked map[string]time.Time
 }
 
 // New returns a Client on h.
@@ -83,7 +87,47 @@ func New(h Host, log *slog.Logger) *Client {
 		demandAt:   map[string]time.Time{},
 		demandLast: map[string]domain.SlotDemand{},
 		removing:   map[string]time.Time{},
+		checked:    map[string]time.Time{},
 	}
+}
+
+// HealthDue returns the ready slots of cfg's provider resources whose
+// health check is due: idle health_every since their last check or state
+// change. It forgets the checks of slots that are no longer ready, so a
+// slot coming back from a claim is timed from its reset.
+func (c *Client) HealthDue(cfg *config.Config, slots []domain.Slot) []domain.Slot {
+	now := c.h.Now()
+	ready := map[string]bool{}
+	var due []domain.Slot
+	for _, sl := range slots {
+		if sl.State != domain.SlotReady {
+			continue
+		}
+		k := sl.Pool + "/" + sl.ID
+		ready[k] = true
+		r, ok := cfg.Resources[sl.Pool]
+		if !ok || r.Provider == nil {
+			continue
+		}
+		every := r.Provider.HealthEveryDuration()
+		if every <= 0 {
+			continue
+		}
+		last := sl.UpdatedAt
+		if at := c.checked[k]; at.After(last) {
+			last = at
+		}
+		if now.Sub(last) >= every {
+			due = append(due, sl)
+		}
+	}
+	maps.DeleteFunc(c.checked, func(k string, _ time.Time) bool { return !ready[k] })
+	return due
+}
+
+// Checked records that sl's health check finished now.
+func (c *Client) Checked(sl domain.Slot) {
+	c.checked[sl.Pool+"/"+sl.ID] = c.h.Now()
 }
 
 // Call runs one provider call and reports whether it succeeded.

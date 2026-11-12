@@ -28,6 +28,11 @@ func slotUnhealthy(ctx context.Context, s store.Store, actor, pool, id, reason s
 	return s.Slot(ctx, actor, domain.SlotEvent{Op: domain.SlotUnhealthy, Pool: pool, ID: id, Reason: reason})
 }
 
+func slotHealthFailed(ctx context.Context, s store.Store, pool, id string) (domain.Slot, error) {
+	sl, _, err := s.Slot(ctx, "", domain.SlotEvent{Op: domain.SlotHealth, Pool: pool, ID: id})
+	return sl, err
+}
+
 func allSlots(ctx context.Context, s store.Store) ([]domain.Slot, error) {
 	r, err := s.Resources(ctx, "")
 	return r.Slots, err
