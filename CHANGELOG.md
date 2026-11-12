@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.22](https://github.com/gfx-labs/jobshop/compare/v0.10.21...v0.10.22) (2026-11-12)
+
+
+### Features
+
+* **control:** pool interrupt setting allow, queue or refuse (JOB-206) ([#1230](https://github.com/gfx-labs/jobshop/issues/1230)) ([ee54e36](https://github.com/gfx-labs/jobshop/commit/ee54e36a5a3aa0dd27353b94beea58b52c7a9ea1))
+
 ## [0.10.21](https://github.com/gfx-labs/jobshop/compare/v0.10.20...v0.10.21) (2026-11-12)
 
 
