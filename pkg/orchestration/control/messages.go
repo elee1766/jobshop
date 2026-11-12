@@ -8,6 +8,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/gfx-labs/jobshop/pkg/config"
 	"github.com/gfx-labs/jobshop/pkg/conversation"
 	"github.com/gfx-labs/jobshop/pkg/domain"
 	"github.com/gfx-labs/jobshop/pkg/storage/store"
@@ -15,6 +16,42 @@ import (
 )
 
 const resolutionDelivered = "delivered"
+
+// checkInterrupt refuses an interrupt message to a pool whose interrupt
+// setting is refuse (JOB-206). to is a MessageFields.To: pool:<name>, a
+// session id or a session key. A recipient that resolves to no session is
+// not refused here: the message waits like any other.
+func (c *Controller) checkInterrupt(ctx context.Context, to string) error {
+	pool, ok := strings.CutPrefix(to, "pool:")
+	if !ok {
+		pool = c.recipientPool(ctx, to)
+	}
+	if p, ok := c.config().Pools[pool]; ok && p.RefusesInterrupt() {
+		return forbidden("pool %s does not accept interrupt messages (interrupt: %s); send without interrupt", pool, config.InterruptRefuse)
+	}
+	return nil
+}
+
+// recipientPool is the pool of the open session to names by id or key, or
+// "" when none does.
+func (c *Controller) recipientPool(ctx context.Context, to string) string {
+	if t, err := c.store.Get(ctx, to); err == nil {
+		if t.Kind == domain.KindSession {
+			return t.Pool
+		}
+		return ""
+	}
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
+	if err != nil {
+		return ""
+	}
+	for _, t := range open {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Key == to {
+			return t.Pool
+		}
+	}
+	return ""
+}
 
 // inbox returns open messages addressed to this session by id or key, or
 // to its pool. interruptOnly limits it to interrupt messages.
@@ -140,7 +177,10 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 
 // interruptible runs a turn while watching for interrupt messages. On one
 // it sends session/cancel; the turn then ends and the caller delivers.
-// `session restart --now` cancels the turn the same way.
+// `session restart --now` cancels the turn the same way. A pool whose
+// interrupt setting does not allow it (JOB-206) leaves interrupt messages
+// for the delivery after the turn; the setting is read per poll, so a
+// reload applies to a running turn.
 func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnection, text string) (bool, error) {
 	var interrupted atomic.Bool
 	// A cancel sent before this turn is not for it.
@@ -170,7 +210,7 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 				return
 			case <-tick.C():
 			}
-			if len(r.inbox(wctx, true)) > 0 {
+			if r.c.config().Pools[r.pool].CancelsTurn() && len(r.inbox(wctx, true)) > 0 {
 				r.log.InfoContext(ctx, "interrupt message: cancelling turn")
 				interrupted.Store(true)
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: r.acpID()})

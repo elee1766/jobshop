@@ -140,6 +140,24 @@ func TestParseMaxTickets(t *testing.T) {
 	require.ErrorContains(t, err, "max_tickets does not apply to chat pools")
 }
 
+// TestParseInterrupt (JOB-206): interrupt is allow, queue or refuse, and
+// an unset field cancels turns as before.
+func TestParseInterrupt(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n"
+	c, err := Parse([]byte(base))
+	require.NoError(t, err)
+	assert.True(t, c.Pools["p"].CancelsTurn(), "allow by default")
+	assert.False(t, c.Pools["p"].RefusesInterrupt())
+	for mode, want := range map[string][2]bool{"allow": {true, false}, "queue": {false, false}, "refuse": {false, true}} {
+		c, err := Parse([]byte(base + "    interrupt: " + mode + "\n"))
+		require.NoError(t, err, mode)
+		assert.Equal(t, want[0], c.Pools["p"].CancelsTurn(), mode)
+		assert.Equal(t, want[1], c.Pools["p"].RefusesInterrupt(), mode)
+	}
+	_, err = Parse([]byte(base + "    interrupt: never\n"))
+	require.ErrorContains(t, err, `interrupt "never" must be "allow", "queue" or "refuse"`)
+}
+
 func TestParseTriggers(t *testing.T) {
 	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  dev:\n    agent: a\n    dir: /w\n"
 	c, err := Parse([]byte(base + `triggers:

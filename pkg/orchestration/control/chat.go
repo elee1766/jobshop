@@ -51,6 +51,11 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 		if sess, err = c.openSessionTicket(ctx, p.ID); err != nil {
 			return nil, err
 		}
+		if p.Interrupt {
+			if err := c.checkInterrupt(ctx, "pool:"+sess.Pool); err != nil {
+				return nil, err
+			}
+		}
 		if p.Attach {
 			if pl, ok := c.config().Pools[sess.Pool]; !ok || pl.Attach != config.AttachRW {
 				return nil, fmt.Errorf("%w: pool %q of session %s does not allow rw attach (set attach: rw)", domain.ErrInvalid, sess.Pool, sess.ID)
@@ -59,6 +64,12 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	case p.Attach:
 		return nil, fmt.Errorf("%w: rw attach needs a session id", domain.ErrInvalid)
 	case p.Pool != "" && p.Key != "":
+		// Checked before keyedSession, so a refused send starts no session.
+		if p.Interrupt {
+			if err := c.checkInterrupt(ctx, "pool:"+p.Pool); err != nil {
+				return nil, err
+			}
+		}
 		if sess, started, err = c.keyedSession(ctx, c.config(), sc, p.Pool, p.Key); err != nil {
 			return nil, err
 		}
