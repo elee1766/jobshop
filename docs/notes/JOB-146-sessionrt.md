@@ -40,9 +40,9 @@ acphost (`proc`, `cgroup`, `userns`, `sandbox`) rather than wrapping it.
 ## Synchronization
 
 `sessionrt` starts no goroutine that outlives its call, except the flock
-waiter in `waitHostExit`, which owns its file and ends when the
-supervisor releases the lock (or is killed), so a stop never leaves it
-reading a closed fd (acphost#227). It holds no package state except the
+waiter in `proc.Detached.Wait` (#1229), which owns its file and ends
+when the supervisor releases the lock (or is killed), so a stop never
+leaves it reading a closed fd (acphost#227). It holds no package state except the
 read-only `DefaultShellProbe` list and its cgroup controller names. The
 controller keeps `cgroupOnce`,
 `hostsMoved`, `slotMu` and the runner map, and joins runners through its

@@ -10,6 +10,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,36 +58,17 @@ func StopDetached(dir string, wait time.Duration) bool {
 		return false
 	}
 	_ = d.Stop()
-	waitHostExit(dir, wait)
+	// Wait returns when supervisor.lock is released or the timeout ends.
+	// Its error (no exit.json, timeout) does not matter: Running decides
+	// the SIGKILL. A timed-out Wait leaves its flock goroutine until the
+	// host exits, which the SIGKILL brings (acphost#227, #1229).
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	_, _ = d.Wait(ctx)
+	cancel()
 	if d.Running() {
 		_ = syscall.Kill(d.Pid, syscall.SIGKILL)
 	}
 	return true
-}
-
-// waitHostExit blocks until the supervisor in dir releases supervisor.lock
-// or wait passes. It is proc.Detached.Wait without the exit record, which
-// StopDetached does not need, and without its race when the timeout wins:
-// Wait closes the lock file while its flock goroutine still reads the fd
-// (acphost#227). Here the goroutine owns the file and closes it when the
-// lock is granted, which the supervisor's exit (or SIGKILL) always brings.
-func waitHostExit(dir string, wait time.Duration) {
-	f, err := os.Open(filepath.Join(dir, proc.LockFile))
-	if err != nil {
-		return
-	}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer func() { _ = f.Close() }()
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_SH)
-	}()
-	t := time.NewTimer(wait)
-	defer t.Stop()
-	select {
-	case <-done:
-	case <-t.C:
-	}
 }
 
 // StopProcs stops processes that still carry the session's env after its
