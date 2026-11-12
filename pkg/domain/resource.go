@@ -95,6 +95,10 @@ const (
 	// SlotReset records a provider reset of a releasing slot: OK ->
 	// ready, else gone. A slot removed while held is deleted.
 	SlotReset = "reset"
+	// SlotHealth records a failed provider health check of a ready slot
+	// (JOB-204): the slot is gone. A slot no longer ready (a claim took
+	// it while the check ran) is left alone: its reset checks it.
+	SlotHealth = "health"
 )
 
 // SlotEvent is one change to a provider slot (#579: replaces AddSlot,

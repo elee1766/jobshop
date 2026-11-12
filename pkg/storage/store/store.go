@@ -279,8 +279,9 @@ type Store interface {
 	// resource names (#407), in one transaction.
 	SetResources(ctx context.Context, r domain.ResourceConfig) error
 	// Slot applies one provider slot event (add, remove, unhealthy,
-	// reset) and returns the slot. Unhealthy on a held slot reopens its
-	// claim without counting a step failure and returns the ticket id.
+	// reset, health) and returns the slot. Unhealthy on a held slot
+	// reopens its claim without counting a step failure and returns the
+	// ticket id. Health (a failed check) marks only a ready slot gone.
 	Slot(ctx context.Context, actor string, e domain.SlotEvent) (domain.Slot, string, error)
 	// ReleaseSlots moves held slots whose claim ended to releasing, then
 	// returns every releasing slot.
