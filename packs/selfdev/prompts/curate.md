@@ -60,12 +60,13 @@ There are two kinds of edit (#592):
      `packs/`, run `go build ./... && go vet ./... && go test ./...`,
      commit with `(#<n>)` in the subject,
      `git push -u origin HEAD`, `gh pr create --base master --body
-     "Closes #<n>. ..."` with the learning ids. Start its run:
-     `jobshop run start pr-work --var issue=<n> --key issue-<n>`. The
-     run starts with a `route` step; `implement` comes after it, so say
-     the PR exists where both read it: `gh issue comment <n> --body "PR
-     <url> head <sha> is open"`, and `jobshop comment -t <route step id>
-     "PR <url> head <sha>"` (id from `jobshop run show <run>`). Mark the
+     "Closes #<n>. ..."` with the learning ids. Then `gh issue comment
+     <n> --body "PR <url> head <sha> is open"` (the implement prompt
+     reads the issue first), `jobshop run start pr-work --var issue=<n>
+     --key issue-<n>` (a trigger may have started it already: same run),
+     and `jobshop comment -t <step id> "PR <url> head <sha>"` on its open
+     step from `jobshop run show <run>`: `route` at first, `implement`
+     once route closes. Mark the
      learnings: `jobshop learn update <ids> --pr <url>`.
    Repo-specific working notes that every session should follow belong
    in a prompt fix, not memory, when they are lasting.
