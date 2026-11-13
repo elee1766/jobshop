@@ -61,9 +61,11 @@ There are two kinds of edit (#592):
      commit with `(#<n>)` in the subject,
      `git push -u origin HEAD`, `gh pr create --base master --body
      "Closes #<n>. ..."` with the learning ids. Start its run:
-     `jobshop run start pr-work --var issue=<n> --key issue-<n>`, find
-     its `implement` step with `jobshop run show <run>`, and
-     `jobshop comment -t <step id> "PR <url> head <sha>"`. Mark the
+     `jobshop run start pr-work --var issue=<n> --key issue-<n>`, then
+     post `PR <url> head <sha>` with `gh issue comment <n>` (the
+     `implement` step does not exist until `route` closes, and it reads
+     the issue first) and on the run's `route` step (`jobshop run show
+     <run>`, `jobshop comment -t <step id> "PR <url> head <sha>"`). Mark the
      learnings: `jobshop learn update <ids> --pr <url>`.
    Repo-specific working notes that every session should follow belong
    in a prompt fix, not memory, when they are lasting.
