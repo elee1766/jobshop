@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.25](https://github.com/gfx-labs/jobshop/compare/v0.10.24...v0.10.25) (2026-11-13)
+
+
+### Features
+
+* **control:** pools keyed by repo and one planner across github packs (JOB-207) ([#1239](https://github.com/gfx-labs/jobshop/issues/1239)) ([ebfcdc1](https://github.com/gfx-labs/jobshop/commit/ebfcdc101554d6bf3dcbcd30f703c66768292630))
+
 ## [0.10.24](https://github.com/gfx-labs/jobshop/compare/v0.10.23...v0.10.24) (2026-11-13)
 
 
