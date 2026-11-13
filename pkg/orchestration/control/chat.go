@@ -161,7 +161,7 @@ func (c *Controller) keyedSession(ctx context.Context, cfg *config.Config, sc sc
 	if err := c.humanSlot(ctx, cfg, pool); err != nil {
 		return domain.Ticket{}, false, err
 	}
-	t, err := c.newSession(ctx, cfg, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key, "")
+	t, err := c.newSession(ctx, cfg, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key, "", "")
 	if errors.Is(err, domain.ErrAlreadyExist) {
 		// A concurrent send created it; the key index allows one open.
 		if t, ok, ferr := find(); ferr == nil && ok {

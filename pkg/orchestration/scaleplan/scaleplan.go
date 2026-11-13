@@ -47,6 +47,9 @@ type Session struct {
 	LastClaim time.Time
 	Created   time.Time
 	Cordon    string // store.Cordon reason, "" when in rotation
+	// Repo is the pool repo key the session serves (JOB-207), "" for the
+	// pool's default repo.
+	Repo string
 	// Exempt: a session resumed from a park (JOB-189). It holds a slot but
 	// is never cordoned for being surplus, so a pool one over its
 	// max_sessions does not cordon it.

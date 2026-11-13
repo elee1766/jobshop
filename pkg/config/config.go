@@ -1430,6 +1430,13 @@ type Pool struct {
 	// instead gets its own git worktree of Repo under its session directory.
 	Dir  string `yaml:"dir"`
 	Repo string `yaml:"repo"`
+	// Repos keys the pool by GitHub repo (JOB-207): owner/name to the
+	// checkout (and ref) sessions for that repo take worktrees of. A
+	// ticket whose meta.github.repo is a key is worked only by a session
+	// started for that key; every other ticket by a session of Repo.
+	// Lets one pool serve several pack instances (packs entry
+	// pools_from). Needs Repo.
+	Repos map[string]PoolRepo `yaml:"repos"`
 	// Ref is the commit-ish new worktrees start from. Default HEAD.
 	Ref string `yaml:"ref"`
 	// Prompt is prepended to every ticket prompt (pool instructions).
@@ -1644,6 +1651,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.Dir == "" && p.Repo == "" {
 			return nil, fmt.Errorf("%s: pool %s: set dir or repo", src("pools", name), name)
+		}
+		if err := p.checkRepos(); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.PromptFile != "" {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)

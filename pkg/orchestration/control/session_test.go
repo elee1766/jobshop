@@ -735,6 +735,71 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	return root, start
 }
 
+// TestPoolKeyedByRepo (JOB-207): a pool with repos starts a session per
+// repo with work. Each claims only its repo's tickets and works in a
+// worktree of that repo's checkout.
+func TestPoolKeyedByRepo(t *testing.T) {
+	root, start := poolRootReal(t, "1m")
+	gitInit := func(name string) string {
+		repo := filepath.Join(root.Dir, name)
+		for _, args := range [][]string{
+			{"init", "-q", "-b", "master", repo},
+			{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"},
+		} {
+			out, err := exec.Command("git", args...).CombinedOutput()
+			require.NoError(t, err, string(out))
+		}
+		return repo
+	}
+	repoA, repoB := gitInit("a"), gitInit("b")
+	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 2\n    idle_timeout: 1m\n    repo: %q\n    ref: master\n    repos:\n      acme/b: {checkout: %q}\n", os.Args[0], repoA, repoB)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
+	stop := start()
+	defer stop()
+
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) rpc.ShowResult {
+		var got rpc.ShowResult
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &got))
+		return got
+	}
+	var ta, tb domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/a","issue":1}}`)}, &ta))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"ACME/B","issue":2}}`)}, &tb))
+	passEventually(t, root.Dir, func() bool {
+		return show(ta.ID).Ticket.Status == domain.StatusClosed && show(tb.ID).Ticket.Status == domain.StatusClosed
+	}, "both tickets closed")
+
+	claimer := func(id string) string {
+		for _, h := range show(id).History {
+			if h.Op == "claim" {
+				return h.Actor
+			}
+		}
+		return ""
+	}
+	sessionRepo := func(id string) string {
+		f, err := domain.DecodeFields[domain.SessionFields](show(id).Ticket)
+		require.NoError(t, err)
+		return f.Repo
+	}
+	sa, sb := claimer(ta.ID), claimer(tb.ID)
+	require.NotEmpty(t, sa)
+	require.NotEmpty(t, sb)
+	assert.Empty(t, sessionRepo(sa), "acme/a has no repos entry: a default session")
+	assert.Equal(t, "acme/b", sessionRepo(sb))
+
+	worktrees := func(repo string) string {
+		out, err := exec.Command("git", "-C", repo, "worktree", "list").CombinedOutput()
+		require.NoError(t, err, string(out))
+		return string(out)
+	}
+	workB := filepath.Join(root.SessionDir(sb), "work")
+	assert.Contains(t, worktrees(repoB), workB, "the acme/b session works in a worktree of its checkout")
+	assert.NotContains(t, worktrees(repoA), workB)
+	assert.Contains(t, worktrees(repoA), filepath.Join(root.SessionDir(sa), "work"))
+}
+
 // TestWorktreeDeleted removes a live session's git worktree, as happened on
 // gasserver (2026-11-01): the session respawns its host with a new worktree
 // and keeps working instead of failing every tool call.

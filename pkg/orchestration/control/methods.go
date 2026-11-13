@@ -565,9 +565,9 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 			// claim a ticket pre-assigned to it by id.
 			return nil, fmt.Errorf("%w: session %s is cordoned", domain.ErrNoWork, holder)
 		}
-		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, store.ClaimNext{
+		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, c.claimNext(c.config(), pool, c.sessionRepo(ctx, holder), store.ClaimNext{
 			Project: proj, Pool: pool, Holder: holder, Lease: c.leaseDur(),
-		})
+		}))
 		if err == nil && len(held) == 0 {
 			if herr := c.claimHook(ctx, sc, r.Ticket); herr != nil {
 				// ClaimNext picks atomically, so the hook sees the ticket
@@ -705,7 +705,7 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 			return nil, err
 		}
 	}
-	t, err := c.newSession(ctx, cfg, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title, p.DisplayName)
+	t, err := c.newSession(ctx, cfg, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title, p.DisplayName, "")
 	if err != nil {
 		return nil, err
 	}
