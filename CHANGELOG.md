@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.27](https://github.com/gfx-labs/jobshop/compare/v0.10.26...v0.10.27) (2026-11-13)
+
+
+### Bug fixes
+
+* **control:** name hook errors in run escalations and resume finished runs ([#1246](https://github.com/gfx-labs/jobshop/issues/1246)) ([#1247](https://github.com/gfx-labs/jobshop/issues/1247)) ([513417c](https://github.com/gfx-labs/jobshop/commit/513417ce3e2598d86dff19c8189bc1569bd67af3))
+
 ## [0.10.26](https://github.com/gfx-labs/jobshop/compare/v0.10.25...v0.10.26) (2026-11-13)
 
 
