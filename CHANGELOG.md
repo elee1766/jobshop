@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.28](https://github.com/gfx-labs/jobshop/compare/v0.10.27...v0.10.28) (2026-11-13)
+
+
+### Bug fixes
+
+* **session:** treat -32002 with data.sessionId as an unknown ACP session (JOB-214) ([#1249](https://github.com/gfx-labs/jobshop/issues/1249)) ([14288bf](https://github.com/gfx-labs/jobshop/commit/14288bf670540aef71b3db9d2170fb5c1d0361fd))
+
 ## [0.10.27](https://github.com/gfx-labs/jobshop/compare/v0.10.26...v0.10.27) (2026-11-13)
 
 
