@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.26](https://github.com/gfx-labs/jobshop/compare/v0.10.25...v0.10.26) (2026-11-13)
+
+
+### Bug fixes
+
+* **packs/selfdev:** curator comments the PR on the issue and route step, not a missing implement step ([#1241](https://github.com/gfx-labs/jobshop/issues/1241)) ([#1242](https://github.com/gfx-labs/jobshop/issues/1242)) ([e1b46ce](https://github.com/gfx-labs/jobshop/commit/e1b46ce78c4ff926ffc73abf92276cf3c10e6e07))
+
 ## [0.10.25](https://github.com/gfx-labs/jobshop/compare/v0.10.24...v0.10.25) (2026-11-13)
 
 
