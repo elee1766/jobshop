@@ -997,12 +997,21 @@ func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.Lo
 
 func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	// A "forget" file makes the agent lose its sessions once, like jcode
-	// after a restart it did not reload (JOB-65).
-	if os.Remove("forget") == nil {
+	// after a restart it did not reload (JOB-65). With "towa" in it the
+	// prompt fails the way towa reports it (JOB-214).
+	towa := false
+	if b, err := os.ReadFile("forget"); err == nil && os.Remove("forget") == nil {
 		clear(a.known)
+		towa = string(b) == "towa"
 	}
 	// Like jcode: a new process knows only sessions it created or loaded.
 	if !a.known[p.SessionId] {
+		if towa {
+			return acp.PromptResponse{}, &acp.RequestError{
+				Code: -32002, Message: "Resource not found",
+				Data: map[string]any{"sessionId": string(p.SessionId)},
+			}
+		}
 		return acp.PromptResponse{}, &acp.RequestError{Code: -32602, Message: "Unknown ACP session id: " + string(p.SessionId)}
 	}
 	a.busy.Store(true)
@@ -1812,6 +1821,14 @@ func TestLoadFallback(t *testing.T) {
 // seeded with the journal summary, without a restart and keeping the
 // held ticket (JOB-65).
 func TestUnknownSessionFallback(t *testing.T) {
+	// The forget file's content picks the agent's error: empty is jcode's
+	// -32602, "towa" is -32002 with data.sessionId (JOB-214).
+	for name, forget := range map[string]string{"jcode": "", "towa": "towa"} {
+		t.Run(name, func(t *testing.T) { testUnknownSessionFallback(t, forget) })
+	}
+}
+
+func testUnknownSessionFallback(t *testing.T, forget string) {
 	root, start := poolRoot(t, "1m")
 	stop := start()
 	defer stop()
@@ -1838,7 +1855,7 @@ func TestUnknownSessionFallback(t *testing.T) {
 	oldACP := sf().ACPSession
 	require.NotEmpty(t, oldACP)
 
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "forget"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "forget"), []byte(forget), 0o600))
 	var second domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "second-ticket-title", Pool: "dev"}, &second))
 	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == domain.StatusClosed }, "second ticket not closed")

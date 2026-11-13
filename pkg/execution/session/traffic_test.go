@@ -94,6 +94,14 @@ func TestPromptErrors(t *testing.T) {
 	assert.True(t, UnknownSession(req(-32602, "Unknown ACP session id")))
 	assert.False(t, UnknownSession(req(-32000, "Unknown ACP session id")))
 	assert.False(t, UnknownSession(assert.AnError))
+	// towa's shape (JOB-214): -32002 counts only with data.sessionId.
+	notFound := func(data any) error {
+		return &acp.RequestError{Code: -32002, Message: "Resource not found", Data: data}
+	}
+	assert.True(t, UnknownSession(notFound(map[string]any{"sessionId": "x"})))
+	assert.False(t, UnknownSession(notFound(nil)))
+	assert.False(t, UnknownSession(notFound(map[string]any{"path": "x"})))
+	assert.False(t, UnknownSession(notFound("sessionId")))
 	assert.True(t, RateLimited(req(-32000, "HTTP 429 Too Many Requests")))
 	assert.True(t, RateLimited(req(-32000, "model is unavailable")))
 	assert.False(t, RateLimited(assert.AnError))
