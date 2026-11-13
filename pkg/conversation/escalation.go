@@ -82,8 +82,13 @@ func Hold(t domain.Ticket) bool {
 		!slices.Contains(t.Labels, attention.QuestionLabel) && domain.MetaString(t.Meta, domain.MetaQuestion, "ticket") == ""
 }
 
-// Reason is why the run's steps need a human.
-func Reason(steps []domain.Ticket) string {
+// Reason is why the run needs a human: its failed callback (hookErr, the
+// run's fields.hook_error), else what its steps say. A failed callback is
+// not a step failure, even when every step closed done (#1246).
+func Reason(hookErr string, steps []domain.Ticket) string {
+	if hookErr != "" {
+		return "its workflow callback failed: " + clip(hookErr, maxReason)
+	}
 	for _, s := range steps {
 		if domain.ReviewCapped(s) {
 			return "a review step requested changes past its review round limit"
@@ -101,6 +106,10 @@ func ClassifyHold(ctx context.Context, s store.Store, t domain.Ticket) Cause {
 		x := Cause{
 			Kind: CauseRun, Run: domain.MetaString(t.Meta, domain.MetaRun, "id"), Workflow: domain.MetaString(t.Meta, domain.MetaRun, "workflow"),
 			IssueRef: IssueRef(t), Reason: "a step failed at its retry limit",
+		}
+		if hookErr := runHookError(ctx, s, x.Run); hookErr != "" {
+			x.Reason = Reason(hookErr, nil)
+			return x
 		}
 		if steps, err := store.Children(ctx, s, x.Run); err == nil {
 			for i := len(steps) - 1; i >= 0; i-- {
@@ -164,6 +173,20 @@ func ClassifyHold(ctx context.Context, s store.Store, t domain.Ticket) Cause {
 		}
 	}
 	return x
+}
+
+// runHookError is the run's fields.hook_error, "" when it has none or
+// cannot be read.
+func runHookError(ctx context.Context, s store.Store, id string) string {
+	run, err := s.Get(ctx, id)
+	if err != nil || run.Kind != domain.KindRun {
+		return ""
+	}
+	f, err := domain.DecodeFields[domain.RunFields](run)
+	if err != nil {
+		return ""
+	}
+	return f.HookError
 }
 
 // failedReason is the note of the worker's last failed or dropped report.

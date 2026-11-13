@@ -142,10 +142,16 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 		return
 	}
 	c.log.InfoContext(ctx, "escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
-	c.record(ctx, domain.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
+	c.record(ctx, domain.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: %s (escalation %s)", run.ID, f.Workflow, c.runReason(ctx, run.ID, f), t.ID), "")
 	c.ensureEscalationChat(ctx, cfg, t)
 	// An earlier round of this run is replaced by the new one (JOB-195).
 	c.settleEscalations(ctx, run.ID)
+}
+
+// runReason is why run needs a human, for a learning summary.
+func (c *Controller) runReason(ctx context.Context, runID string, f domain.RunFields) string {
+	steps, _ := store.Children(ctx, c.store, runID)
+	return conversation.Reason(f.HookError, steps)
 }
 
 // escalationBody lists the run and, per step, its attempts, resolution and
@@ -156,7 +162,7 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, conversation.Reason(steps))
+	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, conversation.Reason(f.HookError, steps))
 	if len(f.Vars) > 0 {
 		fmt.Fprintf(&b, "Vars: %v\n", f.Vars)
 	}

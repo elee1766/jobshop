@@ -268,6 +268,10 @@ type RunFields struct {
 	// Escalations counts needs_human transitions; each files one
 	// escalation ticket keyed on it.
 	Escalations int `json:"escalations,omitempty"`
+	// HookError is why the run's last callback invocation failed, set
+	// when that failure moved it to needs_human and cleared when it runs
+	// again. The escalation names it instead of a step (#1246).
+	HookError string `json:"hook_error,omitempty"`
 }
 
 // RunAutomation pins hook identity and acknowledges atomic action batches.

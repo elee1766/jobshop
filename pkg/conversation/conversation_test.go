@@ -303,6 +303,13 @@ func TestClassifyHold(t *testing.T) {
 	label := conversation.ClassifyHold(ctx, s, domain.Ticket{ID: "l", Title: "stuck", Body: "needs a call"})
 	assert.Equal(t, conversation.CauseLabel, label.Kind)
 	assert.Equal(t, "needs a call", label.Reason)
+
+	// A failed callback holds the run, not a step (#1246).
+	s.tickets["r2"] = domain.Ticket{ID: "r2", Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"work","state":"needs_human","hook_error":"var \"pool_prefix\" is not set"}`)}
+	hook := conversation.ClassifyHold(ctx, s, domain.Ticket{ID: "esc2", Meta: json.RawMessage(`{"run":{"id":"r2","workflow":"work","escalation":"r2/1"}}`)})
+	assert.Equal(t, conversation.CauseRun, hook.Kind)
+	assert.Empty(t, hook.Held)
+	assert.Equal(t, `its workflow callback failed: var "pool_prefix" is not set`, hook.Reason)
 }
 
 func TestPolicy(t *testing.T) {
