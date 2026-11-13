@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.24](https://github.com/gfx-labs/jobshop/compare/v0.10.23...v0.10.24) (2026-11-13)
+
+
+### Bug fixes
+
+* **packs/github:** linear implement reports progress on the step and lists each acceptance item ([#1236](https://github.com/gfx-labs/jobshop/issues/1236)) ([#1237](https://github.com/gfx-labs/jobshop/issues/1237)) ([966f737](https://github.com/gfx-labs/jobshop/commit/966f737c2656dc3a1041ba36ab4a6d1f9cf08cf6))
+
 ## [0.10.23](https://github.com/gfx-labs/jobshop/compare/v0.10.22...v0.10.23) (2026-11-12)
 
 
