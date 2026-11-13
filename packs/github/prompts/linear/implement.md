@@ -6,7 +6,10 @@ included: a later comment (an addendum, an "Expected:" line) overrides
 the description. `jobshop linear
 context {{.issue}}` adds labels, blockers, parent and children. Post progress,
 questions and design notes as Linear comments
-(`jobshop linear comment {{.issue}} "<text>"`), not on the ticket. A
+(`jobshop linear comment {{.issue}} "<text>"`). Also report state on
+this step at least every hour of a long change (`jobshop report progress
+"<what is done>"`): triage reads only the step, and a step with nothing on
+it for 3h is flagged idle even while you commit. A
 question only a person can answer, asked on the issue some other way
 than `jobshop report waiting --question` (which labels it for you when
 the host sets `linear.ask_on_issue: true`):
@@ -49,9 +52,10 @@ carry on),
 `{{.check_cmd}}`, commit with
 `({{.issue}})` in the subject. Before the first push, run `jobshop
 linear issue {{.issue}}` again: Canceled or Done means stop (comment
-why, `jobshop close --outcome done`, no PR); check every Expected or
-acceptance line and every comment newer than your first read is met,
-defaults included. If the issue has a completion gate, or its acceptance
+why, `jobshop close --outcome done`, no PR); check every numbered change,
+Expected or acceptance line and every comment newer than your first read
+is met, defaults included: comment on this step one line per item with
+the test or file that meets it. If the issue has a completion gate, or its acceptance
 list needs more than this PR delivers, this is a slice: say `Part of`
 instead of `Fixes` in the PR body, and name the slice in your comment on
 the issue. Do not report a slice as the finished issue. Then `git push -u origin HEAD`, then
