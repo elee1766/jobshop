@@ -1157,6 +1157,8 @@ export interface PackInstance {
   pools: string[];
   workflows: string[];
   triggers: string[];
+  pools_from?: string;
+  pool_prefix?: string;
 }
 
 export interface PoolListParams {

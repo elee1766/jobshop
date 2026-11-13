@@ -53,6 +53,11 @@ func ValidPrefix(s string) bool { return prefixPattern.MatchString(s) }
 // workflows (#184).
 const PrefixVar = "pack_prefix"
 
+// PoolPrefixVar is the prefix the instance's pools carry: PrefixVar, or
+// for an entry with pools_from that entry's prefix (JOB-207). Prompts
+// name pools with it (--pool {{.pool_prefix}}dev).
+const PoolPrefixVar = "pool_prefix"
+
 // Ref includes a reusable pack directory.
 type Ref struct {
 	// Path is the pack directory. Relative paths resolve against the
@@ -119,6 +124,11 @@ type Instance struct {
 	Pools     []string       `json:"pools"`
 	Workflows []string       `json:"workflows"`
 	Triggers  []string       `json:"triggers"`
+	// PoolsFrom names the packs entry whose pools this one uses (JOB-207);
+	// PoolPrefix is that entry's prefix, which those pools carry. Pools
+	// then lists the shared pools.
+	PoolsFrom  string `json:"pools_from,omitempty"`
+	PoolPrefix string `json:"pool_prefix,omitempty"`
 }
 
 // summarize builds one packs entry's Instance from its loaded layers.

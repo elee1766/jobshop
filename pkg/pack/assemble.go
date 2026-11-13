@@ -181,7 +181,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 			return nil, packErr(err)
 		}
 		if ref.Prefix != "" {
-			prefixLayers(layers, ref.Prefix)
+			prefixLayers(layers, ref.Prefix, nil)
 			for i := range layers {
 				layers[i].textSources = prefixSources(layers[i].textSources, ref.Prefix)
 			}
@@ -288,6 +288,7 @@ func (ld loader) loadPackFile(file string, given map[string]any, prefix string, 
 	maps.Copy(vars, h.Defaults)
 	maps.Copy(vars, given)
 	vars[PrefixVar] = prefix
+	vars[PoolPrefixVar] = prefix
 	if err := renderDefaults(vars, h.Defaults, given); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}

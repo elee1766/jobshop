@@ -18,7 +18,7 @@ failed attempt; a plain release is one).
    newest master commit instead.
    Red: unless a `ci-repair` run for
    that SHA is open (`jobshop run list`), file a priority-0 dev ticket
-   for it (`--pool {{.pack_prefix}}dev -p 0`), comment it here, and
+   for it (`--pool {{.pool_prefix}}dev -p 0`), comment it here, and
    `jobshop close -r failed`.
    A newer master commit that contains <sha> (`git merge-base
    --is-ancestor <sha> <newer>`) with green CI counts as green: the red

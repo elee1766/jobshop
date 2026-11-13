@@ -28,6 +28,9 @@ func (ld loader) loadCUE(file string) ([]layer, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: packs must be a mapping of named CUE instances", file)
 		}
+		// Every entry's prefix first: pools_from (JOB-207) names another
+		// entry and takes its prefix for the pools.
+		prefixes := map[string]string{}
 		for _, name := range slices.Sorted(maps.Keys(packs)) {
 			if !NamePattern.MatchString(name) {
 				return nil, fmt.Errorf("%s: packs.%s: invalid instance name", file, name)
@@ -35,18 +38,6 @@ func (ld loader) loadCUE(file string) ([]layer, error) {
 			instance, ok := packs[name].(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("%s: packs.%s must be a mapping", file, name)
-			}
-			path, ok := instance["path"].(string)
-			if !ok || path == "" {
-				return nil, fmt.Errorf("%s: packs.%s.path: asset directory is required", file, name)
-			}
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(FileDir(file), path)
-			}
-			if info, err := os.Stat(path); err != nil {
-				return nil, fmt.Errorf("%s: packs.%s.path: %w", file, name, err)
-			} else if !info.IsDir() {
-				return nil, fmt.Errorf("%s: packs.%s.path must name a directory", file, name)
 			}
 			prefix := name + "-"
 			if raw, exists := instance["prefix"]; exists {
@@ -59,6 +50,28 @@ func (ld loader) loadCUE(file string) ([]layer, error) {
 			if prefix != "" && !prefixPattern.MatchString(prefix) {
 				return nil, fmt.Errorf("%s: packs.%s.prefix %q must match %s", file, name, prefix, prefixPattern)
 			}
+			prefixes[name] = prefix
+		}
+		owners := map[string]int{} // entry name -> index in summaries
+		type entry struct {
+			name, path, prefix, poolsFrom string
+			l                             layer
+		}
+		var entries []entry
+		for _, name := range slices.Sorted(maps.Keys(packs)) {
+			instance := packs[name].(map[string]any)
+			path, ok := instance["path"].(string)
+			if !ok || path == "" {
+				return nil, fmt.Errorf("%s: packs.%s.path: asset directory is required", file, name)
+			}
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(FileDir(file), path)
+			}
+			if info, err := os.Stat(path); err != nil {
+				return nil, fmt.Errorf("%s: packs.%s.path: %w", file, name, err)
+			} else if !info.IsDir() {
+				return nil, fmt.Errorf("%s: packs.%s.path must name a directory", file, name)
+			}
 			vars := map[string]any{}
 			if raw, exists := instance["vars"]; exists {
 				var ok bool
@@ -67,21 +80,71 @@ func (ld loader) loadCUE(file string) ([]layer, error) {
 					return nil, fmt.Errorf("%s: packs.%s.vars must be a mapping", file, name)
 				}
 			}
+			poolsFrom := ""
+			if raw, exists := instance["pools_from"]; exists {
+				var ok bool
+				if poolsFrom, ok = raw.(string); !ok {
+					return nil, fmt.Errorf("%s: packs.%s.pools_from must be a string", file, name)
+				}
+				if _, known := prefixes[poolsFrom]; poolsFrom != "" && (!known || poolsFrom == name) {
+					return nil, fmt.Errorf("%s: packs.%s.pools_from %q must name another packs entry", file, name, poolsFrom)
+				}
+			}
+			vars[PoolPrefixVar] = prefixes[name]
+			if poolsFrom != "" {
+				vars[PoolPrefixVar] = prefixes[poolsFrom]
+			}
 			delete(instance, "path")
 			delete(instance, "prefix")
 			delete(instance, "vars")
+			delete(instance, "pools_from")
 			l, err := ld.cueLayer(file, path, instance, vars, cueEntrySources(result, instance, "packs", name), false)
 			if err != nil {
 				return nil, fmt.Errorf("%s: packs.%s: %w", file, name, err)
 			}
-			child := []layer{l}
-			if prefix != "" {
-				prefixLayers(child, prefix)
-				child[0].textSources = prefixSources(l.textSources, prefix)
-				child[0].entrySources = prefixSources(l.entrySources, prefix)
+			entries = append(entries, entry{name, path, prefixes[name], poolsFrom, l})
+		}
+		// Entries that take their pools from another (pools_from) are renamed
+		// after it: every pool name it declares maps to its pool.
+		summaries = make([]Instance, len(entries))
+		for i, e := range entries {
+			owners[e.name] = i
+		}
+		for _, sharing := range []bool{false, true} {
+			for i, e := range entries {
+				if (e.poolsFrom != "") != sharing {
+					continue
+				}
+				var pools map[string]string
+				if sharing {
+					pools = sharedPools(summaries[owners[e.poolsFrom]], prefixes[e.poolsFrom])
+				}
+				child := []layer{e.l}
+				if e.prefix != "" || pools != nil {
+					prefixLayers(child, e.prefix, pools)
+					child[0].textSources = renameSources(e.l.textSources, e.prefix, pools)
+					child[0].entrySources = renameSources(e.l.entrySources, e.prefix, pools)
+				}
+				entries[i].l = child[0]
+				summaries[i] = summarize(e.path, e.prefix, child)
+				if sharing {
+					summaries[i].PoolsFrom, summaries[i].PoolPrefix = e.poolsFrom, prefixes[e.poolsFrom]
+				}
 			}
-			summaries = append(summaries, summarize(path, prefix, child))
-			layers = append(layers, child...)
+		}
+		if err := checkPoolsFrom(summaries, owners); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		// A sharing entry uses every pool of its owner, declared or not:
+		// its hooks resolve pool names (start_step(pool = "triage")) and
+		// its runs' steps are checked against this list.
+		for i := range summaries {
+			if from := summaries[i].PoolsFrom; from != "" {
+				summaries[i].Pools = slices.Clone(summaries[owners[from]].Pools)
+			}
+		}
+		for _, e := range entries {
+			layers = append(layers, e.l)
 		}
 		delete(exported, "packs")
 	}

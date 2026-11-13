@@ -181,6 +181,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | --- | --- |
 | `repo` | GitHub `owner/repo`; issues, PRs and the `master-red` check use it |
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
+| `pools_from` (entry field, not a var) | Another packs entry of this pack whose pools this one shares: one planner and one set of dev, triage, refinery and deploy-check pools across repos. The entry adds its repo to those pools' `repos:` and drops its `replan` trigger (`docs/notes/JOB-207-shared-pools.md`) |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
 | `propose_targets` | `true` (default): when targets run out the planner files one issue labeled `proposed` (`Proposed target: ...`, created if missing) and a `proposed` ticket that `jobshop attention` lists as a decision. A human approves by relabeling it `target`. `false`: only humans file targets (#488) |

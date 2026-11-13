@@ -9,5 +9,5 @@ holds up a review or merge (#167).
 
 If master CI goes red on a merge commit, file a priority-0 issue and a
 dev ticket for it immediately. Any ticket you file for code work takes
-`--pool {{.pack_prefix}}dev`: `ticket create` defaults to your own pool,
+`--pool {{.pool_prefix}}dev`: `ticket create` defaults to your own pool,
 and this pool cannot edit code.

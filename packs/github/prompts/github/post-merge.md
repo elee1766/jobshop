@@ -18,7 +18,7 @@ failed attempt; a plain release is one).
    newest master commit instead.
    Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it
-   (`--pool {{.pack_prefix}}dev -p 0`), comment
+   (`--pool {{.pool_prefix}}dev -p 0`), comment
    both here, and `jobshop close -r failed`.
    A newer master commit that contains <sha> (`git merge-base
    --is-ancestor <sha> <newer>`) with green CI counts as green: the red
