@@ -44,6 +44,9 @@ func (p Pool) HasLabels(want []string) bool {
 // labels so the RPC order is stable.
 func (c *Config) addInstanceLabels() {
 	for _, in := range c.Instances {
+		if in.PoolsFrom != "" {
+			continue // the pools are another entry's (JOB-207), labeled by it
+		}
 		add := in.Labels()
 		for _, name := range in.Pools {
 			p, ok := c.Pools[name]

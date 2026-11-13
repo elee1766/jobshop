@@ -214,6 +214,11 @@ type Filter struct {
 	// Meta adds more meta matches, all required (#541). With MetaPack
 	// at most MaxMetaFilters in total.
 	Meta []MetaMatch
+	// Repo keeps tickets whose meta.github.repo is Repo; RepoNotIn those
+	// whose meta.github.repo is none of them, or unset. Both ignore case
+	// (JOB-207: pools keyed by repo).
+	Repo      string
+	RepoNotIn []string
 	// Key, Workflow and State match fields.key, fields.workflow and
 	// fields.state.
 	Key, Workflow, State string
@@ -263,6 +268,10 @@ type ClaimNext struct {
 	Holder  string
 	Kinds   []domain.Kind // empty means ClaimableKinds
 	Lease   time.Duration
+	// Repo and RepoNotIn narrow the pool queue as Filter's do; the
+	// holder's own and pre-assigned tickets are not narrowed (JOB-207).
+	Repo      string
+	RepoNotIn []string
 }
 
 // Store is the only persistence interface. Every write records history

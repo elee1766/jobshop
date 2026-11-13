@@ -80,6 +80,9 @@ type runner struct {
 	// agent and projectName are the session's, for prompt rule matching.
 	// Recomputed from the ticket in startRunner.
 	agent, projectName string
+	// repo is the pool repo key the session was started for (JOB-207),
+	// SessionFields.Repo. Fixed for the session's life.
+	repo string
 	// systemDue is set when a host starts (new or respawned): its next
 	// turn carries the system prompt rules. Guarded by mu. Stored
 	// (SessionFields.SystemDue): a restart between a spawn and the first
@@ -480,6 +483,7 @@ func (c *Controller) startRunner(t domain.Ticket) {
 	if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
 		r.agent = f.Agent
+		r.repo = f.Repo
 		r.injected = f.Injected
 		r.systemDue = f.SystemDue
 		if f.BackoffUntil != nil && f.BackoffUntil.After(c.now()) {
@@ -946,7 +950,7 @@ func (r *runner) worktreeMissing() bool {
 	if err != nil {
 		return false
 	}
-	if p, ok := r.c.config().Pools[t.Pool]; !ok || p.Repo == "" {
+	if repo, _ := r.c.sessionCheckout(r.c.config(), t); repo == "" {
 		return false
 	}
 	_, err = os.Stat(r.c.sessionCwd(t))
@@ -1110,9 +1114,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				}
 			}
 		default:
-			t, _, err = r.c.store.ClaimNext(ctx, store.ClaimNext{
+			t, _, err = r.c.store.ClaimNext(ctx, r.c.claimNext(r.c.config(), r.pool, r.repo, store.ClaimNext{
 				Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.leaseDur(),
-			})
+			}))
 		}
 		switch {
 		case errors.Is(err, domain.ErrNoWork):
@@ -1798,11 +1802,56 @@ func withoutEnv(env []string, keys ...string) []string {
 // whether the pool uses a worktree. A missing repo, or a ref or path git
 // rejects, is a permanent error (#146).
 func (c *Controller) ensureWorktree(t domain.Ticket, cwd string) (bool, error) {
-	p, ok := c.config().Pools[t.Pool]
-	if !ok || p.Repo == "" {
+	repo, ref := c.sessionCheckout(c.config(), t)
+	if repo == "" {
 		return false, nil
 	}
-	return true, c.addWorktree(p.Repo, p.Ref, cwd, "jobshop session "+t.ID, "pool "+t.Pool)
+	return true, c.addWorktree(repo, ref, cwd, "jobshop session "+t.ID, "pool "+t.Pool)
+}
+
+// sessionCheckout is the git checkout and ref session t takes its
+// worktree from: the pool's Repos entry for the session's repo key
+// (JOB-207), else the pool's repo. "" when the pool has no repo.
+func (c *Controller) sessionCheckout(cfg *config.Config, t domain.Ticket) (repo, ref string) {
+	p, ok := cfg.Pools[t.Pool]
+	if !ok || p.Repo == "" {
+		return "", ""
+	}
+	key := ""
+	if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
+		key = f.Repo
+	}
+	return p.Checkout(key)
+}
+
+// claimNext narrows a pool queue claim to the session's repo key on a
+// pool keyed by repo (JOB-207): a keyed session takes only its repo's
+// tickets, a default session every other repo's.
+func (c *Controller) claimNext(cfg *config.Config, pool, repo string, req store.ClaimNext) store.ClaimNext {
+	p := cfg.Pools[pool]
+	if len(p.Repos) == 0 {
+		return req
+	}
+	if key := p.RepoKey(repo); key != "" {
+		req.Repo = key
+	} else {
+		req.RepoNotIn = p.RepoKeys()
+	}
+	return req
+}
+
+// sessionRepo is a session's pool repo key (SessionFields.Repo), ""
+// when it has none or is not a session.
+func (c *Controller) sessionRepo(ctx context.Context, id string) string {
+	t, err := c.store.Get(ctx, id)
+	if err != nil || t.Kind != domain.KindSession {
+		return ""
+	}
+	f, err := domain.DecodeFields[domain.SessionFields](t)
+	if err != nil {
+		return ""
+	}
+	return f.Repo
 }
 
 // addWorktree makes a locked, detached worktree of repo at ref (default
@@ -1860,8 +1909,8 @@ func worktreeAddPermanent(out string) bool {
 // for the WARN (#154). It refuses while the ticket is open or the host is
 // alive: a live session's worktree must never go.
 func (c *Controller) removeWorktree(cfg *config.Config, t domain.Ticket, caller string) {
-	p, ok := cfg.Pools[t.Pool]
-	if !ok || p.Repo == "" {
+	repo, _ := c.sessionCheckout(cfg, t)
+	if repo == "" {
 		return
 	}
 	cwd := c.sessionCwdIn(cfg, t)
@@ -1879,7 +1928,7 @@ func (c *Controller) removeWorktree(cfg *config.Config, t domain.Ticket, caller 
 	// The worktree is locked so outside `git worktree remove` (gh pr merge
 	// removing the worktree of a deleted branch) fails; two --force
 	// override the lock.
-	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "remove", "--force", "--force", cwd).CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "-C", repo, "worktree", "remove", "--force", "--force", cwd).CombinedOutput(); err != nil {
 		c.log.Warn("git worktree remove", "session", t.ID, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 }
@@ -2024,8 +2073,9 @@ func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
 // newSession creates a session ticket, opens its CLI socket and, when its
 // agent is configured, starts its driver. Sessions whose agent is not in
 // the config are external: something else (a human running an agent with
-// JOBSHOP_SOCKET) drives them.
-func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, project, pool, agent, key, title, displayName string) (domain.Ticket, error) {
+// JOBSHOP_SOCKET) drives them. repo is the pool repo key (JOB-207), ""
+// for the pool's default repo.
+func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, project, pool, agent, key, title, displayName, repo string) (domain.Ticket, error) {
 	if agent == "" {
 		return domain.Ticket{}, fmt.Errorf("%w: agent is required", domain.ErrInvalid)
 	}
@@ -2040,7 +2090,7 @@ func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, 
 	if displayName == "" {
 		displayName = cfg.Pools[pool].DisplayName
 	}
-	fields, err := json.Marshal(domain.SessionFields{Agent: agent, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
+	fields, err := json.Marshal(domain.SessionFields{Agent: agent, Repo: repo, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
 	if err != nil {
 		c.slotMu.Unlock()
 		return domain.Ticket{}, err
@@ -2049,6 +2099,9 @@ func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, 
 		title = agent + " session"
 		if pool != "" {
 			title = pool + " " + title
+		}
+		if repo != "" {
+			title += " for " + repo
 		}
 	}
 	t, err := store.Create(ctx, c.store, actor, store.NewTicket{

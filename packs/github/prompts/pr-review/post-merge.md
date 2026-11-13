@@ -14,7 +14,7 @@ failed attempt; a plain release is one).
    Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success,workflow={{.ci_workflow}}' 'github.checks:repo={{.repo}},sha=<sha>,state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "master CI on <sha>"`
    and end the turn. Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it
-   (`--pool {{.pack_prefix}}dev -p 0`), comment
+   (`--pool {{.pool_prefix}}dev -p 0`), comment
    both here, and `jobshop close -r failed`. Cancelled (the wait ends
    `invalidated: checks cancelled`): a newer push superseded that run,
    it is not red. Wait the same way on the newest master commit instead.

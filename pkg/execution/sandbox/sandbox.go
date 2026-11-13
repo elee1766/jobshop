@@ -82,9 +82,15 @@ func BuildSandbox(cfg *config.Config, pool, own, exe, cwd, home string) (*sandbo
 	if !Within(cwd, own) {
 		rw(cwd)
 	}
-	// Worktree commits write objects and refs in the main checkout's .git.
+	// Worktree commits write objects and refs in the main checkout's .git:
+	// the one cwd belongs to (a keyed repo's checkout, JOB-207), else the
+	// pool repo's (a worktree not made yet).
 	if p := cfg.Pools[pool]; p.Repo != "" {
-		if gd := GitCommonDir(p.Repo); gd != "" {
+		gd := GitCommonDir(cwd)
+		if gd == "" {
+			gd = GitCommonDir(p.Repo)
+		}
+		if gd != "" {
 			rw(gd)
 		}
 	}

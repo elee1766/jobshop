@@ -18,6 +18,9 @@ func (c *Config) HookScope(owner string) *domain.RunScope {
 		if in.Prefix != "" {
 			prefixes = append(prefixes, in.Prefix)
 		}
+		if in.PoolPrefix != "" {
+			prefixes = append(prefixes, in.PoolPrefix)
+		}
 	}
 	add := func(kind, name, project string, into map[string]domain.ScopeRef) {
 		inputs := []string{name}
@@ -80,12 +83,20 @@ func hookCandidates(in pack.Instance, kind string) []string {
 
 // HookReadName maps a pool or workflow name a hook reads with tickets(),
 // runs() or sessions() to its own instance's prefixed name when that
-// exists, the way ResolveHookReference does for actions (#1221). Any
+// exists, the way ResolveHookReference does for actions (#1221). A pool
+// of an instance with pools_from takes that prefix instead (JOB-207). Any
 // other name is returned unchanged: reads see the whole store.
 func (c *Config) HookReadName(owner, kind, name string) string {
 	own := c.hookInstance(owner)
-	if name != "" && own != nil && own.Prefix != "" && slices.Contains(hookCandidates(*own, kind), own.Prefix+name) {
-		return own.Prefix + name
+	if name == "" || own == nil {
+		return name
+	}
+	prefix := own.Prefix
+	if kind == "pool" && own.PoolsFrom != "" {
+		prefix = own.PoolPrefix
+	}
+	if prefix != "" && slices.Contains(hookCandidates(*own, kind), prefix+name) {
+		return prefix + name
 	}
 	return name
 }

@@ -209,7 +209,8 @@ loads it. Keep the two in sync.
   GraphQL, like `gh api`; mutations ask the `linear-api-mutation`
   guard, `docs/notes/546-linear-api.md`).
 - **Several repos.** One `packs:` entry per repo, each with its own
-  `prefix:` and `vars`.
+  `prefix:` and `vars`. To share one planner and one set of dev pools,
+  a CUE entry sets `pools_from: <other entry>` (`docs/notes/JOB-207-shared-pools.md`).
 - **A scheduled report (#508).** A cron trigger starts a one-step run
   whose prompt ends with `jobshop artifact deliver`. The artifact
   carries the trigger name, so `jobshop artifact list --trigger` and

@@ -5,8 +5,15 @@ package github
 #Pack: {
 	let V = vars
 	let P = prefix
+	let S = pools_from != ""
 	path:   *"packs/github" | string
 	prefix: *"" | string
+	// pools_from names another packs entry of this pack whose pools this
+	// one shares (JOB-207): one planner, dev, triage, refinery and
+	// deploy-check across repos. This entry then only adds its repo to
+	// the shared pools (each session keyed to one repo works in that
+	// repo's checkout) and a plan rule naming its workflows.
+	pools_from: *"" | string
 	vars: {
 		repo:                   string
 		checkout:               string
@@ -68,53 +75,71 @@ package github
 		...
 	}
 	_admin: ["session-list", "session-restart", "trigger-list", "report-incidents", "attention", "activity", "handoff"]
-	pools: {
-		dev: _pool & {
-			max_sessions: V.dev_sessions
-			model:        V.dev_model
-			effort:       V.dev_effort
-			prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/dev.md"
+	// A sharing entry declares only the repos entry of each shared pool
+	// that works code; the loader names them after the pools_from entry.
+	_repos: repos: "\(V.repo)": checkout: V.checkout
+	if S {
+		pools: {
+			dev:            _repos
+			"dev-sonnet":   _repos
+			triage:         _repos
+			refinery:       _repos
+			"deploy-check": _repos
+			...
 		}
-		"dev-sonnet": _pool & {
-			max_sessions: V.dev_sonnet_sessions
-			model:        V.dev_sonnet_model
-			effort:       V.dev_sonnet_effort
-			prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/dev.md"
+	}
+	if !S {
+		pools: {
+			dev: _pool & {
+				max_sessions: V.dev_sessions
+				model:        V.dev_model
+				effort:       V.dev_effort
+				prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/dev.md"
+			}
+			"dev-sonnet": _pool & {
+				max_sessions: V.dev_sonnet_sessions
+				model:        V.dev_sonnet_model
+				effort:       V.dev_sonnet_effort
+				prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/dev.md"
+			}
+			plan: _pool & {
+				max_sessions: 1
+				prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/plan.md"
+				admin:        _admin
+			}
+			triage: _pool & {
+				max_sessions: 1
+				model:        V.triage_model
+				effort:       V.triage_effort
+				admin:        _admin
+			}
+			refinery: _pool & {
+				max_sessions: V.refinery_sessions
+				model:        V.refinery_model
+				effort:       V.refinery_effort
+				prompt_file:  "\(V.asset_prefix)prompts/refinery.md"
+			}
+			"deploy-check": _pool & {
+				max_sessions: V.deploy_sessions
+				prompt_file:  "\(V.asset_prefix)prompts/deploy-check.md"
+			}
+			...
 		}
-		plan: _pool & {
-			max_sessions: 1
-			prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/plan.md"
-			admin:        _admin
-		}
-		triage: _pool & {
-			max_sessions: 1
-			model:        V.triage_model
-			effort:       V.triage_effort
-			admin:        _admin
-		}
-		refinery: _pool & {
-			max_sessions: V.refinery_sessions
-			model:        V.refinery_model
-			effort:       V.refinery_effort
-			prompt_file:  "\(V.asset_prefix)prompts/refinery.md"
-		}
-		"deploy-check": _pool & {
-			max_sessions: V.deploy_sessions
-			prompt_file:  "\(V.asset_prefix)prompts/deploy-check.md"
-		}
-		...
 	}
 
 	// Handlers decide; the controller keeps per-subject history, cooldowns
 	// and caps for the scan signals.
 	_github: {repo: V.repo, ci_workflow: V.ci_workflow, ci_branch: V.ci_branch}
 	triggers: {
-		replan: {
-			when: {pool: "dev", ready_below: 1}
-			handler: "\(V.asset_prefix)triggers.star:replan"
-			args: {dev_pool: "dev", plan_pool: "plan"}
-			cooldown: "10m"
-			max_open: 1
+		// One planner across repos: the pools_from entry replans.
+		if !S {
+			replan: {
+				when: {pool: "dev", ready_below: 1}
+				handler: "\(V.asset_prefix)triggers.star:replan"
+				args: {dev_pool: "dev", plan_pool: "plan"}
+				cooldown: "10m"
+				max_open: 1
+			}
 		}
 		"master-red": {
 			on: [{github: {event: "workflow_run", action: "completed", repo: V.repo, workflow: V.ci_workflow, branch: V.ci_branch, conclusion: "failure"}}]
@@ -130,12 +155,14 @@ package github
 		}
 		scan: {
 			when: scan: [
-				{signal: "ready_unclaimed", after: V.scan_after},
-				{signal: "pool_quarantined"},
-				{signal: "step_idle", after: V.scan_step_after},
-				{signal: "session_silent", after: V.scan_after},
+				// Store-wide signals: a pools_from entry leaves them to the
+				// entry that owns the pools, so a finding starts one triage.
+				if !S {{signal: "ready_unclaimed", after: V.scan_after}},
+				if !S {{signal: "pool_quarantined"}},
+				if !S {{signal: "step_idle", after: V.scan_step_after}},
+				if !S {{signal: "session_silent", after: V.scan_after}},
 				{signal: "needs_human", after: V.scan_human_after},
-				{signal: "blocked", after: V.scan_after},
+				if !S {{signal: "blocked", after: V.scan_after}},
 				{
 					signal: "issue_no_run"
 					repo:   V.repo
@@ -174,10 +201,16 @@ package github
 	}
 
 	prompt_rules: [
-		{name: "desk-links", at: "turn", file: "\(V.asset_prefix)prompts/rules/desk-links.md"},
-		{name: "recall", at: "system", file: "\(V.asset_prefix)prompts/rules/recall.md"},
-		{name: "escalate-policy", at: "system", file: "\(V.asset_prefix)prompts/rules/escalate-policy.md"},
-		{name: "learn-nudge", at: "after", file: "\(V.asset_prefix)prompts/rules/learn-nudge.md"},
+		// A pools_from entry's sessions are the other entry's: it adds only
+		// rules about its own repo.
+		if !S {{name: "desk-links", at: "turn", file: "\(V.asset_prefix)prompts/rules/desk-links.md"}},
+		if !S {{name: "recall", at: "system", file: "\(V.asset_prefix)prompts/rules/recall.md"}},
+		if !S {{name: "escalate-policy", at: "system", file: "\(V.asset_prefix)prompts/rules/escalate-policy.md"}},
+		if !S {{name: "learn-nudge", at: "after", file: "\(V.asset_prefix)prompts/rules/learn-nudge.md"}},
+		// The shared planner plans this repo too.
+		if S {{name: "shared-plan", at: "system", match: {chat: false, pools: ["plan"]}, file: "\(V.asset_prefix)prompts/rules/shared-plan.md"}},
+		// The shared pools' prompts name the other entry's repo.
+		if S {{name: "shared-repo", at: "turn", match: {chat: false, repos: [V.repo]}, file: "\(V.asset_prefix)prompts/rules/shared-repo.md"}},
 		...,
 	]
 

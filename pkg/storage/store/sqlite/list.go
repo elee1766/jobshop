@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/nullism/bqb"
 
@@ -154,6 +155,7 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 		w.And("t.id IN (SELECT m.ticket_id FROM ticket_meta m WHERE m.pack = ? AND m.mkey = ? AND m.value = ?)",
 			m.Pack, m.Key, m.Value)
 	}
+	repoFilter(w, f.Repo, f.RepoNotIn)
 	if f.Ready {
 		w.And("t.status = 'open'")
 		w.And("t.defer_until <= ?", now)
@@ -208,10 +210,12 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 func candidateQuery(req store.ClaimNext, now int64) *bqb.Query {
 	w := bqb.New("t.project = ?", req.Project)
 	w.And("t.kind IN (?)", filterKinds(store.Filter{Kinds: req.Kinds, Ready: true}))
+	queue := bqb.New("t.status = 'open' AND t.holder = '' AND t.pool = ?", req.Pool)
+	repoFilter(queue, req.Repo, req.RepoNotIn)
 	w.And(`(
     (t.status = 'in_progress' AND t.holder = ?)
     OR (t.status = 'open' AND t.holder = ?)
-    OR (t.status = 'open' AND t.holder = '' AND t.pool = ?))`, req.Holder, req.Holder, req.Pool)
+    OR (?))`, req.Holder, req.Holder, queue)
 	w.And("t.defer_until <= ?", now)
 	w.And(notWaiting)
 	w.And(notBlocked)
@@ -220,6 +224,22 @@ func candidateQuery(req store.ClaimNext, now int64) *bqb.Query {
 	return bqb.New("SELECT "+ticketCols+" FROM tickets t WHERE ? ORDER BY "+
 		"CASE WHEN t.status = 'in_progress' THEN 0 WHEN t.holder <> '' THEN 1 ELSE 2 END, "+
 		"t.priority, t.created_at, t.id LIMIT 1", w)
+}
+
+// repoFilter narrows w to tickets whose meta.github.repo is repo, or is
+// none of notIn (JOB-207). Case is ignored, as GitHub ignores it.
+func repoFilter(w *bqb.Query, repo string, notIn []string) {
+	const sub = "SELECT m.ticket_id FROM ticket_meta m WHERE m.pack = 'github' AND m.mkey = 'repo' AND LOWER(m.value) "
+	if repo != "" {
+		w.And("t.id IN ("+sub+"= LOWER(?))", repo)
+	}
+	if len(notIn) > 0 {
+		low := make([]string, len(notIn))
+		for i, r := range notIn {
+			low[i] = strings.ToLower(r)
+		}
+		w.And("t.id NOT IN ("+sub+"IN (?))", low)
+	}
 }
 
 type rowScanner interface{ Scan(dest ...any) error }

@@ -80,7 +80,7 @@ func TestWorkflowsLoad(t *testing.T) {
 	assert.Equal(t, "Merge it. Cost: $5.\n", pr.Steps[1].Prompt)
 	assert.Empty(t, pr.Steps[0].PromptFile)
 	assert.Equal(t, 3, pr.Steps[0].RetryLimit())
-	assert.Equal(t, map[string]any{"repo": "/src", pack.PrefixVar: ""}, pr.PackVars)
+	assert.Equal(t, map[string]any{"repo": "/src", pack.PrefixVar: "", pack.PoolPrefixVar: ""}, pr.PackVars)
 	assert.Equal(t, 1, c.Workflows["blocker-check"].Steps[0].RetryLimit())
 	assert.Equal(t, []string{filepath.Join(dir, "p", pack.FileName)}, c.Sources["workflows.pr-work"])
 }

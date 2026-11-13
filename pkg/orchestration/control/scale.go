@@ -88,6 +88,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config, held map
 	now := c.now()
 	backingOff := c.backingOffPools()
 	var reqs []scaleplan.CapRequest
+	startKeys := map[string][]string{} // pool keyed by repo: the key of each start
 	open := 0
 	for _, name := range slices.Sorted(maps.Keys(cfg.Pools)) {
 		p := cfg.Pools[name]
@@ -122,9 +123,16 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config, held map
 		}
 		// A ready ticket held for a parked session is not demand: no new
 		// session can claim it.
-		ready = slices.DeleteFunc(ready, func(t domain.Ticket) bool {
+		heldForParked := func(t domain.Ticket) bool {
 			return slices.ContainsFunc(parked, func(ps parkedSession) bool { return ps.ID == t.Holder })
-		})
+		}
+		ready = slices.DeleteFunc(ready, heldForParked)
+		var keyReady map[string]int
+		if len(p.Repos) > 0 {
+			if keyReady, err = c.readyByRepo(ctx, name, p, len(parked), heldForParked); err != nil {
+				continue
+			}
+		}
 		desired := c.desired(name, p, len(ready)+working, len(sessions), now)
 		c.metrics.PoolDesired.Record(ctx, int64(desired), metric.WithAttributes(telemetry.AttrPool.String(name)))
 		cordoned := 0
@@ -138,6 +146,9 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config, held map
 			continue // the drain path ends its sessions as drained
 		}
 		plan := scaleplan.ForPool(desired, sessions)
+		if keyReady != nil {
+			plan, startKeys[name] = scaleplan.ForKeys(desired, keyReady, sessionsByRepo(sessions))
+		}
 		for _, id := range plan.Cordon {
 			if err := c.setCordon(ctx, "controller", id, &domain.Cordon{Reason: domain.CordonScale, By: "controller", At: now}); err != nil {
 				c.log.WarnContext(ctx, "scale: cordon", "session", id, "err", err)
@@ -168,8 +179,12 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config, held map
 	grants := scaleplan.CapStarts(reqs, open, cfg.Limits.MaxSessions)
 	for _, name := range slices.Sorted(maps.Keys(grants)) {
 		p := cfg.Pools[name]
-		for range grants[name] {
-			if _, err := c.newSession(ctx, cfg, "controller", p.Project, name, p.Agent, "", "", ""); err != nil {
+		for i := range grants[name] {
+			repo := ""
+			if keys := startKeys[name]; i < len(keys) {
+				repo = keys[i]
+			}
+			if _, err := c.newSession(ctx, cfg, "controller", p.Project, name, p.Agent, "", "", "", repo); err != nil {
 				c.log.ErrorContext(ctx, "start session", "pool", name, "err", err)
 				break
 			}
@@ -208,6 +223,7 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string, held map[st
 				continue
 			}
 			s.Exempt = f.Resumed
+			s.Repo = f.Repo
 			// Stored by the runner (JOB-196), so the least recently used
 			// order survives a controller restart.
 			if f.LastClaim != nil {
@@ -224,6 +240,41 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string, held map[st
 		out = append(out, s)
 	}
 	return out, working, parked, nil
+}
+
+// readyByRepo counts a keyed pool's ready tickets per repo key, "" for
+// the tickets its default sessions claim (JOB-207). Each count is capped
+// like the pool's ready list. skip drops tickets held for a parked
+// session.
+func (c *Controller) readyByRepo(ctx context.Context, name string, p config.Pool, parked int, skip func(domain.Ticket) bool) (map[string]int, error) {
+	out := map[string]int{}
+	count := func(key string, f store.Filter) error {
+		f.Project, f.Pool, f.Ready, f.Limit = p.Project, name, true, p.MaxSessions+parked
+		ts, err := c.store.List(ctx, f)
+		if err != nil {
+			return err
+		}
+		out[key] = len(slices.DeleteFunc(ts, skip))
+		return nil
+	}
+	for _, k := range p.RepoKeys() {
+		if err := count(k, store.Filter{Repo: k}); err != nil {
+			return nil, err
+		}
+	}
+	if err := count("", store.Filter{RepoNotIn: p.RepoKeys()}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// sessionsByRepo groups sessions by their repo key.
+func sessionsByRepo(sessions []scaleplan.Session) map[string][]scaleplan.Session {
+	out := map[string][]scaleplan.Session{}
+	for _, s := range sessions {
+		out[s.Repo] = append(out[s.Repo], s)
+	}
+	return out
 }
 
 // desired is the pool's target this tick: 0 when drained, the manual

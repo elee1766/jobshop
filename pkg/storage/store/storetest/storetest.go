@@ -45,6 +45,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"EdgeCycle", testEdgeCycle},
 		{"ApplySwapsEdges", testApplySwapsEdges},
 		{"ClaimNextTiers", testClaimNextTiers},
+		{"ClaimNextRepo", testClaimNextRepo},
 		{"FencedClose", testFencedClose},
 		{"Handoff", testHandoff},
 		{"ReleaseOutcomeRules", testReleaseOutcomeRules},
@@ -621,6 +622,52 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 
 	_, _, err = s.Claim(ctx, queue.ID, "s2", lease)
 	assert.ErrorIs(t, err, domain.ErrNotHolder)
+}
+
+// testClaimNextRepo: a pool keyed by repo (JOB-207). A keyed claim takes
+// only its repo's tickets, ignoring case; the default claim takes the
+// rest, tickets with no repo included. A pre-assigned ticket is not
+// narrowed.
+func testClaimNextRepo(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	repo := func(r string) func(*store.NewTicket) {
+		return func(n *store.NewTicket) { n.Meta = json.RawMessage(`{"github":{"repo":"` + r + `","issue":1}}`) }
+	}
+	gizmo := task(t, s, "gizmo", "dev", prio(0), repo("Acme/Gizmo"))
+	widget := task(t, s, "widget", "dev", prio(1), repo("acme/widget"))
+	plain := task(t, s, "plain", "dev", prio(2))
+
+	ready, err := s.List(ctx, store.Filter{Pool: "dev", Ready: true, Repo: "acme/gizmo"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{gizmo.ID}, ids(ready))
+	ready, err = s.List(ctx, store.Filter{Pool: "dev", Ready: true, RepoNotIn: []string{"acme/gizmo"}})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{widget.ID, plain.ID}, ids(ready))
+
+	def := store.ClaimNext{Project: proj, Pool: "dev", Holder: "s1", Lease: lease, RepoNotIn: []string{"acme/gizmo"}}
+	got, c, err := s.ClaimNext(ctx, def)
+	require.NoError(t, err)
+	assert.Equal(t, widget.ID, got.ID, "the default claim skips the keyed repo")
+	_, err = store.Close(ctx, s, "s1", got.ID, &c, "done")
+	require.NoError(t, err)
+	got, c, err = s.ClaimNext(ctx, def)
+	require.NoError(t, err)
+	assert.Equal(t, plain.ID, got.ID, "no repo goes to the default claim")
+	_, err = store.Close(ctx, s, "s1", got.ID, &c, "done")
+	require.NoError(t, err)
+	_, _, err = s.ClaimNext(ctx, def)
+	require.ErrorIs(t, err, domain.ErrNoWork)
+
+	other := task(t, s, "assigned", "dev", repo("acme/gizmo"), func(n *store.NewTicket) { n.Holder = "s1" })
+	got, c, err = s.ClaimNext(ctx, def)
+	require.NoError(t, err)
+	assert.Equal(t, other.ID, got.ID, "pre-assigned work is not narrowed by repo")
+	_, err = store.Close(ctx, s, "s1", got.ID, &c, "done")
+	require.NoError(t, err)
+
+	got, _, err = s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "s2", Lease: lease, Repo: "acme/gizmo"})
+	require.NoError(t, err)
+	assert.Equal(t, gizmo.ID, got.ID)
 }
 
 // testHandoff: pool, release, fence and note in one revision (#492).

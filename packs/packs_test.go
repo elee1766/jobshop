@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,6 +53,12 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body = `[]`
 	case r.URL.Path == "/repos/acme/widget/issues/7":
 		body = `{"number":7,"title":"Add a thing"}`
+	case r.URL.Path == "/repos/acme/gizmo/issues/5":
+		body = `{"number":5,"title":"Gizmo thing"}`
+	case r.URL.Path == "/repos/acme/gizmo/actions/runs":
+		body = `{"workflow_runs":[]}`
+	case strings.HasPrefix(r.URL.Path, "/repos/acme/gizmo/"):
+		body = `[]`
 	case r.URL.Path == "/repos/acme/widget/pulls/20":
 		body = `{"number":20,"title":"feat: add the thing"}`
 	case r.URL.Path == "/repos/acme/widget/pulls/21":
@@ -82,6 +89,11 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // packRoot composes the github and operator packs from this module.
 func packRoot(t *testing.T, apiURL string) config.Root {
+	return packRootWith(t, apiURL, "")
+}
+
+// packRootWith is packRoot with extra CUE appended to the root pack.
+func packRootWith(t *testing.T, apiURL, extra string) config.Root {
 	t.Helper()
 	root := controltest.NewRoot(t, "pack: pack.cue\n")
 	wd, err := os.Getwd()
@@ -111,12 +123,12 @@ packs: selfdev: selfdevpack.#Pack & {
     path: %q
     #Config: {repo: %q, agent: "local", dev_sessions: 0, refinery_sessions: 0, dev_sonnet_sessions: 0, learn_sessions: 0}
 }
-`, filepath.Join(module, "packs/github"), root.Dir, filepath.Join(module, "packs/operator"), root.Dir, filepath.Join(module, "packs/selfdev"), root.Dir))
+`, filepath.Join(module, "packs/github"), root.Dir, filepath.Join(module, "packs/operator"), root.Dir, filepath.Join(module, "packs/selfdev"), root.Dir)+strings.ReplaceAll(extra, "$MODULE", module))
 	write(t, root.Dir, "gh-token", "ghp_test\n")
 	write(t, root.Dir, config.FileName, fmt.Sprintf(`pack: pack.cue
 automation: {github: true, shell: true}
 identities:
-  bot: {kind: github-token, token_file: %s, api_url: %s, repos: [acme/widget]}
+  bot: {kind: github-token, token_file: %s, api_url: %s, repos: [acme/widget, acme/gizmo]}
 # The operator guard, unscoped so the admin socket reaches it.
 hooks:
   - {on: action, actions: [push], handler: %s, args: {protected: [master, main]}, timeout: 5s}
@@ -303,4 +315,64 @@ func TestPRWorkRoutes(t *testing.T) {
 		return f.State == domain.RunNeedsHuman
 	}, "unknown route did not escalate")
 	assert.Len(t, steps(run), 1)
+}
+
+// One planner over two repos (JOB-207): a second github entry with
+// pools_from shares github-'s pools. It declares no pools or replan of
+// its own, adds its repo to the shared code pools, and its runs' steps
+// land in those pools carrying its repo.
+func TestGithubPackSharedPools(t *testing.T) {
+	gh := &fakeGitHub{}
+	server := httptest.NewServer(gh)
+	defer server.Close()
+	gizmo := t.TempDir()
+	root := packRootWith(t, server.URL, fmt.Sprintf(`packs: gizmo: githubpack.#Pack & {
+    prefix: "gz-"
+    pools_from: "github"
+    path: "$MODULE/packs/github"
+    vars: {repo: "acme/gizmo", checkout: %q, agent: "local", human: "wile"}
+}
+`, gizmo))
+	cfg, err := config.Load(root)
+	require.NoError(t, err)
+
+	for _, p := range []string{"gz-dev", "gz-plan", "gz-refinery"} {
+		assert.NotContains(t, cfg.Pools, p, "a pools_from entry declares no pools")
+	}
+	assert.NotContains(t, cfg.Triggers, "gz-replan", "one planner: the shared entry does not replan")
+	assert.Contains(t, cfg.Triggers, "gz-master-red", "repo triggers stay per repo")
+	for _, p := range []string{"github-dev", "github-dev-sonnet", "github-triage", "github-refinery", "github-deploy-check"} {
+		pool := cfg.Pools[p]
+		assert.Equal(t, gizmo, pool.Repos["acme/gizmo"].Checkout, p)
+		assert.Equal(t, cfg.Pools["github-plan"].Repo, pool.Repo, "%s keeps github-'s checkout as its default", p)
+		assert.NotContains(t, pool.Labels, "instance:gz", p)
+	}
+	assert.Empty(t, cfg.Pools["github-plan"].Repos, "the planner does not edit code")
+	w := cfg.Workflows["gz-pr-work"]
+	assert.Equal(t, "acme/gizmo", w.Repo)
+	assert.Equal(t, "github-plan", w.EscalatePool)
+	var rules []string
+	for _, r := range cfg.PromptRules {
+		rules = append(rules, r.Name)
+	}
+	assert.Contains(t, rules, "gz-shared-plan")
+	assert.NotContains(t, rules, "gz-recall", "general rules come once, from github-")
+
+	c := controltest.Start(t, root, control.Options{})
+	steps := func(run string) []domain.Ticket {
+		var r rpc.RunResult
+		c.Call(rpc.MethodRunShow, rpc.IDParams{ID: run}, &r)
+		return r.Steps
+	}
+	var started rpc.RunResult
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "gz-pr-work", Key: "issue-5", Vars: map[string]string{"issue": "5"}}, &started)
+	run := started.Run.ID
+	c.PassUntil(func() bool { return len(steps(run)) == 1 }, "no route step")
+	route := steps(run)[0]
+	assert.Equal(t, "github-triage", route.Pool, "the step lands in the shared pool")
+	assert.Contains(t, string(route.Meta), `"repo":"acme/gizmo"`, "a session keyed to acme/gizmo claims it")
+	c.Call(rpc.MethodClaim, rpc.ClaimParams{ID: route.ID, Holder: "s1"}, nil)
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: route.ID, Outcome: "primary"}, nil)
+	c.PassUntil(func() bool { return len(steps(run)) == 2 }, "no implement step")
+	assert.Equal(t, "github-dev", steps(run)[1].Pool)
 }

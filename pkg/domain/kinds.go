@@ -49,8 +49,13 @@ type SessionFields struct {
 	Named       bool       `json:"named,omitempty"`
 	Archived    *time.Time `json:"archived,omitempty"`
 	Agent       string     `json:"agent"`
-	ACPSession  string     `json:"acp_session,omitempty"`
-	Current     string     `json:"current,omitempty"` // ticket id being worked
+	// Repo is the pool repo key (owner/name) a session of a pool keyed by
+	// repo was started for (JOB-207). It claims only that repo's tickets
+	// and works in a worktree of its checkout. Empty: the pool's default
+	// repo, claiming tickets of every repo the pool does not key.
+	Repo       string `json:"repo,omitempty"`
+	ACPSession string `json:"acp_session,omitempty"`
+	Current    string `json:"current,omitempty"` // ticket id being worked
 	// TraceParent is the session trace's W3C traceparent, kept so lifecycle
 	// spans after a controller restart join the same trace.
 	TraceParent string `json:"traceparent,omitempty"`
