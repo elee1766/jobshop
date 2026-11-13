@@ -18,13 +18,35 @@ func requestError(err error) (re *acp.RequestError, text string) {
 	return re, strings.ToLower(fmt.Sprint(re.Message, " ", re.Data))
 }
 
+// codeResourceNotFound is ACP's "Resource not found". acp-go-sdk has no
+// constant for it.
+const codeResourceNotFound = -32002
+
 // UnknownSession reports whether a prompt failed because the agent does
-// not know the session id: jcode answers -32602 "Unknown ACP session id"
+// not know the session id. jcode answers -32602 "Unknown ACP session id"
 // when its process lost the session (seen 2026-11-05 after restarts,
-// JOB-65). A host restart would only repeat it.
+// JOB-65). towa answers -32002 "Resource not found" with data
+// {"sessionId": ...} (JOB-214). -32002 counts only with that key: an
+// agent may use the code for another missing resource, and a new
+// conversation would drop context for nothing. A host restart would only
+// repeat either.
 func UnknownSession(err error) bool {
 	re, text := requestError(err)
-	return re != nil && re.Code == -32602 && strings.Contains(text, "unknown acp session")
+	if re == nil {
+		return false
+	}
+	switch re.Code {
+	case -32602:
+		return strings.Contains(text, "unknown acp session")
+	case codeResourceNotFound:
+		data, ok := re.Data.(map[string]any)
+		if !ok {
+			return false
+		}
+		_, ok = data["sessionId"]
+		return ok
+	}
+	return false
 }
 
 // RateLimited reports whether a prompt error is the provider refusing
