@@ -542,6 +542,9 @@ func (c *Controller) runList(ctx context.Context, sc scope, p rpc.RunListParams)
 // it is not empty.
 func (c *Controller) setRunState(ctx context.Context, actor string, t domain.Ticket, f domain.RunFields, state, resolution string) (domain.Ticket, error) {
 	f.State = state
+	if state != domain.RunNeedsHuman {
+		f.HookError = "" // the hook failure no longer holds the run
+	}
 	b, err := json.Marshal(f)
 	if err != nil {
 		return t, err
@@ -657,6 +660,11 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		if err != nil {
 			return nil, err
 		}
+		if !resumed {
+			if resumed, err = c.recompleteRun(ctx, sc.actor, t, f); err != nil {
+				return nil, err
+			}
+		}
 		if resumed {
 			t, err = c.store.Get(ctx, t.ID)
 			if err != nil {
@@ -727,6 +735,47 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		return nil, err
 	}
 	return c.runResult(ctx, t)
+}
+
+// recompleteRun resumes a needs_human callback run whose steps all
+// finished and that has no failed invocation to retry: it forgets the
+// last finished step's completion and sets the run running, so the next
+// hook drain runs on_step_completed for that step again (#1246). It
+// reports false when a step is unfinished, which plain resume handles.
+// The caller holds runMu.
+func (c *Controller) recompleteRun(ctx context.Context, actor string, t domain.Ticket, f domain.RunFields) (bool, error) {
+	steps, err := store.Children(ctx, c.store, t.ID)
+	if err != nil {
+		return false, err
+	}
+	last, lastIndex := "", -1
+	for _, s := range steps {
+		if s.Kind != domain.KindStep {
+			continue
+		}
+		if !domain.StepFinished(s) {
+			return false, nil
+		}
+		sf, err := domain.DecodeFields[domain.StepFields](s)
+		if err != nil {
+			return false, err
+		}
+		if sf.Index > lastIndex {
+			last, lastIndex = s.ID, sf.Index
+		}
+	}
+	if last == "" {
+		return false, nil
+	}
+	a := *f.Automation
+	a.Completed = maps.Clone(a.Completed)
+	delete(a.Completed, last)
+	f.Automation = &a
+	if _, err := c.setRunState(ctx, actor, t, f, domain.RunRunning, ""); err != nil {
+		return false, err
+	}
+	_, _ = store.AddComment(ctx, c.store, actor, t.ID, fmt.Sprintf("Resumed by %s: every step finished, so on_step_completed runs again for %s.", actor, last))
+	return true, nil
 }
 
 // completeRun closes a running run done once every step is closed done

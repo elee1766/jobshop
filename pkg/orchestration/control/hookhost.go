@@ -1,6 +1,7 @@
 package control
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -130,7 +131,7 @@ func (h hookHost) HookFailed(ctx context.Context, key string, in hooks.Invocatio
 	c := h.c
 	comment := "Automation invocation " + key + " failed: " + in.Error
 	c.runMu.Lock()
-	stopped := c.stopFailedRun(ctx, in.Run, comment)
+	stopped := c.stopFailedRun(ctx, in.Run, in.Error, comment)
 	c.runMu.Unlock()
 	if !stopped {
 		_, _ = store.AddComment(ctx, c.store, "controller", in.Run, comment)
@@ -138,9 +139,11 @@ func (h hookHost) HookFailed(ctx context.Context, key string, in hooks.Invocatio
 }
 
 // stopFailedRun moves a running run to needs_human and records why in one
-// write, so whoever sees the state also sees the reason. The caller holds
-// runMu. It reports whether the comment was written.
-func (c *Controller) stopFailedRun(ctx context.Context, id, comment string) bool {
+// write, so whoever sees the state also sees the reason. It starts a new
+// escalation round named for the hook error, so a failure after a resume
+// files a fresh escalation (#1246). The caller holds runMu. It reports
+// whether the comment was written.
+func (c *Controller) stopFailedRun(ctx context.Context, id, hookErr, comment string) bool {
 	t, err := c.store.Get(ctx, id)
 	if err != nil || t.Status == domain.StatusClosed {
 		return false
@@ -150,6 +153,8 @@ func (c *Controller) stopFailedRun(ctx context.Context, id, comment string) bool
 		return false
 	}
 	f.State = domain.RunNeedsHuman
+	f.Escalations++
+	f.HookError = cmp.Or(hookErr, "unknown error")
 	b, err := json.Marshal(f)
 	if err != nil {
 		return false

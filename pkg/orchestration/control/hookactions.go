@@ -344,12 +344,16 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				}
 			}
 			if action.PromptFile != "" {
-				vars := maps.Clone(fields.Inputs)
+				// The live pack vars go under the run's inputs: a run
+				// started before a pack added a var still renders a prompt
+				// that uses it (#1246). What the run accepted still wins.
+				workflow := lc.cfg.Workflows[fields.Workflow]
+				vars := maps.Clone(workflow.PackVars)
 				if vars == nil {
 					vars = map[string]any{}
 				}
+				maps.Copy(vars, fields.Inputs)
 				maps.Copy(vars, action.Inputs)
-				workflow := lc.cfg.Workflows[fields.Workflow]
 				prompt, err = workflow.Render(prompt, vars)
 				if err != nil {
 					return g, err
