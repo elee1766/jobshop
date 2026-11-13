@@ -27,9 +27,11 @@ passed to compare.
      `git push -u origin HEAD` and `gh pr create --base master --title
      "Revert \"<title>\" (#<n>)" --body "Closes #<n>. This reverts commit
      <merge sha>. Curator gate: <reason>."`.
-   - `jobshop run start pr-work --var issue=<n> --key issue-<n>`, find its
-     `implement` step with `jobshop run show <run>` and
-     `jobshop comment -t <step id> "PR <url> head <sha>"`.
+   - `jobshop run start pr-work --var issue=<n> --key issue-<n>`. It
+     starts with a `route` step; `implement` comes later, so
+     `gh issue comment <n> --body "PR <url> head <sha> is open"` and
+     `jobshop comment -t <route step id> "PR <url> head <sha>"` (id from
+     `jobshop run show <run>`).
    - Mark the cited learnings rejected with the original PR, so the
      curator does not propose the same edit again:
      `jobshop learn update <ids> --status rejected --pr <original pr url>`.
