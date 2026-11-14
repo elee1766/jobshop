@@ -27,5 +27,6 @@ How to read how long a supervisor tick takes, and what a quiet one costs.
    name that never fired names `ri_hook_invocations_trigger`.
 6. **A slow tick that is not these.** A tick where every store call, even a
    4ms reader-pool list, takes about 90ms or a multiple is a different
-   problem (JOB-191, not explained). Capture the trace of that tick and
-   `/proc/pressure/cpu` before changing anything.
+   problem (JOB-191, not explained): read its `slow tick` record as in
+   `slow-tick.md`, and
+   `/proc/pressure/cpu`, before changing anything.

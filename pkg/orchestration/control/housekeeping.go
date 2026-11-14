@@ -75,5 +75,10 @@ func (c *Controller) hkStep(ctx context.Context, cfg *config.Config, name string
 	defer span.End()
 	start := time.Now()
 	defer c.metrics.SinceHousekeeping(ctx, name, start)
+	// A slow tick lists the steps that ran during it (JOB-212).
+	if c.probe != nil {
+		done := c.probe.houseStart(name, start)
+		defer func() { done(time.Now()) }()
+	}
 	fn(ctx, cfg)
 }

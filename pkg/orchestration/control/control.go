@@ -123,6 +123,9 @@ type Options struct {
 	// received channel when it is done. Tests use it instead of sleeping
 	// through ticks (#359).
 	Pass <-chan chan struct{}
+	// SlowTick is how long a pass must take to log a "slow tick" record
+	// with its evidence (JOB-212). Default 1s; tests shorten it.
+	SlowTick time.Duration
 	// EventBuffer is the per-subscriber events.subscribe buffer. Default
 	// DefaultEventBuffer; tests shrink it to force lagged.
 	EventBuffer int
@@ -226,9 +229,12 @@ type Controller struct {
 	endedFilled bool
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
-	gitMu       sync.Mutex
-	chatMu      sync.Mutex
-	statusMu    sync.Mutex
+	gitMu    sync.Mutex
+	chatMu   sync.Mutex
+	statusMu sync.Mutex
+	// probe gathers the evidence for a slow tick (JOB-212); nil in tests
+	// that build a Controller by hand.
+	probe       *tickProbe
 	status      rpc.SystemStatus
 	tickSteps   map[string]float64
 	tickSamples []float64
@@ -398,6 +404,10 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	probe := newTickProbe(opt.SlowTick, "", nil)
+	if ss, ok := st.(*sqlite.Store); ok {
+		probe.dbPath, probe.pool = root.DB(), ss.PoolWaits
+	}
 	// Calls over store.SlowCall add a span under the step that made them
 	// (JOB-105).
 	st = store.Traced(st)
@@ -428,6 +438,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	c := &Controller{
 		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
 		tracer:   opt.Tracer,
+		probe:    probe,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, readOnly: map[string]bool{},
 		minter:       identity.NewMinter(),
 		waitWake:     make(chan struct{}, 1),
@@ -526,6 +537,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpAdmission)
 	c.wg.Go(c.pumpJournal)
 	c.wg.Go(c.pumpHousekeeping)
+	c.wg.Go(func() { c.probe.monitor(c.ctx) })
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -615,10 +627,13 @@ func (c *Controller) tick() {
 	defer span.End()
 	defer c.lockTick(ctx, "tick")()
 	start := time.Now()
+	before := c.beginTick()
 	c.statusMu.Lock()
 	c.tickSteps = map[string]float64{}
 	c.statusMu.Unlock()
 	defer c.finishTick(start)
+	// Deferred after finishTick so it runs first, with the step times.
+	defer func() { c.endTick(ctx, span, before, time.Since(start)) }()
 	// One config for the whole pass (JOB-104): a reload swaps the pointer
 	// without waiting, and applies from the next pass. Pass code takes
 	// cfg, never c.config() (TestPassReadsConfigOnce).
