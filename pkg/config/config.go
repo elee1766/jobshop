@@ -273,6 +273,10 @@ type ScanSignal struct {
 	// Go duration; empty is off, so a fresh Todo issue starts at once. The
 	// fire-time store recheck already covers a run the planner just started.
 	Grace string `yaml:"grace"`
+	// Start names a workflow (tracker linear, one issue var) the controller
+	// starts itself for each finding, with key linear-<KEY>, instead of the
+	// trigger's run (JOB-211). Empty: the trigger's run (a triage) takes it.
+	Start string `yaml:"start,omitempty"`
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and

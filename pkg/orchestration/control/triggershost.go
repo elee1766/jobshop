@@ -254,6 +254,9 @@ func (c *Controller) fireRun(ctx context.Context, cfg *config.Config, r *config.
 // the scan vars. existing is true when an open run already had that key
 // (one started by hand or by another run, JOB-33).
 func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding) (run domain.Ticket, existing bool, err error) {
+	if wf := tr.ScanStart(s.Signal); wf != "" {
+		return c.startFinding(ctx, cfg, name, tr, s, wf)
+	}
 	tv := map[string]any{config.ScanSignalVar: s.Signal, config.ScanSubjectVar: s.Subject, config.ScanDetailVar: s.Detail}
 	key := s.KeyWith(tr.ScanKeyPrefix())
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: key}
@@ -279,6 +282,30 @@ func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name s
 		// own key (pr-<n>, JOB-33) never took part: leave it out.
 		m[findingMetaKey] = s.ID()
 	}
+	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
+	if err != nil {
+		return domain.Ticket{}, false, err
+	}
+	rr := res.(rpc.RunResult)
+	return rr.Run, rr.Existing, nil
+}
+
+// startFinding is fireFinding for a linear_issue_no_run signal with start
+// (JOB-211): the controller starts the issue's own workflow with key
+// linear-<KEY>, the key the planner and a triage use, so any of them
+// returns the open run of the others. The finding's meta.trigger still
+// goes on the run, so max_runs, the cooldown and the #704 hold see it.
+// Intake hooks run in startRun as for any Linear run. The signal read
+// already applied the intake gate (states, labels, skip labels, open
+// blockers and dependencies).
+func (c *Controller) startFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding, workflow string) (domain.Ticket, bool, error) {
+	w, ok := cfg.Workflows[workflow]
+	if !ok {
+		return domain.Ticket{}, false, fmt.Errorf("start: unknown workflow %q", workflow)
+	}
+	key := strings.ToUpper(s.Subject)
+	p := rpc.RunStartParams{Workflow: workflow, Vars: map[string]string{w.Issue: key}, Key: "linear-" + key}
+	m := map[string]string{"name": name, "key": name + "/" + s.KeyWith(tr.ScanKeyPrefix()), findingMetaKey: s.ID()}
 	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
 		return domain.Ticket{}, false, err

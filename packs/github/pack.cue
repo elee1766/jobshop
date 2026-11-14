@@ -176,6 +176,9 @@ package github
 					labels:      V.linear_intake_labels
 					skip_labels: V.linear_skip_labels
 					poll:        V.linear_poll
+					// The scan starts the issue's run itself (JOB-211).
+					if V.tracker == "linear" {start: "pr-work"}
+					if V.tracker == "github" {start: "pr-work-linear"}
 				},
 				{
 					signal: "no_merge"

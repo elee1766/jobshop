@@ -46,6 +46,11 @@ func (c *Config) dropDisabled(src func(section, name string) string) error {
 		if tr.Run != nil && offWorkflow(tr.Run.Workflow) {
 			return fmt.Errorf("%s: run: workflow %s is disabled", where, tr.Run.Workflow)
 		}
+		for _, s := range tr.When.Scan {
+			if s.Start != "" && offWorkflow(s.Start) {
+				return fmt.Errorf("%s: when.scan: %s start: workflow %s is disabled", where, s.Signal, s.Start)
+			}
+		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Workflows)) {
 		w := c.Workflows[name]

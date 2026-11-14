@@ -115,7 +115,11 @@ func (e *Engine) runScan(ctx context.Context, cfg *config.Config, name string, t
 			continue
 		}
 		e.log().InfoContext(ctx, "scan trigger fired", "trigger", name, "key", key, "run", t.ID, "delivery", ev["delivery"])
-		e.host.RecordFinding(ctx, s, t.ID)
+		if tr.ScanStart(s.Signal) == "" {
+			// A workflow started for the issue itself is intake, not a
+			// stuck-work finding to learn from.
+			e.host.RecordFinding(ctx, s, t.ID)
+		}
 	}
 }
 
