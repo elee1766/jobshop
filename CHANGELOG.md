@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.31](https://github.com/gfx-labs/jobshop/compare/v0.10.30...v0.10.31) (2026-11-14)
+
+
+### Features
+
+* **control:** scan starts pr-work-linear for eligible Linear intake issues (JOB-211) ([#1259](https://github.com/gfx-labs/jobshop/issues/1259)) ([d0ca1ac](https://github.com/gfx-labs/jobshop/commit/d0ca1ac10eeda792497b0a23fe2c8a49ea737bac))
+* **control:** slow tick probe with stall, GC, checkpoint and writer evidence (JOB-212) ([#1260](https://github.com/gfx-labs/jobshop/issues/1260)) ([c357246](https://github.com/gfx-labs/jobshop/commit/c3572461f124b64a8b16b10cf8a22dcbf0b3a443))
+
 ## [0.10.30](https://github.com/gfx-labs/jobshop/compare/v0.10.29...v0.10.30) (2026-11-14)
 
 
