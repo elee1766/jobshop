@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.32](https://github.com/gfx-labs/jobshop/compare/v0.10.31...v0.10.32) (2026-11-14)
+
+
+### Features
+
+* **desk:** e2e preflight that runs the specs a UI change touches (JOB-213) ([#1262](https://github.com/gfx-labs/jobshop/issues/1262)) ([61053af](https://github.com/gfx-labs/jobshop/commit/61053afd5ad0013bbf671a54e24d4df15f7c758d))
+
 ## [0.10.31](https://github.com/gfx-labs/jobshop/compare/v0.10.30...v0.10.31) (2026-11-14)
 
 
