@@ -49,13 +49,31 @@ func UnknownSession(err error) bool {
 	return false
 }
 
+// stopKind is the kind of the typed stop towa puts in a prompt error's
+// data, {"towa": {"stop": {"kind": "network", ...}}} (JOB-215), or ""
+// when the error has none. The code says nothing by itself: towa sends
+// every kind but denied and auth as -32603.
+func stopKind(re *acp.RequestError) string {
+	data, _ := re.Data.(map[string]any)
+	towa, _ := data["towa"].(map[string]any)
+	stop, _ := towa["stop"].(map[string]any)
+	kind, _ := stop["kind"].(string)
+	return kind
+}
+
 // RateLimited reports whether a prompt error is the provider refusing
-// work for now (account limit) rather than a broken agent. Agents report
-// it as a generic ACP error, so match the message.
+// work for now (account limit, overload) rather than a broken agent.
+// jcode reports it as a generic ACP error, so match the message. towa
+// reports a typed stop of kind rate_limit or overload (its word for a
+// provider that is overloaded or unavailable) after its own retries and
+// fallbacks, JOB-215.
 func RateLimited(err error) bool {
 	re, text := requestError(err)
 	if re == nil {
 		return false
+	}
+	if k := stopKind(re); k == "rate_limit" || k == "overload" {
+		return true
 	}
 	for _, k := range []string{"429", "rate_limit", "rate limit", "is unavailable"} {
 		if strings.Contains(text, k) {
@@ -66,11 +84,16 @@ func RateLimited(err error) bool {
 }
 
 // ProviderUnreachable reports whether a prompt error is the agent failing
-// to reach its provider (seen 2026-11-05 on acphost-dev: -32000 "Failed
-// to send request ... Connect").
+// to reach its provider. jcode: matched by message (seen 2026-11-05 on
+// acphost-dev: -32000 "Failed to send request ... Connect"). towa: a
+// typed stop of kind network, whose message says "send request" without
+// "failed to" (JOB-215).
 func ProviderUnreachable(err error) bool {
 	re, text := requestError(err)
-	return re != nil && (strings.Contains(text, "failed to send request") || strings.Contains(text, "error sending request"))
+	if re == nil {
+		return false
+	}
+	return stopKind(re) == "network" || strings.Contains(text, "failed to send request") || strings.Contains(text, "error sending request")
 }
 
 // AgentBusy reports whether the agent refused a prompt because it still
