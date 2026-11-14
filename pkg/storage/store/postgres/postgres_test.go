@@ -25,9 +25,23 @@ const dsnEnv = "JOBSHOP_TEST_POSTGRES"
 
 const templateDB = "jobshop_test_template"
 
+// The tests share one server whose max_connections is 100 (the
+// postgres:17 default in CI), with storemigrate's tests running beside
+// them. Parallel tests scale with GOMAXPROCS (32 on the CI runner), so
+// connections are capped here, not by -parallel: at most openStores
+// stores at once, each with two pools of testConns plus a raw
+// connection or two, and an admin pool of adminConns. That is about 64
+// connections (#1251).
+const (
+	openStores = 6
+	testConns  = 4
+	adminConns = 4
+)
+
 var (
-	admin *sql.DB
-	seq   atomic.Int64
+	admin  *sql.DB
+	seq    atomic.Int64
+	stores = make(chan struct{}, openStores)
 )
 
 func TestMain(m *testing.M) {
@@ -51,6 +65,7 @@ func run(m *testing.M) (int, error) {
 	if admin, err = sql.Open("pgx", dsn); err != nil {
 		return 0, err
 	}
+	admin.SetMaxOpenConns(adminConns)
 	defer func() { _ = admin.Close() }()
 	if _, err := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+templateDB+" WITH (FORCE)"); err != nil {
 		return 0, err
@@ -85,12 +100,21 @@ func openTest(t *testing.T, opt postgres.Options) *postgres.Store {
 	return s
 }
 
-// openNamed is openTest that also returns the database name.
+// openNamed is openTest that also returns the database name. It waits
+// for one of the openStores slots and holds it until the test ends, so
+// a test must open at most one store.
 func openNamed(t *testing.T, opt postgres.Options) (*postgres.Store, string) {
 	t.Helper()
 	dsn := os.Getenv(dsnEnv)
 	if dsn == "" {
 		t.Skip(dsnEnv + " is not set")
+	}
+	stores <- struct{}{}
+	// Registered first, so it runs after the cleanup that closes the
+	// store and drops its database.
+	t.Cleanup(func() { <-stores })
+	if opt.MaxConns == 0 {
+		opt.MaxConns = testConns
 	}
 	name := fmt.Sprintf("jobshop_test_%d_%d", os.Getpid(), seq.Add(1))
 	ctx := context.WithoutCancel(t.Context())
