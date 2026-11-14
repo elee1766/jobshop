@@ -2,7 +2,11 @@
 // the ticket context menu, sender headers and configured iframe tabs.
 //
 //   JOBSHOP_BIN=/path/to/jobshop FAKE_AGENT_BIN=/path/to/control.test \
-//     node e2e/run-isolated.mjs
+//     node e2e/run-isolated.mjs [trace | spec.js ...]
+//
+// With spec names it runs only those; `trace` stands for the trace group
+// (groups: e2e/groups.mjs). `npm run e2e:affected` picks specs from the
+// changed files (JOB-213).
 //
 // It makes a throwaway root under the temp dir, starts a controller, Desk and
 // the embed fixture on loopback, runs Playwright and stops everything. It never
@@ -16,8 +20,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import * as groups from './groups.mjs';
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const requested = process.argv.slice(2).flatMap((arg) => (arg === 'trace' ? groups.trace : [arg]));
+const unknown = requested.filter((spec) => !groups.isolated.includes(spec));
+if (unknown.length) {
+  console.error(`not an isolated spec (see e2e/groups.mjs): ${unknown.join(' ')}`);
+  process.exit(2);
+}
 const bin = need('JOBSHOP_BIN');
 const agent = need('FAKE_AGENT_BIN');
 const port = Number(process.env.DESK_PORT || 7461);
@@ -155,13 +166,23 @@ desk:
   await until('desk', reachable(`${desk}/api/embeds`));
   await until('the embed fixture', reachable('http://127.0.0.1:7498/seen'));
 
-  code = playwright(['ticket-menu.spec.js', 'message-headers.spec.js', 'embeds.spec.js', 'timeline.spec.js', 'browse.spec.js', 'browse-live.spec.js', 'turn-phase.spec.js', '--workers=2']);
+  // Spec names on the command line run just those, in the same groups.
+  const wanted = requested.length ? requested : groups.defaults;
+  const pick = (group) => group.filter((spec) => wanted.includes(spec));
+  code = 0;
+  const shared = pick(groups.shared);
+  if (shared.length) code = playwright([...shared, '--workers=2']);
   // It scales the shared worker pool, so the two projects run one at a time.
-  if (code === 0) code = playwright(['pool-controls.spec.js', '--workers=1']);
+  const pool = pick(groups.poolControls);
+  if (code === 0 && pool.length) code = playwright([...pool, '--workers=1']);
+  // After the pool spec: its RPCs timed out once the trace group had run.
+  const trace = pick(groups.trace);
+  if (code === 0 && trace.length) code = playwright([...trace, '--workers=2']);
   // The reload spec rewrites this root's config and reloads it, so it runs
   // alone, after the others.
-  if (code === 0) {
-    code = playwright(['embed-reload.spec.js', '--project=desktop', '--workers=1'], {
+  const reload = pick(groups.reload);
+  if (code === 0 && reload.length) {
+    code = playwright([...reload, '--project=desktop', '--workers=1'], {
       EMBED_ROOT: root,
       EMBED_JOBSHOP: bin,
     });
