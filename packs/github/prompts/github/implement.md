@@ -22,9 +22,11 @@ First decide what kind of work it is. Every exit closes with an outcome:
 Say in your last issue comment which of these it was.
 
 If the ticket already has a PR (a "Changes requested" section in this
-prompt, or comments on this step or on the run's
-`review-merge` step list refinery findings; `jobshop run show <run>` from
-the ticket's `parent_id`): do not start a new branch. Check out the PR
+prompt, comments on this step or on the run's `route` or
+`review-merge` step, from `jobshop run show <run>` with the ticket's
+`parent_id`, or a curator's `PR <url> head <sha> is open` comment on
+the issue: the curator opens the PR, then hands it to this run): do
+not start a new branch. Check out the PR
 head with `git fetch origin pull/<n>/head && git checkout --detach
 FETCH_HEAD` (`gh pr checkout` fails in a detached worktree), then, as a
 separate command, confirm `git rev-parse HEAD` equals the PR's
@@ -34,7 +36,8 @@ wait for green CI.
 
 Otherwise, first `gh pr list --state all --search {{.issue}}` and read
 the issue's comments: an open or merged PR from another run (a
-`ci-repair` fix step, the curator) means it is not work for this run.
+`ci-repair` fix step names its run on the issue) means it is not work
+for this run.
 Run the search again right before you push. Then
 `git switch -c issue-{{.issue}}`, make the change, run
 `{{.check_cmd}}`, commit with
