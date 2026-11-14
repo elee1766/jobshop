@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.29](https://github.com/gfx-labs/jobshop/compare/v0.10.28...v0.10.29) (2026-11-14)
+
+
+### Bug fixes
+
+* **store:** bound postgres test connections under max_connections ([#1251](https://github.com/gfx-labs/jobshop/issues/1251)) ([#1252](https://github.com/gfx-labs/jobshop/issues/1252)) ([68a1989](https://github.com/gfx-labs/jobshop/commit/68a1989cb9459b94a5e4563356de343f4b1963f8))
+
 ## [0.10.28](https://github.com/gfx-labs/jobshop/compare/v0.10.27...v0.10.28) (2026-11-13)
 
 
