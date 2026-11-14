@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.30](https://github.com/gfx-labs/jobshop/compare/v0.10.29...v0.10.30) (2026-11-14)
+
+
+### Bug fixes
+
+* **packs/github:** planner and triage skip issues a ci-repair fix step owns ([#1254](https://github.com/gfx-labs/jobshop/issues/1254)) ([#1255](https://github.com/gfx-labs/jobshop/issues/1255)) ([d168ef5](https://github.com/gfx-labs/jobshop/commit/d168ef5ca5897cf5b99c3898d1dd7f13aee593c0))
+* **session:** back off on towa stop kinds network, rate_limit, overload (JOB-215) ([#1256](https://github.com/gfx-labs/jobshop/issues/1256)) ([a9827d1](https://github.com/gfx-labs/jobshop/commit/a9827d1cc0e5f6eca15d7cd302370c2cfe2b0f32))
+
 ## [0.10.29](https://github.com/gfx-labs/jobshop/compare/v0.10.28...v0.10.29) (2026-11-14)
 
 
