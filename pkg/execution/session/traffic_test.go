@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -107,6 +108,44 @@ func TestPromptErrors(t *testing.T) {
 	assert.False(t, RateLimited(assert.AnError))
 	assert.True(t, ProviderUnreachable(req(-32000, "Failed to send request: Connect")))
 	assert.False(t, ProviderUnreachable(req(-32000, "boom")))
+	// towa's typed stop (JOB-215): the kind decides, not the text or code.
+	stop := func(code int, kind, msg string) error {
+		return &acp.RequestError{Code: code, Message: "Internal error", Data: map[string]any{
+			"error": "turn stopped: " + kind + ": " + msg,
+			"towa":  map[string]any{"stop": map[string]any{"kind": kind, "account": "a-ant", "message": msg}},
+		}}
+	}
+	network := stop(-32603, "network", "send request")
+	assert.True(t, ProviderUnreachable(network))
+	assert.False(t, RateLimited(network))
+	// The payload seen 2026-11-13 (dead proxy), decoded as the client does.
+	var seen acp.RequestError
+	require.NoError(t, json.Unmarshal([]byte(`{"code":-32603,"message":"Internal error","data":{"error":"turn stopped: network: provider: network (retry): send request: at claude:a-ant/claude-sonnet-5-5: Post \"https://api.anthropic.com/v1/messages?beta=true\": proxyconnect tcp: dial tcp 127.0.0.1:1: connect: connection refused","towa":{"stop":{"kind":"network","account":"a-ant","model":"claude-sonnet-5-5","message":"send request"}}}}`), &seen))
+	assert.True(t, ProviderUnreachable(&seen))
+	assert.False(t, RateLimited(&seen))
+	for _, kind := range []string{"rate_limit", "overload"} {
+		// For rate_limit the kind is also in the printed data, so only
+		// overload proves the kind alone decides.
+		err := stop(-32603, kind, "chain exhausted")
+		assert.True(t, RateLimited(err), kind)
+		assert.False(t, ProviderUnreachable(err), kind)
+	}
+	assert.True(t, RateLimited(stop(-32000, "overload", "x")), "code is not part of the check")
+	for _, kind := range []string{"request", "auth", "context_full", "limit", "denied"} {
+		err := stop(-32603, kind, "x")
+		assert.False(t, RateLimited(err), kind)
+		assert.False(t, ProviderUnreachable(err), kind)
+	}
+	// Malformed data never matches: wrong types at each level.
+	for _, data := range []any{
+		"network",
+		map[string]any{"towa": "network"},
+		map[string]any{"towa": map[string]any{"stop": "network"}},
+		map[string]any{"towa": map[string]any{"stop": map[string]any{"kind": 1}}},
+	} {
+		err := &acp.RequestError{Code: -32603, Message: "Internal error", Data: data}
+		assert.False(t, ProviderUnreachable(err), "%v", data)
+	}
 	assert.True(t, AgentBusy(req(-32000, "Already processing a prompt")))
 	assert.False(t, AgentBusy(assert.AnError))
 }

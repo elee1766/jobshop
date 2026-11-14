@@ -1020,6 +1020,37 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	return res, err
 }
 
+// failFile reads a counter file the test agent uses to fail prompts: its
+// first field is N, an optional second is "towa". It writes back N-1 and
+// returns the N it read, 0 when the file is absent or spent.
+func failFile(name string) (n int, towa bool) {
+	b, err := os.ReadFile(name)
+	if err != nil {
+		return 0, false
+	}
+	var shape string
+	// Sscan reports an error when the shape is missing: only n matters.
+	_, _ = fmt.Sscan(string(b), &n, &shape)
+	if n <= 0 {
+		return 0, false
+	}
+	left := fmt.Sprint(n - 1)
+	if shape != "" {
+		left += " " + shape
+	}
+	_ = os.WriteFile(name, []byte(left), 0o600)
+	return n, shape == "towa"
+}
+
+// towaStop is a prompt error as towa reports a provider failure: a typed
+// stop in data, under -32603 whatever the kind (JOB-215).
+func towaStop(kind, msg string) error {
+	return &acp.RequestError{Code: -32603, Message: "Internal error", Data: map[string]any{
+		"error": "turn stopped: " + kind + ": " + msg,
+		"towa":  map[string]any{"stop": map[string]any{"kind": kind, "message": msg}},
+	}}
+}
+
 func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	// Record every prompt (one JSON string per line) for tests to inspect.
 	var text string
@@ -1076,22 +1107,22 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		}
 	}
 	// A "ratelimit" file holding N fails the next N prompts the way a
-	// provider account limit does.
-	if b, err := os.ReadFile("ratelimit"); err == nil {
-		var n int
-		if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
-			_ = os.WriteFile("ratelimit", fmt.Appendf(nil, "%d", n-1), 0o600)
-			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "API Error: 429 rate_limit_error"}
+	// provider account limit does. "N towa" fails them with towa's typed
+	// stop of kind overload, whose text has none of jcode's words (JOB-215).
+	if n, towa := failFile("ratelimit"); n > 0 {
+		if towa {
+			return acp.PromptResponse{}, towaStop("overload", "provider overloaded")
 		}
+		return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "API Error: 429 rate_limit_error"}
 	}
 	// A "netfail" file holding N fails the next N prompts the way an
-	// agent that cannot reach its provider does (JOB-66).
-	if b, err := os.ReadFile("netfail"); err == nil {
-		var n int
-		if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
-			_ = os.WriteFile("netfail", fmt.Appendf(nil, "%d", n-1), 0o600)
-			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "Failed to send request: error sending request for url (https://api.example/v1/messages): Connect"}
+	// agent that cannot reach its provider does (JOB-66). "N towa" fails
+	// them with towa's typed stop of kind network (JOB-215).
+	if n, towa := failFile("netfail"); n > 0 {
+		if towa {
+			return acp.PromptResponse{}, towaStop("network", "send request")
 		}
+		return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "Failed to send request: error sending request for url (https://api.example/v1/messages): Connect"}
 	}
 	// With a "block" file present, hold the turn open until "go" appears.
 	if _, err := os.Stat("block"); err == nil {
@@ -1356,11 +1387,18 @@ func (h backoffLog) WithGroup(g string) slog.Handler {
 
 // TestRateLimitBackoff has the agent fail prompts with a 429 a few times:
 // the session keeps its claim and host, backs off without restarting, and
-// the retried turn closes the ticket.
+// the retried turn closes the ticket. Run for jcode's text and for towa's
+// typed overload stop (JOB-215).
 func TestRateLimitBackoff(t *testing.T) {
+	for name, content := range map[string]string{"jcode": "3", "towa": "3 towa"} {
+		t.Run(name, func(t *testing.T) { testRateLimitBackoff(t, content) })
+	}
+}
+
+func testRateLimitBackoff(t *testing.T, failures string) {
 	backoffs := new(atomic.Int32)
 	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{testLog(t).Handler(), backoffs})})
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte("3"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte(failures), 0o600))
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -1407,16 +1445,23 @@ func TestRateLimitBackoff(t *testing.T) {
 	assert.Equal(t, fmt.Sprint(hostPid), strings.TrimSpace(string(pid)), "same host")
 	b, err := os.ReadFile(filepath.Join(root.Dir, "ratelimit"))
 	require.NoError(t, err)
-	assert.Equal(t, "0", string(b))
+	assert.Equal(t, "0", strings.Fields(string(b))[0], "every failure was used")
 }
 
 // TestProviderUnreachableBackoff (JOB-66): provider transport errors back
 // off on the same host like a 429, with no restart or quarantine, and the
-// ticket stays claimed until the retried turn closes it.
+// ticket stays claimed until the retried turn closes it. Run for jcode's
+// text and for towa's typed network stop (JOB-215).
 func TestProviderUnreachableBackoff(t *testing.T) {
+	for name, content := range map[string]string{"jcode": "4", "towa": "4 towa"} {
+		t.Run(name, func(t *testing.T) { testProviderUnreachableBackoff(t, content) })
+	}
+}
+
+func testProviderUnreachableBackoff(t *testing.T, failures string) {
 	backoffs := new(atomic.Int32)
 	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{testLog(t).Handler(), backoffs})})
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "netfail"), []byte("4"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "netfail"), []byte(failures), 0o600))
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
