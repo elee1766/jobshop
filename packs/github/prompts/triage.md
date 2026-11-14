@@ -29,7 +29,9 @@ What the signal means and where to start:
 - `issue_no_run`: issue #{{.subject}} is open with no run. `gh issue view
   {{.subject}} --comments`. If a person filed it (not the planner App),
   it is a report: validate it first (reproduce it or confirm it in the
-  code). Comment what you found on the issue. If it is valid, start
+  code). Comment what you found on the issue. An open PR that closes it,
+  or a comment naming an open `ci-repair` run, means it is already being
+  worked: close this check. If it is valid, start
   `{{.pack_prefix}}pr-work --var issue={{.subject}}`. If not, close it with
   the reason (`gh issue close {{.subject}} --comment`).
 - `linear_issue_no_run`: Linear issue {{.subject}} is ready for work and

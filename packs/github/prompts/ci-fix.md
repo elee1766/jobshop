@@ -15,7 +15,10 @@ SHA starts a new run.
    often already filed or being fixed under its own name; work that
    issue or PR. If none is open, file one at
    priority 0 with the failing job, the log excerpt and the suspected
-   commit. Comment `Issue #<n>` on this step.
+   commit. Comment `Issue #<n>` on this step, and on the issue
+   `gh issue comment <n> --body "ci-repair run <run id> is fixing this"`
+   (run id is this ticket's `parent_id`), so the planner and triage do
+   not start a second pr-work run for it.
 3. If a PR for it is already open, work that PR (`gh pr checkout <n>`);
    comments on this step or the run's `merge` step list refinery findings
    (`jobshop run show <run>` from this ticket's `parent_id`).
