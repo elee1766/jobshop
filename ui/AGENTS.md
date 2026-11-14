@@ -19,3 +19,10 @@ simple, accessible Unix approach to interactions.
   root checks and relevant browser acceptance runbooks in `docs/verify/`.
 - Run mutating browser tests only against an isolated controller, never live
   Jobcity. See `docs/verify/desk-redesign.md`.
+- Before pushing a UI change, run the e2e specs it touches:
+  `JOBSHOP_BIN=... FAKE_AGENT_BIN=... npm --prefix ui run e2e:affected`
+  (binaries as in the header of `e2e/run-isolated.mjs`; `node e2e/affected.mjs`
+  alone lists the specs). It maps your diff to specs with the table in
+  `e2e/affected.mjs`: add a rule there for a new source file, and list a new
+  spec in `e2e/groups.mjs`, or CI never runs it. See
+  `docs/notes/JOB-213-e2e-affected.md`.
