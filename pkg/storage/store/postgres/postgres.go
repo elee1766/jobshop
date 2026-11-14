@@ -56,6 +56,10 @@ type Options struct {
 	// OnCommit, if set, runs after every committed write transaction.
 	// The controller uses it to wake events.subscribe (#147).
 	OnCommit func()
+	// MaxConns bounds each of the two pools. Default: maxConns. Tests
+	// open many stores on one server and lower it to stay under
+	// max_connections (#1251).
+	MaxConns int
 }
 
 // maxConns bounds each pool. Writers run serializable and retry on a
@@ -72,9 +76,13 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 	}
 	// Isolation is set per write transaction (BeginTx); connections keep
 	// the server default, read committed (JOB-41).
+	conns := opt.MaxConns
+	if conns <= 0 {
+		conns = maxConns
+	}
 	db := stdlib.OpenDB(*cfg)
-	db.SetMaxOpenConns(maxConns)
-	db.SetMaxIdleConns(maxConns)
+	db.SetMaxOpenConns(conns)
+	db.SetMaxIdleConns(conns)
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("postgres: %w", err)
@@ -93,8 +101,8 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 	}
 	rcfg.RuntimeParams["default_transaction_read_only"] = "on"
 	rdb := stdlib.OpenDB(*rcfg)
-	rdb.SetMaxOpenConns(maxConns)
-	rdb.SetMaxIdleConns(maxConns)
+	rdb.SetMaxOpenConns(conns)
+	rdb.SetMaxIdleConns(conns)
 	s, err := newStore(db, rdb, opt)
 	if err != nil {
 		_ = db.Close()
