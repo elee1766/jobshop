@@ -14,7 +14,8 @@ Each planning ticket:
    (`gh run list --branch master --limit 5`).
 3. Tick a checklist item on the target only when a merged PR delivers it
    and you verified it on master. Comment on the target which PR did it.
-4. If master CI is red, file a fix issue first, before anything else.
+4. If master CI is red and no `{{.pack_prefix}}ci-repair` run is open
+   (`jobshop run list`), file a fix issue first, before anything else.
    Then read the last day's incidents: `jobshop report incidents --since 24h`
    (grouped controller WARN/ERROR lines, sessions that ended crashed or
    stuck, run steps with failed attempts and their last error). For each
@@ -39,7 +40,9 @@ Each planning ticket:
    Start only for an issue still open (`gh issue view <n> --json state`)
    with no earlier run under its key (`jobshop run list | jq '.[] |
    select(.fields.workflow=="{{.pack_prefix}}pr-work" and
-   .fields.key=="issue-<n>")'`). An open issue whose run is done
+   .fields.key=="issue-<n>")'`), no open PR that closes it (`gh pr list
+   --search <n>`) and no comment naming an open `ci-repair` run (its fix
+   step owns that issue and its PR). An open issue whose run is done
    is waiting on a follow-up or missed its close: read the run and the
    issue, then close the issue or comment what is left; do not start a
    second run unless it names new work. Cancel a mistaken run with

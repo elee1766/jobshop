@@ -32,7 +32,11 @@ separate command, confirm `git rev-parse HEAD` equals the PR's
 address each finding, reply to each review comment you resolve, push and
 wait for green CI.
 
-Otherwise: `git switch -c issue-{{.issue}}`, make the change, run
+Otherwise, first `gh pr list --state all --search {{.issue}}` and read
+the issue's comments: an open or merged PR from another run (a
+`ci-repair` fix step, the curator) means it is not work for this run.
+Run the search again right before you push. Then
+`git switch -c issue-{{.issue}}`, make the change, run
 `{{.check_cmd}}`, commit with
 `(#{{.issue}})` in the subject, `git push -u origin HEAD`, then
 `gh pr create --base master --title "<type>(<scope>): <summary> (#{{.issue}})" --body "Closes #{{.issue}}. ..."`.
