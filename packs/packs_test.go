@@ -376,3 +376,28 @@ func TestGithubPackSharedPools(t *testing.T) {
 	c.PassUntil(func() bool { return len(steps(run)) == 2 }, "no implement step")
 	assert.Equal(t, "github-dev", steps(run)[1].Pool)
 }
+
+// The scan starts the issue's own workflow for a Linear intake issue
+// (JOB-211): pr-work-linear on a github-tracker entry, pr-work on a
+// linear one, each under its entry's prefix.
+func TestGithubPackLinearIntakeStart(t *testing.T) {
+	gh := &fakeGitHub{}
+	server := httptest.NewServer(gh)
+	defer server.Close()
+	root := packRootWith(t, server.URL, fmt.Sprintf(`packs: lin: githubpack.#Pack & {
+    prefix: "lin-"
+    path: "$MODULE/packs/github"
+    vars: {repo: "acme/gizmo", checkout: %[1]q, agent: "local", human: "wile", linear_team: "ENG", linear_workspace: "acme"}
+}
+packs: tracked: githubpack.#Pack & {
+    prefix: "lt-"
+    path: "$MODULE/packs/github"
+    vars: {repo: "acme/tracked", checkout: %[1]q, agent: "local", human: "wile", tracker: "linear", linear_team: "OPS", linear_workspace: "acme"}
+}
+`, t.TempDir()))
+	cfg, err := config.Load(root)
+	require.NoError(t, err)
+	assert.Equal(t, "lin-pr-work-linear", cfg.Triggers["lin-scan"].ScanStart(config.SignalLinearIssueNoRun))
+	assert.Equal(t, "lt-pr-work", cfg.Triggers["lt-scan"].ScanStart(config.SignalLinearIssueNoRun))
+	assert.Equal(t, "github-pr-work-linear", cfg.Triggers["github-scan"].ScanStart(config.SignalLinearIssueNoRun), "set even when the team is empty: the signal is off")
+}

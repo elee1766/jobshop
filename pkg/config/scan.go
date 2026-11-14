@@ -50,6 +50,9 @@ func (c *Config) checkScanTrigger(tr *Trigger) error {
 			if err := checkLinearSignal(s); err != nil {
 				return err
 			}
+			if err := c.checkLinearStart(tr, s); err != nil {
+				return err
+			}
 			continue
 		}
 		if s.Team != "" || s.States != "" || s.Labels != "" || s.SkipLabels != "" {
@@ -201,6 +204,41 @@ func checkLinearSignal(s ScanSignal) error {
 }
 
 var linearTeamPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*$`)
+
+// checkLinearStart validates start of a linear_issue_no_run entry: a
+// workflow of a Linear issue the controller can start from the key alone.
+func (c *Config) checkLinearStart(tr *Trigger, s ScanSignal) error {
+	if s.Start == "" {
+		return nil
+	}
+	if tr.Handler != "" {
+		return fmt.Errorf("when.scan: %s start is for a trigger with run, not handler", s.Signal)
+	}
+	wf, ok := c.Workflows[s.Start]
+	if !ok {
+		return fmt.Errorf("when.scan: %s start: unknown workflow %q", s.Signal, s.Start)
+	}
+	if wf.Tracker != TrackerLinear || wf.Issue == "" || wf.PR != "" {
+		return fmt.Errorf("when.scan: %s start: workflow %s must have tracker linear and an issue var", s.Signal, s.Start)
+	}
+	for _, k := range wf.Vars {
+		if _, packed := wf.PackVars[k]; k != wf.Issue && !packed {
+			return fmt.Errorf("when.scan: %s start: workflow %s needs var %s besides the issue", s.Signal, s.Start, k)
+		}
+	}
+	return nil
+}
+
+// ScanStart is the workflow a scan trigger starts directly for findings
+// of signal (linear_issue_no_run start), "" when the trigger's run does.
+func (tr Trigger) ScanStart(signal string) string {
+	for _, s := range tr.When.Scan {
+		if s.Signal == signal && signal == SignalLinearIssueNoRun {
+			return s.Start
+		}
+	}
+	return ""
+}
 
 // SplitList splits a comma-separated var into trimmed, non-empty names.
 func SplitList(s string) []string {

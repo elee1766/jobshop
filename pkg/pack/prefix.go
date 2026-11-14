@@ -90,6 +90,14 @@ func prefixLayers(layers []layer, prefix string, pools map[string]string) {
 					if m, ok := em["run"].(map[string]any); ok {
 						ren(m, "workflow", "workflows")
 					}
+					if w, ok := em["when"].(map[string]any); ok {
+						sigs, _ := w["scan"].([]any)
+						for _, sig := range sigs {
+							if sm, ok := sig.(map[string]any); ok {
+								ren(sm, "start", "workflows")
+							}
+						}
+					}
 				}
 				to, ok := rename[s][n]
 				if !ok {

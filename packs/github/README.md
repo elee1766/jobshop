@@ -153,11 +153,12 @@ How one issue flows:
 
 1. Intake: every `linear_poll`, the `linear_issue_no_run` scan signal
    lists ENG issues in `linear_intake_states` with an intake label and
-   no skip label. One with no open run starts `eng-triage` (#287).
-   The planner lists the same filter on its own passes (#292).
-2. triage or the planner runs `jobshop linear eligible` and starts
-   `eng-pr-work` with key `linear-<KEY>`. Either start returns the other's
-   run. The `intake` hook reads the issue text first; a refusal labels
+   no skip label, no open blocker. One with no open run starts
+   `eng-pr-work` with key `linear-<KEY>` itself (JOB-211; #287 opened a
+   triage run for it). The planner lists the same filter on its own
+   passes (#292).
+2. The planner's start and the scan's return each other's run. The
+   `intake` hook reads the issue text first; a refusal labels
    the issue `needs-human` and files a ticket on `jobshop attention`,
    and closing that ticket `done` lets the next start through.
 3. implement moves the issue to In Progress, opens a PR on `repo`, and
@@ -211,7 +212,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_target` | With `linear`: the Linear issue the planner reads as its goal (ENG-1) |
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
-| `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` scan signal starts triage for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293, `target` and `proposed`, planner parents, JOB-4, and `tracking`; set one with `jobshop linear label <KEY> add <label>`), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
+| `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` scan signal starts the issue's `pr-work` run (JOB-211) for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293, `target` and `proposed`, planner parents, JOB-4, and `tracking`; set one with `jobshop linear label <KEY> add <label>`), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
 | `linear_new_state` | State of Linear issues agents file (out-of-scope finds, review findings, planner work). Default `Todo`, an intake state, so they are worked; Backlog is left to humans |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
 
